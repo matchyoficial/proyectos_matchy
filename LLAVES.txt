@@ -1,0 +1,4 @@
+ID: com.matchy.matchy20.flutter
+Contraseña del keystore: mazingerysakura2025
+
+Alias: matchyflutter
