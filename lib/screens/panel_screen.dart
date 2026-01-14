@@ -1,16 +1,27 @@
 // 📂 lib/screens/panel_screen.dart
 // ✅ PANEL PERFECTO con lógica Riverpod (sin cambiar diseño)
 // ✅ Nombre + edad SIEMPRE en una fila (sin RenderFlex overflow)
-// ✅ Foto perfil real o asset (foto #1)
+// ✅ Foto perfil: URL (Storage) > asset > File path (cross-device)
 // ✅ Botón "Editar Perfil" → DatosScreen
-// ✅ FIX: elimina dependencia de published_profile_provider.dart (NO existe)
-// ✅ FIX: incluye _MatchyBottomNav completo (antes faltaba y rompía todo)
-// ✅ NUEVO: Botón "CITAS PUBLICADAS" debajo de "BUSCAR UNA CITA" (color distinto + conectado)
+// ✅ Incluye _MatchyBottomNav completo
+// ✅ Botón "CITAS PUBLICADAS" conectado
+//
+// ✅ FIREBASE: Panel lee users/{uid} desde Firestore
+// ✅ Si onboarding_completed != true → redirige a DatosScreen
+// ✅ Fallback: si Firestore no está listo, usa profileFormProvider
+//
+// ✅ FIX CACHE/LOGOUT:
+//    - userDocProvider ahora es nullable. Si no hay sesión, emite null (no se queda loading infinito).
+//    - Si no hay sesión: redirige a Splash (tu flujo decide login/registro).
 
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// 🔴 CHINCHE FIREBASE PANEL 1 — Auth + Firestore
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 
@@ -29,7 +40,7 @@ import 'package:proyectos_matchy/screens/chat_screen.dart';
 // ✅ Ir a editar datos
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 
-// ✅ Provider de perfil (REAL)
+// ✅ Provider de perfil (REAL) — fallback local
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
 // 🔴 CHINCHE PANEL CITAS PUB 0 — pantalla de “citas publicadas”
@@ -38,17 +49,50 @@ import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
 // 🔴 CHINCHE PANEL BUSCAR 0 — pantalla “Buscar una cita” (Swipe deck)
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
 
-class PanelScreen extends ConsumerWidget {
+// 🔴 CHINCHE PANEL NAV SPLASH 1 — si no hay sesión, volvemos a Splash
+import 'package:proyectos_matchy/screens/splash_screen.dart';
+
+// ===========================================================
+// 🔥 Provider: documento de usuario Firestore users/{uid}
+// ===========================================================
+
+// 🔴 CHINCHE FIREBASE PANEL 2 — nombre de colección users
+const String kUsersCollection = 'users';
+
+// 🔴 CHINCHE FIREBASE PANEL FIX 1 — Provider nullable (evita loading infinito con Stream.empty)
+final userDocProvider = StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>(
+      (ref) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return Stream.value(null);
+    }
+    return FirebaseFirestore.instance
+        .collection(kUsersCollection)
+        .doc(user.uid)
+        .snapshots();
+  },
+);
+
+class PanelScreen extends ConsumerStatefulWidget {
   static const String routeName = 'panel';
 
   const PanelScreen({super.key});
+
+  @override
+  ConsumerState<PanelScreen> createState() => _PanelScreenState();
+}
+
+class _PanelScreenState extends ConsumerState<PanelScreen> {
+  bool _redirected = false; // evita loops
+  bool _bootstrapped = false; // evita bootstrap repetido
 
   // 🔴 CHINCHE PANEL NAME 1 — lógica inteligente de nombre
   String _nombreSeguro(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return 'SIN NOMBRE';
 
-    final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts =
+    clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return 'SIN NOMBRE';
 
     final first = parts.first;
@@ -70,9 +114,108 @@ class PanelScreen extends ConsumerWidget {
   }
 
   bool _isAsset(String v) => v.startsWith('assets/');
+  bool _isUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
+
+  void _redirectToDatos() {
+    if (_redirected) return;
+    _redirected = true;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const DatosScreen()),
+          (route) => false,
+    );
+  }
+
+  void _redirectToSplash() {
+    if (_redirected) return;
+    _redirected = true;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+    );
+  }
+
+  // ✅ Resuelve foto con prioridad: URL > asset > file path
+  Widget _buildFotoWidget(String? fotoValue) {
+    final v = (fotoValue ?? '').trim();
+
+    if (v.isEmpty) {
+      return Image.asset(
+        'assets/images/perfil1.jpg',
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+      );
+    }
+
+    if (_isUrl(v)) {
+      return Image.network(
+        v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: Colors.black26,
+            child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        },
+        errorBuilder: (_, __, ___) {
+          return Image.asset(
+            'assets/images/perfil1.jpg',
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+          );
+        },
+      );
+    }
+
+    if (_isAsset(v)) {
+      return Image.asset(
+        v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+      );
+    }
+
+    return Image.file(
+      File(v),
+      fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
+      errorBuilder: (_, __, ___) {
+        return Image.asset(
+          'assets/images/perfil1.jpg',
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+        );
+      },
+    );
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (_bootstrapped) return;
+      _bootstrapped = true;
+
+      // ✅ Si no hay sesión, volvemos a Splash (ahí decides login/registro)
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (!mounted) return;
+        _redirectToSplash();
+        return;
+      }
+
+      // ✅ Bootstrap: reconstruye el provider desde Firestore tras limpiar cache
+      await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
 
     // mismas medidas que en el resto de pantallas principales
@@ -81,76 +224,273 @@ class PanelScreen extends ConsumerWidget {
     const double espacioLogoScroll = 15;
     const double margenInferiorPantalla = 80;
 
-    // ✅ Estado perfil (draft actual)
-    final state = ref.watch(profileFormProvider);
+    // ✅ Fallback local (por si Firestore demora / offline)
+    final local = ref.watch(profileFormProvider);
 
-    final String nombre = _nombreSeguro(state.nombre);
-    final String edad = state.edad.trim().isEmpty ? '—' : state.edad.trim();
+    // ✅ Firestore doc del usuario (nullable)
+    final userDocAsync = ref.watch(userDocProvider);
 
-    final String pais = (state.paisSeleccionado ?? '').trim();
-    final String ciudad = (state.ciudadSeleccionada ?? '').trim();
+    Widget contenido = userDocAsync.when(
+      data: (snap) {
+        // ✅ Si snap == null => no hay sesión
+        if (snap == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _redirectToSplash();
+          });
 
-    final String ubicacion = (ciudad.isEmpty && pais.isEmpty)
-        ? 'Sin ubicación'
-        : (ciudad.isNotEmpty && pais.isNotEmpty)
-        ? '$ciudad - $pais'
-        : (ciudad.isNotEmpty ? ciudad : pais);
+          // mostramos un fallback mínimo para evitar pantalla negra 1 frame
+          final fotoFallback = local.profilePhotoUrl ??
+              (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+              (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
 
-    // ✅ Foto de perfil = foto #1 (posición 0)
-    final String? fotoPerfil = state.fotosCargadas.isNotEmpty ? state.fotosCargadas.first : null;
+          return _panelScaffold(
+            context: context,
+            textTheme: textTheme,
+            espacioBarraLogo: espacioBarraLogo,
+            alturaLogo: alturaLogo,
+            espacioLogoScroll: espacioLogoScroll,
+            margenInferiorPantalla: margenInferiorPantalla,
+            nombre: _nombreSeguro(local.nombre),
+            edad: local.edad.trim().isEmpty ? '—' : local.edad.trim(),
+            ubicacion: 'Sin sesión',
+            fotoWidget: _buildFotoWidget(fotoFallback),
+            showLoader: true,
+          );
+        }
 
-    // ✅ Soporta asset o path real
-    final Widget fotoWidget = (fotoPerfil == null || fotoPerfil.trim().isEmpty)
-        ? Image.asset(
-      'assets/images/perfil1.jpg',
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
-    )
-        : _isAsset(fotoPerfil)
-        ? Image.asset(
-      fotoPerfil,
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
-    )
-        : Image.file(
-      File(fotoPerfil),
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
-      errorBuilder: (_, __, ___) {
-        // 🔴 CHINCHE FOTO SAFE 1 — si el path falla, no colapsa
-        return Image.asset(
-          'assets/images/perfil1.jpg',
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
+        // Si no hay doc aún, usamos local sin romper UX
+        if (!snap.exists) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final localOk = (local.nombre.trim().isNotEmpty &&
+                local.edad.trim().isNotEmpty &&
+                (local.paisSeleccionado ?? '').trim().isNotEmpty &&
+                (local.ciudadSeleccionada ?? '').trim().isNotEmpty &&
+                (local.fotosCargadas.isNotEmpty || local.photoUrls.isNotEmpty));
+            if (!localOk) _redirectToDatos();
+          });
+
+          final fotoFallback = local.profilePhotoUrl ??
+              (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+              (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
+
+          final nombre = _nombreSeguro(local.nombre);
+          final edad = local.edad.trim().isEmpty ? '—' : local.edad.trim();
+          final pais = (local.paisSeleccionado ?? '').trim();
+          final ciudad = (local.ciudadSeleccionada ?? '').trim();
+          final ubicacion = (ciudad.isEmpty && pais.isEmpty)
+              ? 'Sin ubicación'
+              : (ciudad.isNotEmpty && pais.isNotEmpty)
+              ? '$ciudad - $pais'
+              : (ciudad.isNotEmpty ? ciudad : pais);
+
+          return _panelScaffold(
+            context: context,
+            textTheme: textTheme,
+            espacioBarraLogo: espacioBarraLogo,
+            alturaLogo: alturaLogo,
+            espacioLogoScroll: espacioLogoScroll,
+            margenInferiorPantalla: margenInferiorPantalla,
+            nombre: nombre,
+            edad: edad,
+            ubicacion: ubicacion,
+            fotoWidget: _buildFotoWidget(fotoFallback),
+            showLoader: false,
+          );
+        }
+
+        final data = snap.data();
+
+        // Si data es null, fallback local
+        if (data == null) {
+          final fotoFallback = local.profilePhotoUrl ??
+              (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+              (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
+
+          final nombre = _nombreSeguro(local.nombre);
+          final edad = local.edad.trim().isEmpty ? '—' : local.edad.trim();
+          final pais = (local.paisSeleccionado ?? '').trim();
+          final ciudad = (local.ciudadSeleccionada ?? '').trim();
+          final ubicacion = (ciudad.isEmpty && pais.isEmpty)
+              ? 'Sin ubicación'
+              : (ciudad.isNotEmpty && pais.isNotEmpty)
+              ? '$ciudad - $pais'
+              : (ciudad.isNotEmpty ? ciudad : pais);
+
+          return _panelScaffold(
+            context: context,
+            textTheme: textTheme,
+            espacioBarraLogo: espacioBarraLogo,
+            alturaLogo: alturaLogo,
+            espacioLogoScroll: espacioLogoScroll,
+            margenInferiorPantalla: margenInferiorPantalla,
+            nombre: nombre,
+            edad: edad,
+            ubicacion: ubicacion,
+            fotoWidget: _buildFotoWidget(fotoFallback),
+            showLoader: false,
+          );
+        }
+
+        // ✅ onboarding gate
+        final completed = (data['onboarding_completed'] == true);
+        if (!completed) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _redirectToDatos();
+          });
+        }
+
+        // ✅ Construcción sólida de datos Firestore
+        final n = (data['nombre'] ?? '').toString();
+        final e = data['edad'];
+        final p = (data['pais'] ?? '').toString();
+        final c = (data['ciudad'] ?? '').toString();
+
+        final nombre = _nombreSeguro(n.isNotEmpty ? n : local.nombre);
+        final edad = (e is int)
+            ? e.toString()
+            : (e?.toString().trim().isNotEmpty == true
+            ? e.toString()
+            : (local.edad.trim().isEmpty ? '—' : local.edad.trim()));
+
+        final ubicacion = (c.trim().isEmpty && p.trim().isEmpty)
+            ? ((local.ciudadSeleccionada ?? '').trim().isEmpty &&
+            (local.paisSeleccionado ?? '').trim().isEmpty
+            ? 'Sin ubicación'
+            : '${(local.ciudadSeleccionada ?? '').trim()} - ${(local.paisSeleccionado ?? '').trim()}'
+            .replaceAll(' - ', ' - '))
+            : (c.trim().isNotEmpty && p.trim().isNotEmpty)
+            ? '${c.trim()} - ${p.trim()}'
+            : (c.trim().isNotEmpty ? c.trim() : p.trim());
+
+        // ✅ FOTO: prioridad URL > local path
+        final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString().trim();
+        final List<dynamic> photoUrlsDyn =
+        (data['photoUrls'] is List) ? (data['photoUrls'] as List) : <dynamic>[];
+        final photoUrls = photoUrlsDyn
+            .map((e) => e.toString())
+            .where((s) => s.trim().isNotEmpty)
+            .toList();
+
+        final profileLocal = (data['profilePhotoLocalPath'] ?? '').toString().trim();
+
+        final fotoFinal = profilePhotoUrl.isNotEmpty
+            ? profilePhotoUrl
+            : (photoUrls.isNotEmpty
+            ? photoUrls.first
+            : (profileLocal.isNotEmpty
+            ? profileLocal
+            : (local.profilePhotoUrl ??
+            (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+            (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null))));
+
+        return _panelScaffold(
+          context: context,
+          textTheme: textTheme,
+          espacioBarraLogo: espacioBarraLogo,
+          alturaLogo: alturaLogo,
+          espacioLogoScroll: espacioLogoScroll,
+          margenInferiorPantalla: margenInferiorPantalla,
+          nombre: nombre,
+          edad: edad,
+          ubicacion: ubicacion,
+          fotoWidget: _buildFotoWidget(fotoFinal),
+          showLoader: false,
+        );
+      },
+      loading: () {
+        final fotoFallback = local.profilePhotoUrl ??
+            (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+            (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
+
+        final nombre = _nombreSeguro(local.nombre);
+        final edad = local.edad.trim().isEmpty ? '—' : local.edad.trim();
+        final pais = (local.paisSeleccionado ?? '').trim();
+        final ciudad = (local.ciudadSeleccionada ?? '').trim();
+        final ubicacion = (ciudad.isEmpty && pais.isEmpty)
+            ? 'Sin ubicación'
+            : (ciudad.isNotEmpty && pais.isNotEmpty)
+            ? '$ciudad - $pais'
+            : (ciudad.isNotEmpty ? ciudad : pais);
+
+        return _panelScaffold(
+          context: context,
+          textTheme: textTheme,
+          espacioBarraLogo: espacioBarraLogo,
+          alturaLogo: alturaLogo,
+          espacioLogoScroll: espacioLogoScroll,
+          margenInferiorPantalla: margenInferiorPantalla,
+          nombre: nombre,
+          edad: edad,
+          ubicacion: ubicacion,
+          fotoWidget: _buildFotoWidget(fotoFallback),
+          showLoader: true,
+        );
+      },
+      error: (e, _) {
+        final fotoFallback = local.profilePhotoUrl ??
+            (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
+            (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
+
+        final nombre = _nombreSeguro(local.nombre);
+        final edad = local.edad.trim().isEmpty ? '—' : local.edad.trim();
+        final pais = (local.paisSeleccionado ?? '').trim();
+        final ciudad = (local.ciudadSeleccionada ?? '').trim();
+        final ubicacion = (ciudad.isEmpty && pais.isEmpty)
+            ? 'Sin ubicación'
+            : (ciudad.isNotEmpty && pais.isNotEmpty)
+            ? '$ciudad - $pais'
+            : (ciudad.isNotEmpty ? ciudad : pais);
+
+        return _panelScaffold(
+          context: context,
+          textTheme: textTheme,
+          espacioBarraLogo: espacioBarraLogo,
+          alturaLogo: alturaLogo,
+          espacioLogoScroll: espacioLogoScroll,
+          margenInferiorPantalla: margenInferiorPantalla,
+          nombre: nombre,
+          edad: edad,
+          ubicacion: ubicacion,
+          fotoWidget: _buildFotoWidget(fotoFallback),
+          showLoader: false,
         );
       },
     );
 
+    return contenido;
+  }
+
+  // ✅ Scaffold del panel (mantiene tu diseño intacto)
+  Widget _panelScaffold({
+    required BuildContext context,
+    required TextTheme textTheme,
+    required double espacioBarraLogo,
+    required double alturaLogo,
+    required double espacioLogoScroll,
+    required double margenInferiorPantalla,
+    required String nombre,
+    required String edad,
+    required String ubicacion,
+    required Widget fotoWidget,
+    required bool showLoader,
+  }) {
     return Scaffold(
       body: Stack(
         children: [
-          // 🔹 Fondo global
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/fondo.jpg',
-              fit: BoxFit.cover,
-            ),
+            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
-
-          // 🔹 Logo + contenido scrolleable
           Column(
             children: [
-              const SizedBox(height: espacioBarraLogo),
-              Image.asset(
-                'assets/images/logomatchyplano.png',
-                height: alturaLogo,
-              ),
-              const SizedBox(height: espacioLogoScroll),
+              SizedBox(height: espacioBarraLogo),
+              Image.asset('assets/images/logomatchyplano.png', height: alturaLogo),
+              SizedBox(height: espacioLogoScroll),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    bottom: margenInferiorPantalla,
-                  ),
+                  padding: EdgeInsets.only(bottom: margenInferiorPantalla),
                   child: _PanelContent(
                     textTheme: textTheme,
                     nombre: nombre,
@@ -162,10 +502,18 @@ class PanelScreen extends ConsumerWidget {
               ),
             ],
           ),
+          if (showLoader)
+            const Positioned(
+              top: 12,
+              right: 12,
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
         ],
       ),
-
-      // 🔹 Barra de navegación INFERIOR (PANEL = índice 2)
       bottomNavigationBar: const _MatchyBottomNav(currentIndex: 2),
     );
   }
@@ -211,7 +559,6 @@ class _PanelContent extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // FOTO PERFIL — cuadrada, bordes redondos, sin espacios y sin cortar cabeza
               ClipRRect(
                 borderRadius: BorderRadius.circular(
                   20, // 🔴 CHINCHE PANEL F — radio de la foto
@@ -226,14 +573,12 @@ class _PanelContent extends StatelessWidget {
 
               const SizedBox(width: 18),
 
-              // NOMBRE + EDAD + CIUDAD + BOTÓN EDITAR PERFIL
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ✅ FIX RenderFlex: si no cabe, escala hacia abajo automáticamente
                     FittedBox(
-                      fit: BoxFit.scaleDown, // 🔴 CHINCHE PANEL FIX 1
+                      fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -251,7 +596,7 @@ class _PanelContent extends StatelessWidget {
                             edad,
                             style: textTheme.titleLarge?.copyWith(
                               color: Colors.white,
-                              fontSize: 34, // 🔴 CHINCHE PANEL J
+                              fontSize: 34,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -263,16 +608,12 @@ class _PanelContent extends StatelessWidget {
 
                     Row(
                       children: [
-                        const Icon(
-                          Icons.location_on,
-                          color: Colors.white,
-                          size: 18,
-                        ),
+                        const Icon(Icons.location_on, color: Colors.white, size: 18),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             ubicacion,
-                            overflow: TextOverflow.ellipsis, // 🔴 CHINCHE PANEL FIX 2
+                            overflow: TextOverflow.ellipsis,
                             style: textTheme.bodyMedium?.copyWith(
                               color: Colors.white,
                               fontSize: 20, // 🔴 CHINCHE PANEL K
@@ -284,22 +625,17 @@ class _PanelContent extends StatelessWidget {
 
                     const SizedBox(height: 10),
 
-                    // ✅ Editar Perfil (colores Matchy)
                     GestureDetector(
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const DatosScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const DatosScreen()),
                         );
                       },
                       child: Container(
-                        height: 36, // 🔴 CHINCHE PANEL EDIT 2 — (36)
+                        height: 36,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFBEB3FF), // Matchy morado
-                          borderRadius: BorderRadius.circular(
-                            16, // 🔴 CHINCHE PANEL EDIT 3 — (16)
-                          ),
+                          color: const Color(0xFFBEB3FF),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         alignment: Alignment.center,
                         child: const Text(
@@ -307,7 +643,7 @@ class _PanelContent extends StatelessWidget {
                           style: TextStyle(
                             color: Colors.black,
                             fontWeight: FontWeight.w700,
-                            fontSize: 14, // 🔴 CHINCHE PANEL EDIT 4 — (14)
+                            fontSize: 14,
                           ),
                         ),
                       ),
@@ -322,7 +658,7 @@ class _PanelContent extends StatelessWidget {
         const SizedBox(height: 18),
 
         // =========================================================
-        // SECCIÓN MORADA: ICONO CALENDARIO + DOS BOTONES (+ NUEVO BOTÓN)
+        // SECCIÓN MORADA: ICONO CALENDARIO + 3 BOTONES
         // =========================================================
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -339,7 +675,7 @@ class _PanelContent extends StatelessWidget {
           child: Row(
             children: [
               Image.asset(
-                'assets/images/ic_calendar.png', // 🔴 CHINCHE PANEL N
+                'assets/images/ic_calendar.png',
                 width: 90,
                 height: 90,
                 fit: BoxFit.contain,
@@ -353,7 +689,6 @@ class _PanelContent extends StatelessWidget {
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            // 🔴 CHINCHE PANEL CREA 1 — ENVÍO DEL NOMBRE REAL
                             builder: (_) => CrearCitaPanelScreen(nombreUsuario: nombre),
                           ),
                         );
@@ -363,27 +698,19 @@ class _PanelContent extends StatelessWidget {
                     _BotonPanel(
                       texto: "BUSCAR UNA CITA",
                       onTap: () {
-                        // ✅ LINK A CitaBuscarScreen (Swipe deck)
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const CitaBuscarScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const CitaBuscarScreen()),
                         );
                       },
                     ),
-
-                    // ✅ NUEVO BOTÓN (debajo de buscar cita)
-                    const SizedBox(height: 12), // 🔴 CHINCHE PANEL BTN PUB SPACE 1
+                    const SizedBox(height: 12),
                     _BotonPanel(
                       texto: "CITAS PUBLICADAS",
-                      // 🔴 CHINCHE PANEL BTN PUB COLOR 1 — color diferente para resaltar
-                      backgroundColor: const Color(0xFFFFC107), // amarillo Matchy
+                      backgroundColor: const Color(0xFFFFC107),
                       textColor: Colors.black,
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const CitasPendientesScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const CitasPendientesScreen()),
                         );
                       },
                     ),
@@ -419,9 +746,7 @@ class _PanelContent extends StatelessWidget {
                       imageAsset: 'assets/images/iconorestaurante.png',
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const RestaurantesScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const RestaurantesScreen()),
                         );
                       },
                     ),
@@ -433,9 +758,7 @@ class _PanelContent extends StatelessWidget {
                       imageAsset: 'assets/images/iconobares.png',
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const BaresScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const BaresScreen()),
                         );
                       },
                     ),
@@ -451,9 +774,7 @@ class _PanelContent extends StatelessWidget {
                       imageAsset: 'assets/images/iconocafeteria.png',
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const CafesScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const CafesScreen()),
                         );
                       },
                     ),
@@ -465,9 +786,7 @@ class _PanelContent extends StatelessWidget {
                       imageAsset: 'assets/images/iconoactividades.png',
                       onTap: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ActividadesScreen(),
-                          ),
+                          MaterialPageRoute(builder: (_) => const ActividadesScreen()),
                         );
                       },
                     ),
@@ -485,13 +804,11 @@ class _PanelContent extends StatelessWidget {
 }
 
 // ===========================================================
-// 🔹 BOTÓN PANEL (CREAR / BUSCAR / CITAS PUBLICADAS)
+// 🔹 BOTÓN PANEL
 // ===========================================================
 class _BotonPanel extends StatelessWidget {
   final String texto;
   final VoidCallback onTap;
-
-  // 🔴 CHINCHE PANEL BTN CUSTOM 1 — opcionales para resaltar
   final Color? backgroundColor;
   final Color? textColor;
 
@@ -507,12 +824,10 @@ class _BotonPanel extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 44, // 🔴 CHINCHE PANEL U
+        height: 44,
         decoration: BoxDecoration(
           color: backgroundColor ?? const Color(0xFFBEB3FF),
-          borderRadius: BorderRadius.circular(
-            18, // 🔴 CHINCHE PANEL V
-          ),
+          borderRadius: BorderRadius.circular(18),
         ),
         alignment: Alignment.center,
         child: Text(
@@ -553,11 +868,9 @@ class _CategoriaPanelCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            height: 120, // 🔴 CHINCHE PANEL W
+            height: 120,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(
-                20, // 🔴 CHINCHE PANEL X
-              ),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.45),

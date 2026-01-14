@@ -1,63 +1,60 @@
 // 📂 lib/main.dart
-// ✅ Flujo: Splash → Registro → Home (Panel)
-// ✅ PASO 4.2: Activar Riverpod (estado/lógica segura)
+// ✅ Riverpod root
+// ✅ Firebase initializeApp
+// ✅ FIX DatePicker/TimePicker en español: MaterialLocalizations + supportedLocales
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'; // ✅ IMPORTANTE
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
-// ✅ Riverpod
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // 🔴 CHINCHE MAIN R1 — ProviderScope
+// ✅ LOCALIZACIONES (FIX del error rojo)
+import 'package:flutter_localizations/flutter_localizations.dart';
 
-// 🔴 CHINCHE MAIN A — Importar pantallas principales
 import 'package:proyectos_matchy/screens/splash_screen.dart';
-import 'package:proyectos_matchy/screens/registro_screen.dart';
-import 'package:proyectos_matchy/home_screen.dart';
 
-void main() {
-  // 🔴 CHINCHE MAIN R2 — Envolvemos toda la app con ProviderScope
-  // Esto habilita Riverpod para TODO el proyecto (Android + iOS).
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(
     const ProviderScope(
-      child: MatchyApp(),
+      child: MyApp(),
     ),
   );
 }
 
-class MatchyApp extends StatelessWidget {
-  const MatchyApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      title: 'Matchy',
+      theme: ThemeData(useMaterial3: true),
 
-      // 🌍 Localización en español
+      // 🔴 CHINCHE MAIN LOCALE 1 — idioma base de la app
+      locale: const Locale('es', 'ES'),
+
+      // 🔴 CHINCHE MAIN LOCALE 2 — idiomas soportados
+      supportedLocales: const [
+        Locale('es', 'ES'),
+        Locale('en', 'US'),
+      ],
+
+      // 🔴 CHINCHE MAIN LOCALE 3 — delegates obligatorios
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('es', 'ES'),
-      ],
-      locale: const Locale('es', 'ES'),
 
-      // 🔴 CHINCHE MAIN B — Pantalla inicial: Splash
+      // ✅ Ruta inicial correcta
       home: const SplashScreen(),
-
-      // 🔴 CHINCHE MAIN C — Rutas por nombre (opcionales)
-      routes: {
-        '/splash': (context) => const SplashScreen(),
-        '/registro': (context) => const RegistroScreen(),
-        '/home': (context) => const HomeScreen(),
-      },
-
-      // 🔴 CHINCHE MAIN D — Tema global
-      theme: ThemeData(
-        fontFamily: 'Poppins',
-        scaffoldBackgroundColor: Colors.black,
-        useMaterial3: true,
-      ),
     );
   }
 }

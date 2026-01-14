@@ -6,7 +6,7 @@ name: proyectos_matchy
 description: Aplicación Matchy en Flutter
 publish_to: "none"
 
-version: 1.0.0+9                    # 🔴 CHINCHE YAML B — versión app
+version: 1.0.0+10                    # 🔴 CHINCHE YAML B — versión app
 
 environment:
   sdk: ">=3.0.0 <4.0.0"             # 🔴 CHINCHE YAML C — compatibilidad de Dart/Flutter
@@ -14,6 +14,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  # 🔥 FIREBASE CORE — BASE OBLIGATORIA
+  firebase_core: ^3.15.2              # 🔴 CHINCHE FIREBASE CORE 1
+
+  # 🔥 AUTH — LOGIN (Google + Email)
+  firebase_auth: ^5.1.2               # 🔴 CHINCHE AUTH 1 — (si te da conflicto, me avisas y lo ajusto)
+  google_sign_in: ^6.2.1              # 🔴 CHINCHE AUTH 2 — Google Sign-In
+
+  # 🔥 FIRESTORE — BASE DE DATOS
+  cloud_firestore: ^5.6.12            # 🔴 CHINCHE FIRESTORE 1
 
   # 🔴 CHINCHE MAPS DEP 1 — abrir Google Maps (Android/iOS)
   url_launcher: ^6.3.0
@@ -32,19 +42,15 @@ dependencies:
   shared_preferences: ^2.3.2        # 🔴 CHINCHE LOGICA B — guardar datos simples
 
   # ✅ PASO FOTOS REAL — galería/cámara
-  image_picker: ^1.0.7              # 🔴 CHINCHE FOTO 1 — si quieres fijar otra versión, cambia aquí
-
-  # 🔴 CHINCHE YAML F — librerías opcionales
-  # http: ^1.2.0
-  # provider: ^6.1.2
-  # shared_preferences: ^2.2.0
+  image_picker: ^1.0.7              # 🔴 CHINCHE FOTO 1
+  firebase_storage: ^12.4.10
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^4.0.0             # 🔴 CHINCHE YAML G — buenas prácticas
-  flutter_launcher_icons: ^0.13.1   # 🔴 CHINCHE ICONOS — generador de iconos
+  flutter_lints: ^4.0.0             # 🔴 CHINCHE YAML G
+  flutter_launcher_icons: ^0.13.1   # 🔴 CHINCHE ICONOS
 
 flutter:
   uses-material-design: true
@@ -52,10 +58,12 @@ flutter:
   # 🔴 CHINCHE YAML H — REGISTRO DE ASSETS
   assets:
     - assets/images/
-    - assets/images/icono_matchy.png
 
 # 🔴 CHINCHE ICONOS B — CONFIGURACIÓN LAUNCHER ICON
-flutter_icons:
+flutter_launcher_icons:
   android: true
-  ios: false
-  image_path: "assets/images/icono_matchy.png"
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
+  adaptive_icon_background: "#000000"
+  remove_alpha_ios: true

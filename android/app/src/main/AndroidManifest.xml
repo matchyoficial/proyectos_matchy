@@ -1,5 +1,21 @@
+<!-- 📂 android/app/src/main/AndroidManifest.xml -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.matchy.matchy20.flutter">
+
+    <!-- 🔴 CHINCHE MANIFEST 1 — permisos base -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 🔴 CHINCHE MANIFEST 2 — requerido por url_launcher en Android 11+ -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
+        </intent>
+    </queries>
 
     <application
         android:label="MATCHY"
@@ -16,8 +32,8 @@
             android:windowSoftInputMode="adjustResize">
 
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
         </activity>

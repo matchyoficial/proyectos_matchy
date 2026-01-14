@@ -1,3 +1,5 @@
+// 📂 android/app/build.gradle.kts
+
 // 🔴 CHINCHE FIRMA 0 — imports necesarios para leer key.properties
 import java.util.Properties
 import java.io.FileInputStream
@@ -5,8 +7,10 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+
+    // 🔴 CHINCHE FIREBASE 1 — ACTIVA Google Services (Firebase)
+    id("com.google.gms.google-services")
 }
 
 // 🔴 CHINCHE FIRMA 1 — leer key.properties (NO borrar este bloque)
@@ -30,21 +34,22 @@ android {
         jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
-    // 🔴 CHINCHE FIRMA 2 — configuración de firma RELEASE usando key.properties
     signingConfigs {
+        // 🔴 CHINCHE FIRMA 2 — RELEASE: usa key.properties si existe
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["storePassword"] as String
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+            // Si NO existe key.properties, no revienta aquí; solo no firmará release.
         }
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.matchy.matchy20.flutter"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -52,10 +57,12 @@ android {
     }
 
     buildTypes {
-        // 🔴 CHINCHE FIRMA 3 — ahora release usa la firma real, NO la debug
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
-            // si luego quieres ofuscar, aquí va isMinifyEnabled = true, etc.
+            // 🔴 CHINCHE FIRMA 3 — release usa firma real solo si hay key.properties
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -65,4 +72,3 @@ android {
 flutter {
     source = "../.."
 }
-

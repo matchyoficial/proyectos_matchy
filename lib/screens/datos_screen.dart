@@ -4,6 +4,15 @@
 // ✅ Al guardar: marca onboarding_completed = true
 // ✅ Fotos REAL: galería/cámara con image_picker + reorder + delete (X)
 // ✅ Foto #1 = foto de perfil
+//
+// ✅ FIREBASE: Sync del perfil a Firestore users/{uid} al guardar (merge:true)
+// ✅ STORAGE: Sube fotos reales a Firebase Storage y guarda URLs en Firestore
+//
+// ✅ FIX CRÍTICO:
+//    - Evita mostrar paths muertos tras limpiar caché (Image.file crash)
+//    - Prioriza photoUrls (cross-device) para render en la UI
+//    - Al guardar, convierte el draft local a URLs para que no queden File paths rotos
+//    - En Firestore, no guarda photosLocalPaths con rutas reales (solo assets/urls)
 
 import 'dart:io';
 
@@ -14,6 +23,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
+
+// 🔴 CHINCHE FIREBASE DATOS 1 — imports Firebase
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+// 🔴 CHINCHE FIREBASE STORAGE 1 — import Storage
+import 'package:firebase_storage/firebase_storage.dart';
 
 class DatosScreen extends ConsumerStatefulWidget {
   static const String routeName = 'datos';
@@ -35,10 +51,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   // 🔴 CHINCHE VALID UI 1 — al intentar guardar, mostramos obligatorios
   bool _mostrarErrores = false;
 
+  // 🔴 CHINCHE FIREBASE DATOS 3 — bloquea doble tap + muestra loading
+  bool _saving = false;
+
   // 🔴 CHINCHE FOTO PICKER 1 — instancia picker
   final ImagePicker _picker = ImagePicker();
 
-  // 🔹 Fotos demo (por si quieres seguir usando assets también)
+  // 🔹 Fotos demo (assets)
   final List<String> fotosDisponibles = const [
     'assets/images/perfil1.jpg',
     'assets/images/perfil2.jpg',
@@ -116,9 +135,188 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     return edadInt != null && edadInt >= 18 && edadInt <= 99;
   }
 
-  bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
-  bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
-  bool _fotosOk(ProfileFormState s) => s.fotosCargadas.isNotEmpty;
+  bool _paisOk(ProfileFormState s) =>
+      (s.paisSeleccionado ?? '').trim().isNotEmpty;
+  bool _ciudadOk(ProfileFormState s) =>
+      (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+
+  // 🔴 FIX: fotos ok debe considerar URLs cross-device también
+  bool _fotosOk(ProfileFormState s) =>
+      s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
+
+  bool _isAssetPath(String v) => v.startsWith('assets/');
+  bool _isNetworkUrl(String v) =>
+      v.startsWith('http://') || v.startsWith('https://');
+  bool _isGsUrl(String v) => v.startsWith('gs://');
+
+  bool _fileExists(String path) {
+    try {
+      return File(path).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // 🔴 FIX: lista “renderizable” (filtra paths muertos)
+  List<String> _buildDisplayFotos(ProfileFormState s) {
+    // Prioridad: URLs buenas
+    final urls = s.photoUrls.where((e) => _isNetworkUrl(e.trim())).toList();
+    if (urls.isNotEmpty) return urls;
+
+    // Si no hay URLs, usamos fotosCargadas pero filtrando archivos muertos
+    final out = <String>[];
+    for (final raw in s.fotosCargadas) {
+      final v = raw.trim();
+      if (v.isEmpty) continue;
+      if (_isNetworkUrl(v)) {
+        out.add(v);
+      } else if (_isAssetPath(v)) {
+        out.add(v);
+      } else if (_isGsUrl(v)) {
+        // gs:// no lo renderizamos aquí, debe ser https
+        // lo ignoramos para no romper UI
+      } else {
+        // File path
+        if (_fileExists(v)) out.add(v);
+      }
+    }
+    return out;
+  }
+
+  // ===================== FIREBASE STORAGE UPLOAD =====================
+  // 🔴 sube fotos reales y devuelve URLs
+  Future<List<String>> _uploadRealPhotosToStorage({
+    required String uid,
+    required List<String> fotosCargadas,
+  }) async {
+    final urls = <String>[];
+
+    // Solo subimos rutas reales (File). Assets demo NO se suben aquí.
+    // Si ya es URL, NO intentamos subirla como File()
+    final filesToUpload = fotosCargadas
+        .where((p) =>
+    p.trim().isNotEmpty &&
+        !_isAssetPath(p) &&
+        !_isNetworkUrl(p) &&
+        !_isGsUrl(p))
+        .toList();
+
+    if (filesToUpload.isEmpty) return urls;
+
+    final storage = FirebaseStorage.instance;
+
+    for (var i = 0; i < filesToUpload.length; i++) {
+      final path = filesToUpload[i];
+
+      final file = File(path);
+
+      // Si el archivo no existe, lo saltamos (evita crash)
+      if (!file.existsSync()) continue;
+
+      // Nombre único y estable por guardado
+      final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+      final ref = storage.ref().child('users/$uid/photos/$fileName');
+
+      final task = await ref.putFile(file);
+      final url = await task.ref.getDownloadURL();
+
+      if (url.trim().isNotEmpty) urls.add(url.trim());
+    }
+
+    return urls;
+  }
+
+  // ===================== FIREBASE SYNC =====================
+  Future<List<String>> _syncProfileToFirestore(ProfileFormState s) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      throw Exception('No hay usuario autenticado. Debes iniciar sesión primero.');
+    }
+
+    final uid = user.uid;
+    final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+    final int? edadInt = int.tryParse(s.edad.trim());
+
+    // ✅ Base: lo que el usuario “ve” en el momento (puede contener files/urls/assets)
+    final List<String> localRaw = List<String>.from(s.fotosCargadas);
+
+    // ✅ Conserva URLs que ya existían (si las hubiera en fotosCargadas)
+    final existingUrls = localRaw.where((p) => _isNetworkUrl(p.trim())).toList();
+
+    // ✅ Sube solo files reales existentes
+    final uploadedUrls = await _uploadRealPhotosToStorage(
+      uid: uid,
+      fotosCargadas: localRaw,
+    );
+
+    // ✅ photoUrls final cross-device
+    final List<String> photoUrls = [...existingUrls, ...uploadedUrls]
+        .map((e) => e.trim())
+        .where((e) => _isNetworkUrl(e))
+        .toList();
+
+    final String? profilePhotoUrl = photoUrls.isNotEmpty ? photoUrls.first : null;
+
+    // ✅ Assets (demo) sí se pueden guardar como referencia (no se rompen)
+    final List<String> photosAssets =
+    localRaw.where((p) => _isAssetPath(p.trim())).toList();
+
+    // 🔴 FIX: NO guardamos paths reales muertos en Firestore
+    // Solo guardamos assets/urls (si quieres debug, aquí no sirve el file path)
+    final List<String> photosLocalPathsSafe = [
+      ...photosAssets,
+      ...existingUrls,
+    ];
+
+    final payload = <String, dynamic>{
+      'uid': uid,
+      'email': user.email,
+      'provider': user.providerData.isNotEmpty
+          ? user.providerData.first.providerId
+          : null,
+
+      'nombre': s.nombre.trim(),
+      'edad': edadInt,
+      'profesion': s.profesion.trim(),
+      'biografia': s.biografia.trim(),
+      'detalle': s.detalle.trim(),
+      'estatura': s.estatura.trim(),
+      'pais': (s.paisSeleccionado ?? '').trim(),
+      'ciudad': (s.ciudadSeleccionada ?? '').trim(),
+
+      'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
+      'buscoSeleccion': List<String>.from(s.buscoSeleccion),
+      'interesesSeleccion': List<String>.from(s.interesesSeleccion),
+
+      // ✅ Lo importante
+      'photoUrls': photoUrls,
+      'profilePhotoUrl': profilePhotoUrl,
+
+      // ✅ Extras seguros (no rompen al limpiar cache)
+      'photosAssets': photosAssets,
+      'photosLocalPaths': photosLocalPathsSafe,
+      'profilePhotoLocalPath': photosLocalPathsSafe.isNotEmpty
+          ? photosLocalPathsSafe.first
+          : null,
+
+      // ✅ flags
+      'onboarding_completed': true,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'lastProfileUpdateAt': FieldValue.serverTimestamp(),
+    };
+
+    final snap = await docRef.get();
+    if (!snap.exists) {
+      payload['createdAt'] = FieldValue.serverTimestamp();
+    }
+
+    await docRef.set(payload, SetOptions(merge: true));
+
+    // ✅ devolvemos photoUrls para re-escribir draft local como URLs
+    return photoUrls;
+  }
 
   // ===================== ESTATURA SELECTOR =====================
   Future<void> _seleccionarEstatura(BuildContext context) async {
@@ -153,13 +351,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               ),
               const SizedBox(height: 10),
               SizedBox(
-                height: 320, // 🔴 CHINCHE ESTATURA 2
+                height: 320,
                 child: ListView.builder(
                   itemCount: _estaturas.length,
                   itemBuilder: (_, i) {
                     final item = _estaturas[i];
                     return ListTile(
-                      title: Text(item, style: const TextStyle(color: Colors.white)),
+                      title:
+                      Text(item, style: const TextStyle(color: Colors.white)),
                       onTap: () => Navigator.pop(context, item),
                     );
                   },
@@ -177,11 +376,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   }
 
   // ===================== FOTO PICKER REAL =====================
-  Future<void> _mostrarPicker(BuildContext context, ProfileFormController ctrl, ProfileFormState state) async {
-    if (state.fotosCargadas.length >= kMaxFotos) {
-      // 🔴 CHINCHE FOTO MAX 1
-      return;
-    }
+  Future<void> _mostrarPicker(
+      BuildContext context,
+      ProfileFormController ctrl,
+      ProfileFormState state,
+      ) async {
+    final display = _buildDisplayFotos(state);
+    if (display.length >= kMaxFotos) return;
 
     await showModalBottomSheet(
       context: context,
@@ -213,10 +414,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-
               ListTile(
                 leading: const Icon(Icons.photo_library, color: Colors.white),
-                title: const Text('Galería', style: TextStyle(color: Colors.white)),
+                title:
+                const Text('Galería', style: TextStyle(color: Colors.white)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _pickFrom(ImageSource.gallery, ctrl);
@@ -224,25 +425,24 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_camera, color: Colors.white),
-                title: const Text('Cámara', style: TextStyle(color: Colors.white)),
+                title:
+                const Text('Cámara', style: TextStyle(color: Colors.white)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _pickFrom(ImageSource.camera, ctrl);
                 },
               ),
-
-              // 🔴 CHINCHE FOTO DEMO 2 — opcional: seguir agregando assets demo
               ListTile(
                 leading: const Icon(Icons.auto_awesome, color: Colors.white70),
-                title: const Text('Demo (assets)', style: TextStyle(color: Colors.white70)),
+                title:
+                const Text('Demo (assets)', style: TextStyle(color: Colors.white70)),
                 onTap: () {
                   Navigator.pop(context);
-                  final nextIndex = state.fotosCargadas.length;
+                  final nextIndex = display.length;
                   final demo = fotosDisponibles.take(nextIndex + 1).toList();
                   ctrl.setFotos(demo);
                 },
               ),
-
               const SizedBox(height: 10),
             ],
           ),
@@ -253,7 +453,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
   Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
     try {
-      // 🔴 CHINCHE FOTO QUALITY 1 — baja/alta calidad (0-100)
       final XFile? file = await _picker.pickImage(
         source: source,
         imageQuality: 85,
@@ -261,9 +460,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       if (file == null) return;
 
       ctrl.addFoto(file.path);
-    } catch (_) {
-      // si falla, el provider puede mostrar error después si quieres
-    }
+    } catch (_) {}
   }
 
   // ===================== REORDER + UI =====================
@@ -272,7 +469,9 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     required ProfileFormState state,
     required ProfileFormController ctrl,
   }) {
-    if (state.fotosCargadas.isEmpty) {
+    final displayFotos = _buildDisplayFotos(state);
+
+    if (displayFotos.isEmpty) {
       return Container(
         margin: const EdgeInsets.only(top: 12),
         padding: const EdgeInsets.all(14),
@@ -319,45 +518,70 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           ),
         ),
         const SizedBox(height: 14),
-
         Wrap(
           spacing: 12,
           runSpacing: 12,
           alignment: WrapAlignment.center,
-          children: List.generate(state.fotosCargadas.length, (index) {
-            final pathOrAsset = state.fotosCargadas[index];
+          children: List.generate(displayFotos.length, (index) {
+            final pathOrAssetOrUrl = displayFotos[index];
             final bool esPerfil = index == 0;
             final double size = esPerfil ? sizePerfil : sizeNormal;
 
             return DragTarget<int>(
               onWillAccept: (from) => from != null && from != index,
-              onAccept: (from) => ctrl.reorderFotos(from, index),
+              onAccept: (from) {
+                // 🔴 CHINCHE: reorder lo hacemos sobre fotosCargadas (fuente del UI)
+                // Si display son URLs, guardamos URLs en fotosCargadas para persistir.
+                final current = List<String>.from(displayFotos);
+                if (from < 0 || from >= current.length) return;
+                if (index < 0 || index >= current.length) return;
+
+                final item = current.removeAt(from);
+                current.insert(index, item);
+
+                ctrl.setFotos(current);
+              },
               builder: (context, _, __) {
                 return LongPressDraggable<int>(
                   data: index,
                   feedback: Opacity(
                     opacity: 0.85,
                     child: _FotoThumb(
-                      pathOrAsset: pathOrAsset,
+                      pathOrAsset: pathOrAssetOrUrl,
                       size: size,
                       esPerfil: esPerfil,
                       isGhost: true,
-                      onRemove: () => ctrl.removeFotoAt(index),
+                      onRemove: () {
+                        final current = List<String>.from(displayFotos);
+                        if (index < 0 || index >= current.length) return;
+                        current.removeAt(index);
+                        ctrl.setFotos(current);
+                      },
                     ),
                   ),
                   childWhenDragging: _FotoThumb(
-                    pathOrAsset: pathOrAsset,
+                    pathOrAsset: pathOrAssetOrUrl,
                     size: size,
                     esPerfil: esPerfil,
                     isGhost: true,
-                    onRemove: () => ctrl.removeFotoAt(index),
+                    onRemove: () {
+                      final current = List<String>.from(displayFotos);
+                      if (index < 0 || index >= current.length) return;
+                      current.removeAt(index);
+                      ctrl.setFotos(current);
+                    },
                   ),
                   child: _FotoThumb(
-                    pathOrAsset: pathOrAsset,
+                    pathOrAsset: pathOrAssetOrUrl,
                     size: size,
                     esPerfil: esPerfil,
                     isGhost: false,
-                    onRemove: () => ctrl.removeFotoAt(index),
+                    onRemove: () {
+                      final current = List<String>.from(displayFotos);
+                      if (index < 0 || index >= current.length) return;
+                      current.removeAt(index);
+                      ctrl.setFotos(current);
+                    },
                   ),
                 );
               },
@@ -400,8 +624,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         ? (ciudadesPorPais[state.paisSeleccionado!] ?? [])
         : [];
 
-    final String? paisSafe = paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
-    final String? ciudadSafe = ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
+    final String? paisSafe =
+    paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
+    final String? ciudadSafe =
+    ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
 
     const List<List<String>> sobreMiOpciones = [
       ['🚹 Hombre', '🚺 Mujer'],
@@ -427,15 +653,15 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     ];
 
     const List<String> interesesOpciones = [
-      '🎬 Cine', '🎵 Música', '✈️ Viajar', '📖 Lectura', '☕ Café', '🏃‍♂️ Running', '🏋️ Gimnasio',
-      '🌄 Senderismo', '🍷 Vino', '🎨 Arte', '🎮 Videojuegos', '📸 Fotografía', '🍳 Cocina',
-      '🏖️ Playa', '🎭 Teatro', '💃 Bailar', '🎤 Cantar', '🧘 Yoga', '🧠 Filosofía', '💼 Emprender',
-      '💻 Tecnología', '💅 Moda', '📺 Series', '🎙️ Podcasts', '🌿 Naturaleza', '🏕️ Camping', '⚽ Fútbol',
-      '🏀 Baloncesto', '🚴‍♂️ Ciclismo', '🏔️ Escalada', '🐠 Buceo', '🎯 Juegos de mesa', '💫 Astrología',
-      '🐾 Voluntariado', '🧑‍🍳 Comida gourmet', '🎲 Rol', '🛶 Kayak', '💌 Escritura', '📷 Selfies',
-      '🌙 Noche', '☀️ Amaneceres', '💃 Salsa', '🎧 DJ', '🎁 Regalos', '🍕 Pizza', '🥂 Brindar',
-      '📚 Manga', '🌌 Meditar', '💡 Innovar', '🤟 Rock', '🎫 Conciertos', '⚡ Adrenalina',
-      '🏅 Deportes', '🎭 Cosplay', '🐾 Animalismo', '📺 Streaming',
+      '🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio',
+      '🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina',
+      '🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender',
+      '💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol',
+      '🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología',
+      '🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','🛶 Kayak','💌 Escritura','📷 Selfies',
+      '🌙 Noche','☀️ Amaneceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar',
+      '📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina',
+      '🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming',
     ];
 
     final textTheme = Theme.of(context).textTheme;
@@ -449,18 +675,19 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
-
           const MatchyBackButton(top: 10, left: 16),
-
           Column(
             children: [
               const SizedBox(height: espacioBarraLogo),
               Image.asset('assets/images/logomatchyplano.png', height: alturaLogo),
               const SizedBox(height: espacioLogoScroll),
-
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: margenInferiorPantalla),
+                  padding: const EdgeInsets.only(
+                    left: 24,
+                    right: 24,
+                    bottom: margenInferiorPantalla,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -507,7 +734,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       _buildTextField(label: 'Profesión', controller: _profesionCtrl),
                       const SizedBox(height: 14),
 
-                      _buildTextField(label: 'Biografía', controller: _biografiaCtrl, maxLines: 4),
+                      _buildTextField(
+                        label: 'Biografía',
+                        controller: _biografiaCtrl,
+                        maxLines: 4,
+                      ),
                       const SizedBox(height: 14),
 
                       _buildTextField(
@@ -523,7 +754,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           child: _buildTextField(
                             label: 'Estatura (selección)',
                             controller: _estaturaCtrl,
-                            suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                            suffixIcon:
+                            const Icon(Icons.arrow_drop_down, color: Colors.white),
                           ),
                         ),
                       ),
@@ -546,10 +778,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       Text(
                         'Agrega tus fotos (mínimo 1, máximo 5) *',
                         style: TextStyle(
-                          color: showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white,
+                          color:
+                          showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white,
                           fontSize: 16,
                           decoration: TextDecoration.none,
-                          fontWeight: showErrors && !_fotosOk(state) ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: showErrors && !_fotosOk(state)
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                       ),
                       const SizedBox(height: 10),
@@ -558,14 +793,15 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         width: MediaQuery.of(context).size.width * 0.6,
                         height: 45,
                         child: ElevatedButton(
-                          onPressed: () => _mostrarPicker(context, ctrl, state),
+                          onPressed: _saving ? null : () => _mostrarPicker(context, ctrl, state),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFB3D9FF),
                             shape: const StadiumBorder(),
                           ),
                           child: const Text(
                             'CARGAR FOTO',
-                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            style:
+                            TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
@@ -597,11 +833,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
                                     child: GestureDetector(
-                                      onTap: () => ctrl.toggleSobreMi(opcion),
+                                      onTap: _saving ? null : () => ctrl.toggleSobreMi(opcion),
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12, horizontal: 8),
                                         decoration: BoxDecoration(
-                                          color: seleccionado ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
+                                          color: seleccionado
+                                              ? const Color(0xFFB3D9FF)
+                                              : const Color(0x33FFFFFF),
                                           borderRadius: BorderRadius.circular(50),
                                         ),
                                         child: Center(
@@ -631,14 +870,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         titulo: 'Busco...',
                         opciones: buscoOpciones,
                         seleccionActual: state.buscoSeleccion,
-                        onToggle: (op) => ctrl.toggleBusco(op),
+                        onToggle: (op) => _saving ? null : ctrl.toggleBusco(op),
                       ),
 
                       _SeccionBotonesChipsRiverpod(
                         titulo: 'Intereses y Hobbies',
                         opciones: interesesOpciones,
                         seleccionActual: state.interesesSeleccion,
-                        onToggle: (op) => ctrl.toggleInteres(op),
+                        onToggle: (op) => _saving ? null : ctrl.toggleInteres(op),
                       ),
 
                       const SizedBox(height: 10),
@@ -647,24 +886,54 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         width: MediaQuery.of(context).size.width * 0.6,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: puedeContinuar
+                          onPressed: (_saving)
+                              ? null
+                              : (puedeContinuar
                               ? () async {
-                            await ctrl.saveDraft();
-                            await ctrl.publishProfile(); // ✅ perfil oficial
-                            await ctrl.setOnboardingCompleted(true);
+                            setState(() => _saving = true);
 
-                            if (!mounted) return;
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => const PanelScreen()),
-                                  (route) => false,
-                            );
+                            try {
+                              // 1) Sync Firestore (+ Storage) y obtenemos photoUrls
+                              final urls =
+                              await _syncProfileToFirestore(ref.read(profileFormProvider));
+
+                              // 2) Reescribe el draft local a URLs (NO paths muertos)
+                              if (urls.isNotEmpty) {
+                                ctrl.setFotos(urls);
+                              }
+
+                              await ctrl.saveDraft();
+                              await ctrl.publishProfile();
+                              await ctrl.setOnboardingCompleted(true);
+
+                              if (!mounted) return;
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (_) => const PanelScreen()),
+                                    (route) => false,
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('❌ Error guardando perfil: $e')),
+                              );
+                            } finally {
+                              if (mounted) setState(() => _saving = false);
+                            }
                           }
-                              : () => setState(() => _mostrarErrores = true),
+                              : () => setState(() => _mostrarErrores = true)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: puedeContinuar ? const Color(0xFFB3D9FF) : const Color(0x66B3D9FF),
+                            backgroundColor: puedeContinuar
+                                ? const Color(0xFFB3D9FF)
+                                : const Color(0x66B3D9FF),
                             shape: const StadiumBorder(),
                           ),
-                          child: Text(
+                          child: _saving
+                              ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                              : Text(
                             'GUARDAR',
                             style: TextStyle(
                               color: puedeContinuar ? Colors.black : Colors.black54,
@@ -709,7 +978,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           fontWeight: showError ? FontWeight.bold : FontWeight.normal,
         ),
         errorText: showError ? (errorText ?? 'Campo obligatorio') : null,
-        errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+        errorStyle:
+        const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
         suffixIcon: suffixIcon,
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide(color: showError ? Colors.redAccent : Colors.white),
@@ -754,11 +1024,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               borderSide: BorderSide(color: Color(0xFFB3D9FF)),
             ),
             errorText: showPaisError ? 'Campo obligatorio' : null,
-            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+            errorStyle:
+            const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
           ),
           iconEnabledColor: Colors.white,
           style: const TextStyle(color: Colors.white),
-          items: paises.map((p) => DropdownMenuItem<String>(value: p, child: Text(p))).toList(),
+          items: paises
+              .map((p) => DropdownMenuItem<String>(value: p, child: Text(p)))
+              .toList(),
           onChanged: onPaisChanged,
         ),
         const SizedBox(height: 12),
@@ -782,11 +1055,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               borderSide: BorderSide(color: Color(0xFFB3D9FF)),
             ),
             errorText: showCiudadError ? 'Campo obligatorio' : null,
-            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+            errorStyle:
+            const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
           ),
           iconEnabledColor: Colors.white,
           style: const TextStyle(color: Colors.white),
-          items: ciudades.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))).toList(),
+          items: ciudades
+              .map((c) => DropdownMenuItem<String>(value: c, child: Text(c)))
+              .toList(),
           onChanged: ciudades.isEmpty ? null : onCiudadChanged,
         ),
       ],
@@ -795,7 +1071,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 }
 
 // =====================================================
-// ✅ Thumbnail fotos (assets o file) + ❌ X delete + badge PERFIL
+// ✅ Thumbnail fotos (assets o file o URL) + ❌ X delete + badge PERFIL
 // =====================================================
 class _FotoThumb extends StatelessWidget {
   final String pathOrAsset;
@@ -813,12 +1089,48 @@ class _FotoThumb extends StatelessWidget {
   });
 
   bool _isAssetPath(String v) => v.startsWith('assets/');
+  bool _isNetworkUrl(String v) =>
+      v.startsWith('http://') || v.startsWith('https://');
+
+  bool _fileExists(String path) {
+    try {
+      return File(path).existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final Widget img = _isAssetPath(pathOrAsset)
-        ? Image.asset(pathOrAsset, fit: BoxFit.cover, alignment: Alignment.topCenter)
-        : Image.file(File(pathOrAsset), fit: BoxFit.cover, alignment: Alignment.topCenter);
+    final v = pathOrAsset.trim();
+
+    Widget img;
+    if (v.isEmpty) {
+      img = const Icon(Icons.broken_image, color: Colors.white70);
+    } else if (_isAssetPath(v)) {
+      img = Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter);
+    } else if (_isNetworkUrl(v)) {
+      img = Image.network(
+        v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        errorBuilder: (_, __, ___) =>
+        const Icon(Icons.broken_image, color: Colors.white70),
+      );
+    } else {
+      // File path (puede estar muerto si limpian caché)
+      if (!_fileExists(v)) {
+        img = const Icon(Icons.broken_image, color: Colors.white70);
+      } else {
+        img = Image.file(
+          File(v),
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          errorBuilder: (_, __, ___) =>
+          const Icon(Icons.broken_image, color: Colors.white70),
+        );
+      }
+    }
 
     return Opacity(
       opacity: isGhost ? 0.35 : 1.0,
@@ -830,11 +1142,9 @@ class _FotoThumb extends StatelessWidget {
               width: size,
               height: size,
               color: Colors.white24,
-              child: img,
+              child: Center(child: img),
             ),
           ),
-
-          // ❌ X eliminar
           Positioned(
             top: 4,
             right: 4,
@@ -851,7 +1161,6 @@ class _FotoThumb extends StatelessWidget {
               ),
             ),
           ),
-
           if (esPerfil)
             Positioned(
               left: 6,
@@ -927,7 +1236,9 @@ class _SeccionBotonesChipsRiverpod extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: seleccionado ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
+                            color: seleccionado
+                                ? const Color(0xFFB3D9FF)
+                                : const Color(0x33FFFFFF),
                             borderRadius: BorderRadius.circular(50),
                           ),
                           child: Center(

@@ -465,7 +465,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                   const SizedBox(height: 16.0),
 
                   Text(
-                    'DE UN CAFÉ AL AMOR Y LA AMISTAD HAY UN SOLO PASO',
+                    'BUENA SUERTE CON TU CITA',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.92),

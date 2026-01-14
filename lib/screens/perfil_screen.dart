@@ -1,34 +1,42 @@
 // 📂 lib/screens/perfil_screen.dart
 // ✅ PERFIL conectado a ProfileFormProvider (DatosScreen)
-// ✅ FIX: carga el draft automáticamente al entrar a Perfil
-// ✅ Mantiene diseño EXACTO: chips centrados, filas inteligentes, overlays, etc.
-// ✅ NUEVO:
-//    - Nombre y edad SIEMPRE en una misma fila
-//    - Si el nombre es muy largo → usa 2 palabras cuando el primer nombre es corto (ej: “María José”)
-//      si aún queda largo → usa solo primer nombre
+// ✅ FIX: carga draft automáticamente al entrar a Perfil
+// ✅ Cache-safe: bootstrap/hydrate desde Firestore
+// ✅ Soporta fotos real (File) + assets + URLs (Firebase Storage)
+// ✅ BOTONES AL FINAL:
+//    - CERRAR SESIÓN (azul oscuro, letras blancas)
+//    - BORRAR PERFIL (rojo) -> borra Firestore + Storage fotos + local prefs + cierra sesión
+
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 
-// 🔴 CHINCHE PERFIL 0 — imports para la barra de navegación inferior
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/citas_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
 
-// ✅ Provider del perfil (la fuente de verdad)
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
-class PerfilScreen extends ConsumerStatefulWidget {
-  static const String routeName = 'perfil'; // 🔴 CHINCHE A — nombre de ruta
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:proyectos_matchy/screens/splash_screen.dart';
 
-  // 🔴 CHINCHE NAV FLAG — ¿muestro barra propia o no?
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+class PerfilScreen extends ConsumerStatefulWidget {
+  static const String routeName = 'perfil';
+
   final bool showBottomNav;
 
   const PerfilScreen({
     super.key,
-    this.showBottomNav = true, // por defecto SÍ muestra barra
+    this.showBottomNav = true,
   });
 
   @override
@@ -36,26 +44,193 @@ class PerfilScreen extends ConsumerStatefulWidget {
 }
 
 class _PerfilScreenState extends ConsumerState<PerfilScreen> {
-  bool _draftLoaded = false; // 🔴 CHINCHE PERFIL LOAD 1 — evita cargar 2 veces
+  bool _bootstrapped = false;
+
+  // 🔴 CHINCHE LOADING 1 — bloquea taps durante logout/delete
+  bool _busy = false;
+
+  // 🔴 CHINCHE PREFS 1 — llaves Matchy a limpiar
+  static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
+  static const String _kProfilePublishedKey = 'matchy_profile_published_v1';
+  static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
+
+  void _goSplash() {
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+          (route) => false,
+    );
+  }
+
+  Future<void> _clearMatchyLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kProfileDraftKey);
+    await prefs.remove(_kProfilePublishedKey);
+    await prefs.remove(_kOnboardingCompletedKey);
+
+    await ref.read(profileFormProvider.notifier).clearDraft();
+  }
+
+  // ✅ Logout blindado
+  Future<void> _logout() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      await GoogleSignIn().signOut();
+      await FirebaseAuth.instance.signOut();
+      await _clearMatchyLocal();
+
+      if (!mounted) return;
+      _goSplash();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error cerrando sesión: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<bool?> _confirmDialog({
+    required String title,
+    required String message,
+    required String confirmText,
+    required Color confirmColor,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: confirmColor),
+            child: Text(confirmText),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteUserPhotosFromStorage(String uid) async {
+    try {
+      final root = FirebaseStorage.instance.ref().child('users/$uid/photos');
+      final list = await root.listAll();
+
+      for (final item in list.items) {
+        try {
+          await item.delete();
+        } catch (_) {}
+      }
+
+      for (final prefix in list.prefixes) {
+        try {
+          final sub = await prefix.listAll();
+          for (final item in sub.items) {
+            try {
+              await item.delete();
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+    } catch (_) {
+      // no rompe el borrado
+    }
+  }
+
+  Future<void> _deleteProfile() async {
+    if (_busy) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      _goSplash();
+      return;
+    }
+
+    final first = await _confirmDialog(
+      title: 'Borrar perfil',
+      message:
+      'Esto eliminará tu perfil de Matchy (datos y fotos). Esta acción no se puede deshacer.',
+      confirmText: 'Continuar',
+      confirmColor: Colors.red,
+    );
+
+    if (first != true) return;
+
+    final second = await _confirmDialog(
+      title: 'Confirmación final',
+      message: '¿Seguro seguro? Si borras el perfil, desaparecerás de Matchy.',
+      confirmText: 'BORRAR',
+      confirmColor: Colors.redAccent,
+    );
+
+    if (second != true) return;
+
+    setState(() => _busy = true);
+
+    try {
+      final uid = user.uid;
+
+      // 1) Borra fotos Storage
+      await _deleteUserPhotosFromStorage(uid);
+
+      // 2) Borra doc Firestore
+      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+
+      // 3) Limpia local
+      await _clearMatchyLocal();
+
+      // 4) Cierra sesión
+      await GoogleSignIn().signOut();
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Perfil borrado.')),
+      );
+      _goSplash();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error borrando perfil: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
 
-    // ✅ Cargar draft guardado apenas entra a Perfil
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (_draftLoaded) return;
-      _draftLoaded = true;
+      if (_bootstrapped) return;
+      _bootstrapped = true;
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (!mounted) return;
+        _goSplash();
+        return;
+      }
 
       await ref.read(profileFormProvider.notifier).loadDraft();
+      if (!mounted) return;
+
+      await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-
-    // ✅ Leemos estado real del formulario
     final state = ref.watch(profileFormProvider);
 
     return Scaffold(
@@ -65,11 +240,14 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
         scrollContent: _PerfilContent(
           textTheme: textTheme,
           state: state,
+          busy: _busy,
+          onLogout: _logout,
+          onDeleteProfile: _deleteProfile,
         ),
-        topSpacing: 35, // 🔴 CHINCHE E
-        logoHeight: 50, // 🔴 CHINCHE F
-        logoOffsetY: 0, // 🔴 CHINCHE G
-        spaceLogoToScroll: 15, // 🔴 CHINCHE H
+        topSpacing: 35,
+        logoHeight: 50,
+        logoOffsetY: 0,
+        spaceLogoToScroll: 15,
       ),
       bottomNavigationBar:
       widget.showBottomNav ? const _MatchyBottomNav(currentIndex: 0) : null,
@@ -81,14 +259,18 @@ class _PerfilContent extends StatelessWidget {
   final TextTheme textTheme;
   final ProfileFormState state;
 
+  final bool busy;
+  final Future<void> Function() onLogout;
+  final Future<void> Function() onDeleteProfile;
+
   const _PerfilContent({
     required this.textTheme,
     required this.state,
+    required this.busy,
+    required this.onLogout,
+    required this.onDeleteProfile,
   });
 
-  // 🔴 CHINCHE PERFIL NAME 1 — recorte inteligente:
-  // - si nombre “largo” → 2 palabras cuando la primera es corta (ej: “María José”)
-  // - si aún queda largo → solo primer nombre
   String _nombrePanelSeguro(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return 'Sin nombre';
@@ -100,23 +282,40 @@ class _PerfilContent extends StatelessWidget {
     final first = parts.first;
     final twoWords = parts.length >= 2 ? '${parts[0]} ${parts[1]}' : first;
 
-    // 🔴 CHINCHE PERFIL NAME 2 — umbrales (ajustables)
-    const int largoTotal = 12; // si supera esto, consideramos “largo”
-    const int firstShort = 5; // “María”(5) → permite 2 palabras
+    const int largoTotal = 12;
+    const int firstShort = 5;
 
-    // si NO es largo, lo dejamos tal cual
     if (clean.length <= largoTotal && parts.length <= 2) return clean;
 
-    // si es largo:
-    // - si el primer nombre es corto → intentamos 2 palabras
     if (first.length <= firstShort && parts.length >= 2) {
-      // si aún queda larguísimo, cae a 1 palabra
       if (twoWords.length > 12) return first;
       return twoWords;
     }
 
-    // fallback: solo primer nombre
     return first;
+  }
+
+  String? _resolveFotoPrincipal() {
+    final url = (state.profilePhotoUrl ?? '').trim();
+    if (url.isNotEmpty) return url;
+
+    if (state.photoUrls.isNotEmpty) {
+      final u = state.photoUrls.first.trim();
+      if (u.isNotEmpty) return u;
+    }
+
+    if (state.fotosCargadas.isNotEmpty) {
+      final v = state.fotosCargadas.first.trim();
+      if (v.isNotEmpty) return v;
+    }
+
+    return null;
+  }
+
+  List<String> _resolveGaleria() {
+    final urls = state.photoUrls.where((e) => e.trim().isNotEmpty).toList();
+    if (urls.isNotEmpty) return urls;
+    return List<String>.from(state.fotosCargadas);
   }
 
   @override
@@ -144,27 +343,25 @@ class _PerfilContent extends StatelessWidget {
         ? 'Aún no has agregado este detalle.'
         : state.detalle.trim();
 
-    final fotos = List<String>.from(state.fotosCargadas);
-    final bool tieneFotos = fotos.isNotEmpty;
-
-    // ✅ Estatura: se muestra tal cual (ej: “1.80 m”)
-    final List<String> sobreMi = [
+    final sobreMi = [
       if (state.estatura.trim().isNotEmpty) '📏 ${state.estatura.trim()}',
       ...state.sobreMiSeleccion,
     ];
 
-    final List<String> busco = List<String>.from(state.buscoSeleccion);
-    final List<String> intereses = List<String>.from(state.interesesSeleccion);
+    final busco = List<String>.from(state.buscoSeleccion);
+    final intereses = List<String>.from(state.interesesSeleccion);
+
+    final galeria = _resolveGaleria();
+    final principal = _resolveFotoPrincipal();
+    final bool tieneFotos = principal != null;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 0),
-
           _FotoTarjeta(
-            imageAsset: tieneFotos ? fotos[0] : null,
+            imagePathOrAssetOrUrl: principal,
             height: 450, // 🔴 CHINCHE J
             overlay: (context) {
               return Stack(
@@ -187,14 +384,12 @@ class _PerfilContent extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   Positioned(
                     left: 30, // 🔴 CHINCHE L
                     bottom: 30, // 🔴 CHINCHE M
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ✅ Nombre + edad SIEMPRE en misma fila
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -235,7 +430,6 @@ class _PerfilContent extends StatelessWidget {
                       ],
                     ),
                   ),
-
                   if (!tieneFotos)
                     Positioned(
                       left: 0,
@@ -270,35 +464,23 @@ class _PerfilContent extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          _CardTexto(
-            titulo: 'Biografía',
-            texto: biografia,
-            textTheme: textTheme,
-          ),
+          _CardTexto(titulo: 'Biografía', texto: biografia, textTheme: textTheme),
 
           if (sobreMi.isNotEmpty)
-            _CardChips(
-              titulo: 'Sobre mí',
-              items: sobreMi,
-              textTheme: textTheme,
-            ),
+            _CardChips(titulo: 'Sobre mí', items: sobreMi, textTheme: textTheme),
 
-          if (fotos.length >= 2)
+          if (galeria.length >= 2)
             _FotoTarjeta(
-              imageAsset: fotos[1],
+              imagePathOrAssetOrUrl: galeria[1],
               height: 400, // 🔴 CHINCHE Q
             ),
 
           if (busco.isNotEmpty)
-            _CardChips(
-              titulo: 'Busco...',
-              items: busco,
-              textTheme: textTheme,
-            ),
+            _CardChips(titulo: 'Busco...', items: busco, textTheme: textTheme),
 
-          if (fotos.length >= 3)
+          if (galeria.length >= 3)
             _FotoTarjeta(
-              imageAsset: fotos[2],
+              imagePathOrAssetOrUrl: galeria[2],
               height: 400, // 🔴 CHINCHE R
             ),
 
@@ -309,9 +491,9 @@ class _PerfilContent extends StatelessWidget {
               textTheme: textTheme,
             ),
 
-          if (fotos.length >= 4)
+          if (galeria.length >= 4)
             _FotoTarjeta(
-              imageAsset: fotos[3],
+              imagePathOrAssetOrUrl: galeria[3],
               height: 400,
             ),
 
@@ -321,11 +503,73 @@ class _PerfilContent extends StatelessWidget {
             textTheme: textTheme,
           ),
 
-          if (fotos.length >= 5)
+          if (galeria.length >= 5)
             _FotoTarjeta(
-              imageAsset: fotos[4],
+              imagePathOrAssetOrUrl: galeria[4],
               height: 400,
             ),
+
+          const SizedBox(height: 20),
+
+          // =========================================================
+          // ✅ BOTONES AL FINAL
+          // =========================================================
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20), // 🔴 CHINCHE BTN 1
+            child: SizedBox(
+              height: 50, // 🔴 CHINCHE BTN 2
+              child: ElevatedButton(
+                onPressed: busy ? null : () async => await onLogout(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0B1F3A), // 🔴 CHINCHE AZUL OSCURO
+                  shape: const StadiumBorder(),
+                ),
+                child: busy
+                    ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text(
+                  'CERRAR SESIÓN',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SizedBox(
+              height: 50,
+              child: ElevatedButton(
+                onPressed: busy ? null : () async => await onDeleteProfile(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFB00020), // 🔴 CHINCHE ROJO
+                  shape: const StadiumBorder(),
+                ),
+                child: busy
+                    ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text(
+                  'BORRAR PERFIL',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
 
           const SizedBox(height: 40), // 🔴 CHINCHE S
         ],
@@ -335,31 +579,74 @@ class _PerfilContent extends StatelessWidget {
 }
 
 // ================================================================
-// 🔹 COMPONENTES REUTILIZABLES
+// 🔹 COMPONENTES
 // ================================================================
 
 class _FotoTarjeta extends StatelessWidget {
-  final String? imageAsset;
+  final String? imagePathOrAssetOrUrl;
   final double height;
   final Widget Function(BuildContext context)? overlay;
 
   const _FotoTarjeta({
-    required this.imageAsset,
+    required this.imagePathOrAssetOrUrl,
     required this.height,
     this.overlay,
   });
 
+  bool _isAsset(String v) => v.startsWith('assets/');
+  bool _isUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
+
+  Widget _fallback() {
+    return Container(
+      color: const Color(0x33FFFFFF),
+      child: const Center(
+        child: Icon(Icons.person, color: Colors.white70, size: 70),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    Widget background = _fallback();
+
+    final raw = (imagePathOrAssetOrUrl ?? '').trim();
+    if (raw.isNotEmpty) {
+      if (_isUrl(raw)) {
+        background = Image.network(
+          raw,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return Container(
+              color: Colors.black26,
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          },
+          errorBuilder: (_, __, ___) => _fallback(),
+        );
+      } else if (_isAsset(raw)) {
+        background = Image.asset(
+          raw,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          errorBuilder: (_, __, ___) => _fallback(),
+        );
+      } else {
+        background = Image.file(
+          File(raw),
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          errorBuilder: (_, __, ___) => _fallback(),
+        );
+      }
+    }
+
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 16, // 🔴 CHINCHE T
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 16), // 🔴 CHINCHE T
       height: height,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(
-          25, // 🔴 CHINCHE U
-        ),
+        borderRadius: BorderRadius.circular(25), // 🔴 CHINCHE U
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.45),
@@ -372,23 +659,7 @@ class _FotoTarjeta extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (imageAsset != null)
-            Image.asset(
-              imageAsset!,
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            )
-          else
-            Container(
-              color: const Color(0x33FFFFFF),
-              child: const Center(
-                child: Icon(
-                  Icons.person,
-                  color: Colors.white70,
-                  size: 70,
-                ),
-              ),
-            ),
+          background,
           if (overlay != null) overlay!(context),
         ],
       ),
@@ -410,18 +681,11 @@ class _CardTexto extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 20, // 🔴 CHINCHE V
-        vertical: 10, // 🔴 CHINCHE W
-      ),
-      padding: const EdgeInsets.all(
-        16, // 🔴 CHINCHE X
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), // 🔴 CHINCHE V/W
+      padding: const EdgeInsets.all(16), // 🔴 CHINCHE X
       decoration: BoxDecoration(
         color: const Color(0x33FFFFFF),
-        borderRadius: BorderRadius.circular(
-          20, // 🔴 CHINCHE Y
-        ),
+        borderRadius: BorderRadius.circular(20), // 🔴 CHINCHE Y
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,10 +757,7 @@ class _CardChips extends StatelessWidget {
   Widget _buildChip(String text) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4), // 🔴 CHINCHE AC
-      padding: const EdgeInsets.symmetric(
-        vertical: 10, // 🔴 CHINCHE AD
-        horizontal: 10,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), // 🔴 CHINCHE AD
       decoration: BoxDecoration(
         color: const Color(0x66FFFFFF),
         borderRadius: BorderRadius.circular(50), // 🔴 CHINCHE AE
@@ -526,10 +787,7 @@ class _CardChips extends StatelessWidget {
     final rows = _buildRows(items);
 
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 20, // 🔴 CHINCHE AH
-        vertical: 10, // 🔴 CHINCHE AI
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), // 🔴 CHINCHE AH/AI
       padding: const EdgeInsets.all(16), // 🔴 CHINCHE AJ
       decoration: BoxDecoration(
         color: const Color(0x33FFFFFF),
