@@ -1,6 +1,8 @@
 // 📂 lib/screens/matchys_screen.dart
 // ✅ MATCHYS — Grid 2xN con fotos completas, nombre grande y botón "CREAR NUEVA CITA"
 //    + Barra de navegación inferior EXACTAMENTE igual que en Perfil/Citas (currentIndex = 3)
+// ✅ FIX HOME_SHELL:
+//    - agrega showBottomNav para que HomeShell pueda ocultar la barra interna
 
 import 'package:flutter/material.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
@@ -15,7 +17,13 @@ import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
 
 class MatchysScreen extends StatelessWidget {
-  const MatchysScreen({super.key});
+  // 🔴 CHINCHE HOME_SHELL 1 — permite que HomeShell controle si hay barra interna
+  final bool showBottomNav;
+
+  const MatchysScreen({
+    super.key,
+    this.showBottomNav = true, // ✅ por defecto, igual que antes
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +39,9 @@ class MatchysScreen extends StatelessWidget {
         logoOffsetY: 0,        // 🔴 0
         spaceLogoToScroll: 15, // 🔴 15
       ),
-      bottomNavigationBar: const _MatchyBottomNav(currentIndex: 3),
+
+      // ✅ Si HomeShell maneja la barra, aquí debe ser null
+      bottomNavigationBar: showBottomNav ? const _MatchyBottomNav(currentIndex: 3) : null,
     );
   }
 }

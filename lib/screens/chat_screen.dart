@@ -5,6 +5,7 @@
 // ✅ No crashea si falta la imagen
 // ✅ Ahora permite AGREGAR chats desde MatchScreen (upsertThread)
 // ✅ Diseño intacto Matchy
+// ✅ FIX HOME_SHELL: agrega showBottomNav para que el Shell controle la barra única
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -228,7 +229,13 @@ StateNotifierProvider<ChatThreadsNotifier, List<ChatThread>>(
 // 🔹 PANTALLA DE CHATS
 // ================================================================
 class ChatScreen extends ConsumerWidget {
-  const ChatScreen({super.key});
+  // 🔴 CHINCHE HOME_SHELL 1 — permite que HomeShell controle la barra interna
+  final bool showBottomNav;
+
+  const ChatScreen({
+    super.key,
+    this.showBottomNav = true, // ✅ por defecto: igual que antes
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -251,7 +258,10 @@ class ChatScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      bottomNavigationBar: const _MatchyBottomNav(currentIndex: 4),
+
+      // ✅ Si HomeShell maneja la barra, aquí debe ser null
+      bottomNavigationBar: showBottomNav ? const _MatchyBottomNav(currentIndex: 4) : null,
+
       body: Stack(
         children: [
           Positioned.fill(
@@ -368,8 +378,7 @@ class _ChatCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color:
-                        ultimoEsElla ? Colors.white : const Color(0xFFB3D9FF),
+                        color: ultimoEsElla ? Colors.white : const Color(0xFFB3D9FF),
                         fontSize: 13,
                         fontFamily: 'Poppins',
                       ),

@@ -1,18 +1,27 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ FIX: al tocar la foto del candidato YA NO abre PerfilScreen (tu perfil roto)
-// ✅ Ahora abre un perfil “preview” seguro del candidato (sin dependencias externas)
-// ✅ Diseño Matchy + botón back + fondo
-// ✅ NUEVO: Botón “HACER MATCHY” → abre MatchScreen (match_screen.dart)
+// ✅ FIX: al tocar la foto del candidato NO abre PerfilScreen
+// ✅ Perfil preview seguro
+// ✅ Diseño Matchy + reloj + grid candidatos
+// ✅ Botón “HACER MATCHY”
+//    -> abre MatchScreen (animación) y DESPUÉS guarda cita en Firestore
+//    -> NO navega automático a la cita: MatchScreen muestra botón "IR A CITAS"
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ✅ NUEVO: pantalla final de match
+import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
+
+// 🔴 CHINCHE FIRESTORE 1 — colección donde guardamos las próximas citas (resultado de Matchy)
+const String kCitasCollection = 'citas';
+
+// 🔴 CHINCHE FIRESTORE 2 — campo dueño (para filtrar por usuario actual)
+const String kOwnerUidField = 'ownerUid';
 
 // ================================================================
 // 🔹 PERFIL PREVIEW SEGURO DEL CANDIDATO (FIX DEL CRASH)
@@ -41,8 +50,6 @@ class CandidatoPerfilPreviewScreen extends StatelessWidget {
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
-
-          // Back
           Positioned(
             top: 12,
             left: 12,
@@ -51,20 +58,14 @@ class CandidatoPerfilPreviewScreen extends StatelessWidget {
               onPressed: () => Navigator.pop(context),
             ),
           ),
-
           Column(
             children: [
               const SizedBox(height: 60),
-
-              // Logo
               SizedBox(
                 height: 50,
                 child: Image.asset('assets/images/logomatchyplano.png'),
               ),
-
               const SizedBox(height: 14),
-
-              // Foto grande con degradado
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: ClipRRect(
@@ -120,10 +121,7 @@ class CandidatoPerfilPreviewScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 14),
-
-              // Bio demo
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding: const EdgeInsets.all(16),
@@ -192,6 +190,9 @@ class _CitasPendientesDetalleScreenState
 
   // 🔴 CHINCHE RELOJ 3 — tiempo restante cacheado
   Duration _restante = Duration.zero;
+
+  // 🔴 CHINCHE LOADING 1 — bloqueo taps cuando se procesa matchy
+  bool _busy = false;
 
   @override
   void initState() {
@@ -307,6 +308,129 @@ class _CitasPendientesDetalleScreenState
     return '$hh:$mm:$ss';
   }
 
+  // ================================================================
+  // ✅ MATCHY: genera mi código determinístico (solo MI LADO)
+  // ================================================================
+  String _buildMiCodigoCita({
+    required String citaId,
+    required String candidatoId,
+  }) {
+    final seed = '$citaId-$candidatoId';
+    final hash = seed.codeUnits.fold<int>(0, (p, c) => (p + c) % 999999);
+    final code = hash.toString().padLeft(6, '0');
+    return 'MX$code';
+  }
+
+  // ================================================================
+  // ✅ GUARDA EN FIRESTORE (se ejecuta DESPUÉS de la animación)
+  // ================================================================
+  Future<String?> _guardarCitaEnFirestore({
+    required _CandidatoMatchy c,
+    required CitaPendiente cita,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+
+    final citaDateTime = _parseCitaDateTime(cita.fecha, cita.hora);
+    if (citaDateTime == null) return null;
+
+    final String miFotoAsset = cita.creadorFoto;
+    final String intencionTexto = cita.intencion;
+
+    final String miCodigo = _buildMiCodigoCita(
+      citaId: cita.id,
+      candidatoId: c.id,
+    );
+
+    final docId = '${user.uid}_${cita.id}_${c.id}';
+    final docRef =
+    FirebaseFirestore.instance.collection(kCitasCollection).doc(docId);
+
+    await docRef.set({
+      kOwnerUidField: user.uid,
+      'status': 'proxima',
+      'fechaHora': Timestamp.fromDate(citaDateTime),
+
+      'matchId': c.id,
+      'matchNombre': c.nombre,
+      'matchEdad': c.edad,
+      'matchFotoAsset': c.fotoAsset,
+
+      'miFotoAsset': miFotoAsset,
+
+      'lugarNombre': cita.nombreLugar,
+      'lugarDireccion': cita.direccionLugar,
+      'lugarFotoAsset': cita.fotoLugarAsset,
+
+      'preferencia': cita.preferencia,
+      'intencion': intencionTexto,
+
+      'miCodigoCita': miCodigo,
+
+      'citaPendienteId': cita.id,
+      'citaPendienteCodigo': cita.codigo,
+
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    return miCodigo;
+  }
+
+  // ================================================================
+  // ✅ HACER MATCHY -> ABRE MatchScreen -> (DESPUÉS) guarda (NO navega)
+  // ================================================================
+  Future<void> _hacerMatchyFlow({
+    required _CandidatoMatchy c,
+    required CitaPendiente cita,
+  }) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('❌ Debes iniciar sesión para hacer matchy.')),
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => MatchScreen(
+            candidatoId: c.id,
+            candidatoNombre: c.nombre,
+            candidatoEdad: c.edad,
+            candidatoFotoAsset: c.fotoAsset,
+
+            onMatchAnimationFinished: () async {
+              final miCodigo = await _guardarCitaEnFirestore(c: c, cita: cita);
+
+              if (!mounted) return;
+
+              if (miCodigo == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('❌ No se pudo crear la cita.')),
+                );
+              }
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error haciendo matchy: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const double espacioBarraLogo = 35;
@@ -416,7 +540,6 @@ class _CitasPendientesDetalleScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // FOTO GRANDE DEL LUGAR
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Container(
@@ -442,10 +565,7 @@ class _CitasPendientesDetalleScreenState
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
-                      // INFO
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(
@@ -479,11 +599,18 @@ class _CitasPendientesDetalleScreenState
                                 fontFamily: 'Poppins',
                               ),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '🎯 ${cita.intencion} • 👥 ${cita.preferencia}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                                fontFamily: 'Poppins',
+                              ),
+                            ),
                           ],
                         ),
                       ),
-
-                      // RELOJ
                       const SizedBox(height: 10),
                       Center(
                         child: Text(
@@ -510,10 +637,7 @@ class _CitasPendientesDetalleScreenState
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 14),
-
-                      // TITULO
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16),
                         child: Text(
@@ -527,10 +651,7 @@ class _CitasPendientesDetalleScreenState
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
-                      // GRID 2 POR FILA
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: GridView.builder(
@@ -548,6 +669,7 @@ class _CitasPendientesDetalleScreenState
                             final c = candidatos[i];
                             return _CandidatoCard(
                               candidato: c,
+                              busy: _busy,
                               onTapFoto: () {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -559,27 +681,13 @@ class _CitasPendientesDetalleScreenState
                                   ),
                                 );
                               },
-                              onMatchy: () {
-                                // ✅ ENGANCHE REAL → MATCH SCREEN FINAL
-                                // 🔴 CHINCHE MATCH ENGANCHE 1 — este ID es CLAVE para:
-                                //    1) crear/guardar el thread del chat en Riverpod
-                                //    2) abrir ChatDetalleScreen con un id estable
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => MatchScreen(
-                                      candidatoId: c.id, // 🔴 CHINCHE (ANTES FALTABA)
-                                      candidatoNombre: c.nombre,
-                                      candidatoEdad: c.edad,
-                                      candidatoFotoAsset: c.fotoAsset,
-                                    ),
-                                  ),
-                                );
+                              onMatchy: () async {
+                                await _hacerMatchyFlow(c: c, cita: cita);
                               },
                             );
                           },
                         ),
                       ),
-
                       const SizedBox(height: 20),
                     ],
                   ),
@@ -593,18 +701,17 @@ class _CitasPendientesDetalleScreenState
   }
 }
 
-// ================================================================
-// 🔹 CARD CANDIDATO (foto + degradado + nombre/edad + botón amarillo)
-// ================================================================
 class _CandidatoCard extends StatelessWidget {
   final _CandidatoMatchy candidato;
   final VoidCallback onTapFoto;
-  final VoidCallback onMatchy;
+  final Future<void> Function() onMatchy;
+  final bool busy;
 
   const _CandidatoCard({
     required this.candidato,
     required this.onTapFoto,
     required this.onMatchy,
+    required this.busy,
   });
 
   @override
@@ -682,14 +789,20 @@ class _CandidatoCard extends StatelessWidget {
           width: double.infinity,
           height: altoBoton,
           child: ElevatedButton(
-            onPressed: onMatchy,
+            onPressed: busy ? null : () async => await onMatchy(),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFFFC107),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
             ),
-            child: const Text(
+            child: busy
+                ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+                : const Text(
               'HACER MATCHY',
               style: TextStyle(
                 color: Colors.black,

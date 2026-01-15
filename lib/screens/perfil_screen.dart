@@ -5,7 +5,7 @@
 // ✅ Soporta fotos real (File) + assets + URLs (Firebase Storage)
 // ✅ BOTONES AL FINAL:
 //    - CERRAR SESIÓN (azul oscuro, letras blancas)
-//    - BORRAR PERFIL (rojo) -> borra Firestore + Storage fotos + local prefs + cierra sesión
+//    - BORRAR PERFIL (rojo) -> borra Firestore + Storage fotos + local prefs + intenta borrar Auth user
 
 import 'dart:io';
 
@@ -53,6 +53,9 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
   static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
   static const String _kProfilePublishedKey = 'matchy_profile_published_v1';
   static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
+
+  // 🔴 CHINCHE FIRESTORE 1 — colección users
+  static const String _kUsersCollection = 'users';
 
   void _goSplash() {
     Navigator.of(context).pushAndRemoveUntil(
@@ -118,7 +121,8 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     );
   }
 
-  Future<void> _deleteUserPhotosFromStorage(String uid) async {
+  // ✅ Borra por carpeta estándar (si existe)
+  Future<void> _deleteUserPhotosFromStorageFolder(String uid) async {
     try {
       final root = FirebaseStorage.instance.ref().child('users/$uid/photos');
       final list = await root.listAll();
@@ -141,6 +145,22 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
       }
     } catch (_) {
       // no rompe el borrado
+    }
+  }
+
+  // ✅ Borra URLs explícitas (más confiable si cambiaste rutas en Storage)
+  Future<void> _deleteStorageUrls(List<String> urls) async {
+    for (final u in urls) {
+      final url = u.trim();
+      if (url.isEmpty) continue;
+      if (!(url.startsWith('http://') || url.startsWith('https://'))) continue;
+
+      try {
+        final ref = FirebaseStorage.instance.refFromURL(url);
+        await ref.delete();
+      } catch (_) {
+        // no rompe
+      }
     }
   }
 
@@ -178,16 +198,59 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     try {
       final uid = user.uid;
 
-      // 1) Borra fotos Storage
-      await _deleteUserPhotosFromStorage(uid);
+      // 0) Lee el doc para capturar URLs (si existen)
+      final docRef =
+      FirebaseFirestore.instance.collection(_kUsersCollection).doc(uid);
+      final snap = await docRef.get();
 
-      // 2) Borra doc Firestore
-      await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+      final urlsToDelete = <String>[];
+      if (snap.exists) {
+        final data = snap.data();
+        if (data != null) {
+          final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString();
+          if (profilePhotoUrl.trim().isNotEmpty) {
+            urlsToDelete.add(profilePhotoUrl);
+          }
 
-      // 3) Limpia local
+          final raw = data['photoUrls'];
+          if (raw is List) {
+            for (final e in raw) {
+              final s = e.toString();
+              if (s.trim().isNotEmpty) urlsToDelete.add(s);
+            }
+          }
+        }
+      }
+
+      // 1) Borra fotos por URLs (si existen)
+      await _deleteStorageUrls(urlsToDelete);
+
+      // 2) Borra carpeta estándar (por si hay fotos ahí)
+      await _deleteUserPhotosFromStorageFolder(uid);
+
+      // 3) Borra doc Firestore
+      await docRef.delete();
+
+      // 4) Limpia local
       await _clearMatchyLocal();
 
-      // 4) Cierra sesión
+      // 5) Intenta borrar cuenta Auth (puede fallar si no hay recent login)
+      try {
+        await user.delete();
+      } catch (e) {
+        // Si falla por recent login, igual nos vamos a Splash ya sin perfil
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '⚠️ Perfil borrado, pero no se pudo borrar la cuenta automáticamente (puede requerir re-login).',
+              ),
+            ),
+          );
+        }
+      }
+
+      // 6) Cierra sesión siempre (por seguridad)
       await GoogleSignIn().signOut();
       await FirebaseAuth.instance.signOut();
 

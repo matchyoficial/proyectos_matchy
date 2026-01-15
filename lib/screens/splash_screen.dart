@@ -1,6 +1,6 @@
 // 📂 lib/screens/splash_screen.dart
 // ✅ Splash definitivo BLINDADO (CACHE-SAFE)
-// ✅ Decide ruta con FIRESTORE si hay sesión (cross-device)
+// ✅ Ahora decide ruta con FIRESTORE si hay sesión (cross-device)
 // ✅ Si NO hay sesión, usa SharedPreferences como fallback
 
 import 'dart:convert';
@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:proyectos_matchy/screens/registro_screen.dart';
-import 'package:proyectos_matchy/screens/panel_screen.dart';
+
+// 🔴 CHINCHE SHELL SPLASH 1 — ahora vamos a HomeShell, no a Panel directo
+import 'package:proyectos_matchy/screens/home_shell.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,7 +26,6 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
-  // 🔴 CHINCHE SPLASH CONF 1 — duración splash (segundos)
   static const int splashSeconds = 2;
 
   static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
@@ -43,35 +44,36 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     if (!mounted) return;
 
     final user = FirebaseAuth.instance.currentUser;
-
-    // ✅ 1) Si hay sesión, Firestore manda
     if (user != null) {
       final ok = await _onboardingCompletoDesdeFirestore(user.uid);
 
-      // 🔴 CHINCHE SPLASH HYDRATE 1 — hidrata provider (fotos/datos) antes de entrar a la app
       await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
-
       if (!mounted) return;
 
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => ok ? const PanelScreen() : const RegistroScreen(),
+          builder: (_) => ok
+              ? const HomeShell(initialIndex: 2) // ✅ Panel tab
+              : const RegistroScreen(),
         ),
       );
       return;
     }
 
-    // ✅ 2) Sin sesión, fallback local
     final prefs = await SharedPreferences.getInstance();
+
     final bool flagOnboarding = prefs.getBool(_kOnboardingCompletedKey) ?? false;
     final bool perfilMinimoOk = await _perfilMinimoValidoLocal(prefs);
+
     final bool onboardingCompleto = flagOnboarding && perfilMinimoOk;
 
     if (!mounted) return;
 
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => onboardingCompleto ? const PanelScreen() : const RegistroScreen(),
+        builder: (_) => onboardingCompleto
+            ? const HomeShell(initialIndex: 2) // ✅ Panel tab
+            : const RegistroScreen(),
       ),
     );
   }
@@ -84,6 +86,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           .get();
 
       if (!doc.exists) return false;
+
       final data = doc.data();
       if (data == null) return false;
 
@@ -106,16 +109,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           .toList();
 
       final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString().trim();
+
       final bool fotosOk = profilePhotoUrl.isNotEmpty || photoUrls.isNotEmpty;
 
-      final bool perfilOk =
-          nombre.isNotEmpty &&
-              edadInt != null &&
-              edadInt >= 18 &&
-              edadInt <= 99 &&
-              pais.isNotEmpty &&
-              ciudad.isNotEmpty &&
-              fotosOk;
+      final bool perfilOk = nombre.isNotEmpty &&
+          edadInt != null &&
+          edadInt >= 18 &&
+          edadInt <= 99 &&
+          pais.isNotEmpty &&
+          ciudad.isNotEmpty &&
+          fotosOk;
 
       return onboarding && perfilOk;
     } catch (_) {
@@ -137,14 +140,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
       final List fotos =
       (map['fotosCargadas'] is List) ? (map['fotosCargadas'] as List) : [];
-      final List urls =
+      final List photoUrls =
       (map['photoUrls'] is List) ? (map['photoUrls'] as List) : [];
-      final profileUrl = (map['profilePhotoUrl'] ?? '').toString().trim();
+      final profilePhotoUrl = (map['profilePhotoUrl'] ?? '').toString().trim();
 
       final edadInt = int.tryParse(edadStr);
 
       final bool fotosOk =
-          profileUrl.isNotEmpty || urls.isNotEmpty || fotos.isNotEmpty;
+          profilePhotoUrl.isNotEmpty || photoUrls.isNotEmpty || fotos.isNotEmpty;
 
       return nombre.isNotEmpty &&
           edadInt != null &&
@@ -171,7 +174,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Center(
           child: Image.asset(
             'assets/images/logo_matchy.png',
-            height: 200, // 🔴 CHINCHE SPLASH UI 2
+            height: 200,
           ),
         ),
       ),

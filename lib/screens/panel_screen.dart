@@ -3,7 +3,6 @@
 // ✅ Nombre + edad SIEMPRE en una fila (sin RenderFlex overflow)
 // ✅ Foto perfil: URL (Storage) > asset > File path (cross-device)
 // ✅ Botón "Editar Perfil" → DatosScreen
-// ✅ Incluye _MatchyBottomNav completo
 // ✅ Botón "CITAS PUBLICADAS" conectado
 //
 // ✅ FIREBASE: Panel lee users/{uid} desde Firestore
@@ -11,61 +10,43 @@
 // ✅ Fallback: si Firestore no está listo, usa profileFormProvider
 //
 // ✅ FIX CACHE/LOGOUT:
-//    - userDocProvider ahora es nullable. Si no hay sesión, emite null (no se queda loading infinito).
-//    - Si no hay sesión: redirige a Splash (tu flujo decide login/registro).
+//    - userDocProvider ahora es nullable. Si no hay sesión, emite null.
+//    - Si no hay sesión: redirige a Splash.
+//
+// ✅ NUEVO (SHELL):
+//    - showBottomNav: por defecto true, pero en HomeShell debe ir false.
+//    - Se removió BottomNav interno para evitar doble nav.
 
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// 🔴 CHINCHE FIREBASE PANEL 1 — Auth + Firestore
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 
-// 🔴 CHINCHE PANEL NAV A — imports de las 4 pantallas destino del grid
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 
-// 🔴 CHINCHE PANEL NAV B — imports de las 5 pantallas principales
-import 'package:proyectos_matchy/screens/perfil_screen.dart';
-import 'package:proyectos_matchy/screens/citas_screen.dart';
-import 'package:proyectos_matchy/screens/matchys_screen.dart';
-import 'package:proyectos_matchy/screens/chat_screen.dart';
-
-// ✅ Ir a editar datos
 import 'package:proyectos_matchy/screens/datos_screen.dart';
-
-// ✅ Provider de perfil (REAL) — fallback local
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
-// 🔴 CHINCHE PANEL CITAS PUB 0 — pantalla de “citas publicadas”
 import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
-
-// 🔴 CHINCHE PANEL BUSCAR 0 — pantalla “Buscar una cita” (Swipe deck)
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
 
-// 🔴 CHINCHE PANEL NAV SPLASH 1 — si no hay sesión, volvemos a Splash
 import 'package:proyectos_matchy/screens/splash_screen.dart';
-
-// ===========================================================
-// 🔥 Provider: documento de usuario Firestore users/{uid}
-// ===========================================================
 
 // 🔴 CHINCHE FIREBASE PANEL 2 — nombre de colección users
 const String kUsersCollection = 'users';
 
-// 🔴 CHINCHE FIREBASE PANEL FIX 1 — Provider nullable (evita loading infinito con Stream.empty)
 final userDocProvider = StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>(
       (ref) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return Stream.value(null);
-    }
+    if (user == null) return Stream.value(null);
     return FirebaseFirestore.instance
         .collection(kUsersCollection)
         .doc(user.uid)
@@ -76,17 +57,21 @@ final userDocProvider = StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>(
 class PanelScreen extends ConsumerStatefulWidget {
   static const String routeName = 'panel';
 
-  const PanelScreen({super.key});
+  final bool showBottomNav; // 🔴 CHINCHE SHELL PANEL 1
+
+  const PanelScreen({
+    super.key,
+    this.showBottomNav = true,
+  });
 
   @override
   ConsumerState<PanelScreen> createState() => _PanelScreenState();
 }
 
 class _PanelScreenState extends ConsumerState<PanelScreen> {
-  bool _redirected = false; // evita loops
-  bool _bootstrapped = false; // evita bootstrap repetido
+  bool _redirected = false;
+  bool _bootstrapped = false;
 
-  // 🔴 CHINCHE PANEL NAME 1 — lógica inteligente de nombre
   String _nombreSeguro(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return 'SIN NOMBRE';
@@ -136,7 +121,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     );
   }
 
-  // ✅ Resuelve foto con prioridad: URL > asset > file path
   Widget _buildFotoWidget(String? fotoValue) {
     final v = (fotoValue ?? '').trim();
 
@@ -158,7 +142,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
           return Container(
             color: Colors.black26,
             child: const Center(
-                child: CircularProgressIndicator(strokeWidth: 2)),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           );
         },
         errorBuilder: (_, __, ___) {
@@ -201,7 +186,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
       if (_bootstrapped) return;
       _bootstrapped = true;
 
-      // ✅ Si no hay sesión, volvemos a Splash (ahí decides login/registro)
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         if (!mounted) return;
@@ -209,7 +193,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
         return;
       }
 
-      // ✅ Bootstrap: reconstruye el provider desde Firestore tras limpiar cache
       await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
     });
   }
@@ -218,28 +201,22 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
 
-    // mismas medidas que en el resto de pantallas principales
     const double espacioBarraLogo = 35;
     const double alturaLogo = 50;
     const double espacioLogoScroll = 15;
     const double margenInferiorPantalla = 80;
 
-    // ✅ Fallback local (por si Firestore demora / offline)
     final local = ref.watch(profileFormProvider);
-
-    // ✅ Firestore doc del usuario (nullable)
     final userDocAsync = ref.watch(userDocProvider);
 
     Widget contenido = userDocAsync.when(
       data: (snap) {
-        // ✅ Si snap == null => no hay sesión
         if (snap == null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             _redirectToSplash();
           });
 
-          // mostramos un fallback mínimo para evitar pantalla negra 1 frame
           final fotoFallback = local.profilePhotoUrl ??
               (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
               (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
@@ -259,7 +236,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
           );
         }
 
-        // Si no hay doc aún, usamos local sin romper UX
         if (!snap.exists) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
@@ -301,8 +277,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
         }
 
         final data = snap.data();
-
-        // Si data es null, fallback local
         if (data == null) {
           final fotoFallback = local.profilePhotoUrl ??
               (local.photoUrls.isNotEmpty ? local.photoUrls.first : null) ??
@@ -333,7 +307,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
           );
         }
 
-        // ✅ onboarding gate
         final completed = (data['onboarding_completed'] == true);
         if (!completed) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -342,7 +315,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
           });
         }
 
-        // ✅ Construcción sólida de datos Firestore
         final n = (data['nombre'] ?? '').toString();
         final e = data['edad'];
         final p = (data['pais'] ?? '').toString();
@@ -359,14 +331,13 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ? ((local.ciudadSeleccionada ?? '').trim().isEmpty &&
             (local.paisSeleccionado ?? '').trim().isEmpty
             ? 'Sin ubicación'
-            : '${(local.ciudadSeleccionada ?? '').trim()} - ${(local.paisSeleccionado ?? '').trim()}'
-            .replaceAll(' - ', ' - '))
+            : '${(local.ciudadSeleccionada ?? '').trim()} - ${(local.paisSeleccionado ?? '').trim()}')
             : (c.trim().isNotEmpty && p.trim().isNotEmpty)
             ? '${c.trim()} - ${p.trim()}'
             : (c.trim().isNotEmpty ? c.trim() : p.trim());
 
-        // ✅ FOTO: prioridad URL > local path
-        final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString().trim();
+        final profilePhotoUrl =
+        (data['profilePhotoUrl'] ?? '').toString().trim();
         final List<dynamic> photoUrlsDyn =
         (data['photoUrls'] is List) ? (data['photoUrls'] as List) : <dynamic>[];
         final photoUrls = photoUrlsDyn
@@ -374,7 +345,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             .where((s) => s.trim().isNotEmpty)
             .toList();
 
-        final profileLocal = (data['profilePhotoLocalPath'] ?? '').toString().trim();
+        final profileLocal =
+        (data['profilePhotoLocalPath'] ?? '').toString().trim();
 
         final fotoFinal = profilePhotoUrl.isNotEmpty
             ? profilePhotoUrl
@@ -435,7 +407,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             (local.fotosCargadas.isNotEmpty ? local.fotosCargadas.first : null);
 
         final nombre = _nombreSeguro(local.nombre);
-        final edad = local.edad.trim().isEmpty ? '—' : local.edad.trim();
+        final edad = local.edad.trim().isNotEmpty ? local.edad.trim() : '—';
         final pais = (local.paisSeleccionado ?? '').trim();
         final ciudad = (local.ciudadSeleccionada ?? '').trim();
         final ubicacion = (ciudad.isEmpty && pais.isEmpty)
@@ -463,7 +435,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     return contenido;
   }
 
-  // ✅ Scaffold del panel (mantiene tu diseño intacto)
   Widget _panelScaffold({
     required BuildContext context,
     required TextTheme textTheme,
@@ -514,14 +485,12 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: const _MatchyBottomNav(currentIndex: 2),
+      // ✅ NO bottom nav aquí. El Shell lo pone.
+      bottomNavigationBar: widget.showBottomNav ? const SizedBox.shrink() : null,
     );
   }
 }
 
-// ===============================================================
-// 🔹 CONTENIDO INTERNO DEL PANEL (DISEÑO INTACTO)
-// ===============================================================
 class _PanelContent extends StatelessWidget {
   final TextTheme textTheme;
   final String nombre;
@@ -543,36 +512,25 @@ class _PanelContent extends StatelessWidget {
       children: [
         const SizedBox(height: 10),
 
-        // =========================================================
-        // TARJETA PERFIL — PANEL FLUTTER PERFECTO
-        // =========================================================
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-          padding: const EdgeInsets.all(
-            18, // 🔴 CHINCHE PANEL D — padding interno tarjeta perfil
-          ),
+          padding: const EdgeInsets.all(18), // 🔴 CHINCHE PANEL D
           decoration: BoxDecoration(
             color: const Color(0x33FFFFFF),
-            borderRadius: BorderRadius.circular(
-              30, // 🔴 CHINCHE PANEL E — radio esquinas tarjeta perfil
-            ),
+            borderRadius: BorderRadius.circular(30), // 🔴 CHINCHE PANEL E
           ),
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(
-                  20, // 🔴 CHINCHE PANEL F — radio de la foto
-                ),
+                borderRadius: BorderRadius.circular(20), // 🔴 CHINCHE PANEL F
                 child: Container(
-                  width: 110, // 🔴 CHINCHE PANEL G2 — ancho foto perfil (cuadrada)
-                  height: 110, // 🔴 CHINCHE PANEL H2 — alto foto perfil (cuadrada)
+                  width: 110, // 🔴 CHINCHE PANEL G2
+                  height: 110, // 🔴 CHINCHE PANEL H2
                   color: Colors.black26,
                   child: fotoWidget,
                 ),
               ),
-
               const SizedBox(width: 18),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,9 +561,7 @@ class _PanelContent extends StatelessWidget {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Row(
                       children: [
                         const Icon(Icons.location_on, color: Colors.white, size: 18),
@@ -622,9 +578,7 @@ class _PanelContent extends StatelessWidget {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 10),
-
                     GestureDetector(
                       onTap: () {
                         Navigator.of(context).push(
@@ -657,20 +611,12 @@ class _PanelContent extends StatelessWidget {
 
         const SizedBox(height: 18),
 
-        // =========================================================
-        // SECCIÓN MORADA: ICONO CALENDARIO + 3 BOTONES
-        // =========================================================
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 14, // 🔴 CHINCHE PANEL L
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), // 🔴 CHINCHE PANEL L
           decoration: BoxDecoration(
             color: const Color(0x33FFFFFF),
-            borderRadius: BorderRadius.circular(
-              26, // 🔴 CHINCHE PANEL M
-            ),
+            borderRadius: BorderRadius.circular(26), // 🔴 CHINCHE PANEL M
           ),
           child: Row(
             children: [
@@ -803,9 +749,6 @@ class _PanelContent extends StatelessWidget {
   }
 }
 
-// ===========================================================
-// 🔹 BOTÓN PANEL
-// ===========================================================
 class _BotonPanel extends StatelessWidget {
   final String texto;
   final VoidCallback onTap;
@@ -844,9 +787,6 @@ class _BotonPanel extends StatelessWidget {
   }
 }
 
-// ===========================================================
-// 🔹 TARJETA INDIVIDUAL DEL GRID
-// ===========================================================
 class _CategoriaPanelCard extends StatelessWidget {
   final String label;
   final String imageAsset;
@@ -896,139 +836,6 @@ class _CategoriaPanelCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-// ===========================================================
-// 🔹 BARRA DE NAVEGACIÓN INFERIOR LOCAL PARA PANEL
-// ===========================================================
-class _MatchyBottomNav extends StatelessWidget {
-  final int currentIndex; // 0 Perfil, 1 Citas, 2 Panel, 3 Matchy, 4 Chat
-
-  const _MatchyBottomNav({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    const Color navBackground = Color(0xFF000000);
-    const Color selectedColor = Color(0xFFE0D4FF);
-    final Color unselectedColor = Colors.white54;
-
-    return BottomNavigationBar(
-      backgroundColor: navBackground,
-      type: BottomNavigationBarType.fixed,
-      currentIndex: currentIndex,
-      selectedItemColor: selectedColor,
-      unselectedItemColor: unselectedColor,
-      selectedFontSize: 10,
-      unselectedFontSize: 10,
-      showUnselectedLabels: true,
-      selectedLabelStyle: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
-      ),
-      unselectedLabelStyle: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w500,
-      ),
-      items: [
-        _navItem(
-          asset: 'assets/images/profile.png',
-          label: 'PERFIL',
-          isSelected: currentIndex == 0,
-        ),
-        _navItem(
-          asset: 'assets/images/citas.png',
-          label: 'CITAS',
-          isSelected: currentIndex == 1,
-        ),
-        _navItem(
-          asset: 'assets/images/panel.png',
-          label: 'PANEL',
-          isSelected: currentIndex == 2,
-        ),
-        _navItem(
-          asset: 'assets/images/matchy.png',
-          label: 'MATCHY',
-          isSelected: currentIndex == 3,
-        ),
-        _navItem(
-          asset: 'assets/images/chat.png',
-          label: 'CHAT',
-          isSelected: currentIndex == 4,
-        ),
-      ],
-      onTap: (index) {
-        if (index == currentIndex) return;
-
-        Widget dest;
-        switch (index) {
-          case 0:
-            dest = const PerfilScreen(showBottomNav: true);
-            break;
-          case 1:
-            dest = const CitasScreen();
-            break;
-          case 2:
-            dest = const PanelScreen();
-            break;
-          case 3:
-            dest = const MatchysScreen();
-            break;
-          default:
-            dest = const ChatScreen();
-        }
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => dest),
-              (route) => false,
-        );
-      },
-    );
-  }
-
-  static BottomNavigationBarItem _navItem({
-    required String asset,
-    required String label,
-    required bool isSelected,
-  }) {
-    const double unselectedSize = 20;
-    const double selectedSize = 24;
-
-    Widget icon;
-    if (isSelected) {
-      icon = SizedBox(
-        height: selectedSize,
-        child: Center(
-          child: ColorFiltered(
-            colorFilter: const ColorFilter.mode(
-              Color(0xFFE0D4FF),
-              BlendMode.srcIn,
-            ),
-            child: Image.asset(
-              asset,
-              width: selectedSize,
-              height: selectedSize,
-            ),
-          ),
-        ),
-      );
-    } else {
-      icon = SizedBox(
-        height: selectedSize,
-        child: Center(
-          child: Image.asset(
-            asset,
-            width: unselectedSize,
-            height: unselectedSize,
-          ),
-        ),
-      );
-    }
-
-    return BottomNavigationBarItem(
-      icon: icon,
-      label: label,
     );
   }
 }

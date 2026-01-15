@@ -2,10 +2,14 @@
 // ✅ MATCH SCREEN — “TENEMOS UN MATCHY”
 // ✅ FIX: título en 2 renglones + padding lateral para no recortarse
 // ✅ LOGICA: botón "INICIAR CHAT..." crea/asegura thread en provider y navega a ChatDetalleScreen
-// ⚠️ NO cambia diseños (solo el título como pediste)
+// ✅ NUEVO:
+//    - Hook onMatchAnimationFinished (se dispara una sola vez tras un delay)
+//    - Botón abajo "IR A CITAS" (NO navega automático) habilita cuando guardado ok
+// ⚠️ NO cambia diseños (solo agrega el botón abajo + lógica)
 
 import 'dart:math' as math;
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart'; // 🔴 provider + modelos
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
+import 'package:proyectos_matchy/screens/citas_screen.dart'; // 🔴 IR A CITAS
 
 class MatchScreen extends ConsumerStatefulWidget {
   // 🔴 CHINCHE MATCH DATA 1 — ID estable del candidato (chica1, chica4, etc.)
@@ -23,12 +28,16 @@ class MatchScreen extends ConsumerStatefulWidget {
   final int candidatoEdad;
   final String candidatoFotoAsset;
 
+  // 🔴 CHINCHE MATCH FLOW 1 — se llama tras un delay (para que la animación se vea)
+  final Future<void> Function()? onMatchAnimationFinished;
+
   const MatchScreen({
     super.key,
     required this.candidatoId,
     required this.candidatoNombre,
     required this.candidatoEdad,
     required this.candidatoFotoAsset,
+    this.onMatchAnimationFinished,
   });
 
   @override
@@ -43,6 +52,16 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   late final AnimationController _buttonPulseCtrl;
 
   late final List<_ConfettiPiece> _confetti;
+
+  // 🔴 CHINCHE MATCH FLOW 2 — delay antes de disparar el hook
+  static const Duration _finishDelay = Duration(milliseconds: 2400);
+
+  Timer? _finishTimer;
+  bool _finishCalled = false;
+
+  // 🔴 CHINCHE MATCH FLOW 3 — estado guardado (habilita botón IR A CITAS)
+  bool _guardadoOk = false;
+  bool _guardando = false;
 
   // ============================================================
   // 🔴 CHINCHE MATCH UI 1 — tamaños generales (NUMÉRICOS)
@@ -61,10 +80,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   // ============================================================
   // 🔴 CHINCHE TITLE 1 — PADDING LATERAL Y 2 RENGLONES
   // ============================================================
-  static const double titleSidePadding = 14.0; // 🔴 CHINCHE (aumenta si quieres más aire)
-  static const double titleLineGap = 2.0; // 🔴 CHINCHE separación entre renglones
-  static const double titleLine1FontSize = 34.0; // 🔴 CHINCHE "TENEMOS UN" (mismo tamaño)
-  static const double titleLine2FontSize = 44.0; // 🔴 CHINCHE "MATCHY" (más grande)
+  static const double titleSidePadding = 14.0; // 🔴 CHINCHE
+  static const double titleLineGap = 2.0; // 🔴 CHINCHE
+  static const double titleLine1FontSize = 34.0; // 🔴 CHINCHE
+  static const double titleLine2FontSize = 44.0; // 🔴 CHINCHE
   static const double titleLetterSpacing = 0.6; // 🔴
   static const double titleShadowBlur = 14.0; // 🔴
   static const double titleShadowOffsetY = 5.0; // 🔴
@@ -135,10 +154,36 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     )..repeat();
 
     _confetti = _buildConfettiPieces(90); // 🔴 CHINCHE CONFETTI 1
+
+    // ✅ Dispara hook una sola vez (para guardar la cita) pero NO navega automático
+    _finishTimer = Timer(_finishDelay, () async {
+      if (!mounted) return;
+      if (_finishCalled) return;
+      _finishCalled = true;
+
+      if (widget.onMatchAnimationFinished == null) {
+        setState(() => _guardadoOk = true);
+        return;
+      }
+
+      setState(() => _guardando = true);
+
+      try {
+        await widget.onMatchAnimationFinished!.call();
+        if (!mounted) return;
+        setState(() => _guardadoOk = true);
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _guardadoOk = false);
+      } finally {
+        if (mounted) setState(() => _guardando = false);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _finishTimer?.cancel();
     _titleCtrl.dispose();
     _cardsCtrl.dispose();
     _confettiCtrl.dispose();
@@ -177,7 +222,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final String suNombre = _primerNombre(widget.candidatoNombre);
     final int suEdad = widget.candidatoEdad;
 
-    // ✅ 1) Guardar/asegurar en la lista de chats
     ref.read(chatThreadsProvider.notifier).upsertThread(
       id: widget.candidatoId,
       nombre: suNombre,
@@ -185,7 +229,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       fotoAsset: widget.candidatoFotoAsset,
     );
 
-    // ✅ 2) Abrir pantalla de chat detalle real
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatDetalleScreen(
@@ -196,11 +239,18 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       ),
     );
 
-    // Snack mini para feedback
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Chat creado: $miNombre ↔ $suNombre'),
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _irACitas() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => const CitasScreen(showBottomNav: true),
       ),
     );
   }
@@ -212,7 +262,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final String miNombre = _primerNombre(profile.nombre);
     final int miEdad = int.tryParse(profile.edad.trim()) ?? 0;
 
-    // Foto principal del usuario
     final String? miFoto = profile.fotosCargadas.isNotEmpty
         ? profile.fotosCargadas.first
         : null;
@@ -273,9 +322,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                     ),
                   ),
 
-                  // ============================================================
-                  // ✅ TÍTULO NUEVO: 2 RENGLONES + PADDING LATERAL
-                  // ============================================================
+                  // ✅ TÍTULO: 2 RENGLONES + PADDING LATERAL
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: titleSidePadding, // 🔴 CHINCHE
@@ -293,16 +340,16 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                             children: [
                               _AnimatedGradientTitle(
                                 text: 'TENEMOS UN',
-                                fontSize: titleLine1FontSize, // 🔴 CHINCHE
+                                fontSize: titleLine1FontSize,
                                 letterSpacing: titleLetterSpacing,
                                 shadowBlur: titleShadowBlur,
                                 shadowOffsetY: titleShadowOffsetY,
                                 t: _titleCtrl.value,
                               ),
-                              const SizedBox(height: titleLineGap), // 🔴 CHINCHE
+                              const SizedBox(height: titleLineGap),
                               _AnimatedGradientTitle(
                                 text: 'MATCHY',
-                                fontSize: titleLine2FontSize, // 🔴 CHINCHE
+                                fontSize: titleLine2FontSize,
                                 letterSpacing: titleLetterSpacing,
                                 shadowBlur: titleShadowBlur,
                                 shadowOffsetY: titleShadowOffsetY,
@@ -317,7 +364,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
                   const SizedBox(height: cardsTopSpace),
 
-                  // Cards (igual)
                   SizedBox(
                     height: cardsHeight,
                     child: LayoutBuilder(
@@ -382,7 +428,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                                     ),
                                   ],
                                 ),
-
                                 Transform.scale(
                                   scale: 1.0 +
                                       (math.sin(_cardsCtrl.value * math.pi) *
@@ -425,7 +470,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
                   const SizedBox(height: midGapAfterNames),
 
-                  // Botón chat (misma estética)
+                  // Botón chat
                   AnimatedBuilder(
                     animation: _buttonPulseCtrl,
                     builder: (_, __) {
@@ -438,7 +483,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                           width: double.infinity,
                           height: buttonHeight,
                           child: ElevatedButton(
-                            onPressed: _startChat, // ✅ LOGICA NUEVA
+                            onPressed: _startChat,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: matchyPurple,
                               shape: RoundedRectangleBorder(
@@ -462,7 +507,44 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                     },
                   ),
 
-                  const SizedBox(height: 16.0),
+                  const SizedBox(height: 10),
+
+                  // ✅ NUEVO BOTÓN ABAJO: IR A CITAS (no automático)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: (_guardadoOk && !_guardando) ? _irACitas : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: matchyYellow,
+                        disabledBackgroundColor: matchyYellow.withOpacity(0.35),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18.0),
+                        ),
+                        elevation: 6.0,
+                      ),
+                      child: _guardando
+                          ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : Text(
+                        _guardadoOk
+                            ? 'IR A CITAS'
+                            : 'GUARDANDO CITA...',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.w900,
+                          fontFamily: 'Poppins',
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 14.0),
 
                   Text(
                     'BUENA SUERTE CON TU CITA',
@@ -690,7 +772,8 @@ class _MatchPhotoCard extends StatelessWidget {
               left: 12.0,
               top: 12.0,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.28),
                   borderRadius: BorderRadius.circular(14.0),
