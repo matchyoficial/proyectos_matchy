@@ -1,7 +1,9 @@
 // 📂 lib/screens/home_shell.dart
 // ✅ Shell principal con IndexedStack (mantiene estado por tab)
 // ✅ BottomNav ÚNICO para toda la app
-// ✅ Evita pushAndRemoveUntil en cada tap (adiós resets)
+// ✅ FIX: la barra NO desaparece al volver al Panel
+// ✅ NUEVO: controlador interno para cambiar tabs desde cualquier pantalla
+// ✅ NUEVO: HomeShell.go(...) para volver al shell si te sales por error (pushReplacement a Panel, etc.)
 
 import 'package:flutter/material.dart';
 
@@ -20,12 +22,42 @@ class HomeShell extends StatefulWidget {
     this.initialIndex = 2, // 🔴 CHINCHE SHELL 1 — tab inicial por defecto (Panel)
   });
 
+  /// ✅ Obtener controlador del shell desde cualquier widget debajo del HomeShell
+  static _HomeShellController of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<_HomeShellScope>();
+    if (scope == null) {
+      throw FlutterError(
+        'HomeShell.of(context) llamado fuera del árbol de HomeShell.\n'
+            'Usa HomeShell.go(context, index: X) si estás fuera del shell.',
+      );
+    }
+    return scope.controller;
+  }
+
+  /// ✅ Teletransporte seguro al shell (cuando te saliste por pushReplacement a PanelScreen, etc.)
+  static void go(BuildContext context, {int index = 2}) {
+    final safeIndex = index.clamp(0, 4);
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => HomeShell(initialIndex: safeIndex)),
+          (route) => false,
+    );
+  }
+
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
   late int _index;
+
+  late final _HomeShellController _controller = _HomeShellController(
+    getIndex: () => _index,
+    setIndex: (i) {
+      final next = i.clamp(0, 4);
+      if (next == _index) return;
+      setState(() => _index = next);
+    },
+  );
 
   @override
   void initState() {
@@ -34,26 +66,72 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
+  void didUpdateWidget(covariant HomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 🔴 CHINCHE SHELL 2 — si alguien recrea HomeShell con otro initialIndex, lo respetamos
+    final next = widget.initialIndex.clamp(0, 4);
+    if (next != _index) {
+      setState(() => _index = next);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: const [
-          // 🔴 IMPORTANTE: estas pantallas deben venir SIN bottom nav interno
-          PerfilScreen(showBottomNav: false),
-          CitasScreen(showBottomNav: false),
-          PanelScreen(showBottomNav: false),
-          MatchysScreen(showBottomNav: false),
-          ChatScreen(showBottomNav: false),
-        ],
-      ),
-      bottomNavigationBar: _MatchyBottomNav(
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+    return _HomeShellScope(
+      controller: _controller,
+      child: Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: const [
+            // 🔴 IMPORTANTE: estas pantallas deben venir SIN bottom nav interno
+            PerfilScreen(showBottomNav: false),
+            CitasScreen(showBottomNav: false),
+            PanelScreen(showBottomNav: false),
+            MatchysScreen(showBottomNav: false),
+            ChatScreen(showBottomNav: false),
+          ],
+        ),
+        bottomNavigationBar: _MatchyBottomNav(
+          currentIndex: _index,
+          onTap: (i) => _controller.setIndex(i),
+        ),
       ),
     );
   }
 }
+
+// ================================================================
+// 🔹 CONTROLLER + SCOPE (SIN Riverpod, SIN archivos extra)
+// ================================================================
+
+class _HomeShellController {
+  final int Function() getIndex;
+  final void Function(int) setIndex;
+
+  _HomeShellController({
+    required this.getIndex,
+    required this.setIndex,
+  });
+}
+
+class _HomeShellScope extends InheritedWidget {
+  final _HomeShellController controller;
+
+  const _HomeShellScope({
+    required this.controller,
+    required super.child,
+  });
+
+  @override
+  bool updateShouldNotify(covariant _HomeShellScope oldWidget) {
+    // El controller es el mismo objeto, no necesitamos notificar por cambios.
+    return false;
+  }
+}
+
+// ================================================================
+// 🔹 BOTTOM NAV
+// ================================================================
 
 class _MatchyBottomNav extends StatelessWidget {
   final int currentIndex;

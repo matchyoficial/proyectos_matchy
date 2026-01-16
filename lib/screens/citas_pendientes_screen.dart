@@ -2,22 +2,12 @@
 // ✅ CITAS PUBLICADAS (Pendientes) — diseño Matchy
 // ✅ Muestra: foto del sitio + nombre + dirección + fecha + hora
 // ✅ Riverpod: lista dinámica + cancelar elimina de inmediato (sin crashear)
-// ✅ Fondo + logo + scroll perfecto + barra inferior Matchy
-// ✅ NUEVO: Tap en la tarjeta → abre detalle (citas_pendientes_detalle.dart)
-
-// ✅ NUEVO (LOGICA):
-// - Modelo CitaPendiente actualizado con preferencia/intencion + datos del creador
-// - Esto permite que CitaCreadaScreen guarde TODO para luego consumirse en CitaBuscar
+// ✅ Fondo + logo + scroll perfecto
+// ✅ Tap en la tarjeta → abre detalle (citas_pendientes_detalle.dart)
+// ✅ FIX CRÍTICO: Screen "shell-safe" (NO trae bottom nav interno)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-// 🔴 CHINCHE NAV IMPORTS — mismas pantallas principales
-import 'package:proyectos_matchy/screens/perfil_screen.dart';
-import 'package:proyectos_matchy/screens/citas_screen.dart';
-import 'package:proyectos_matchy/screens/panel_screen.dart';
-import 'package:proyectos_matchy/screens/matchys_screen.dart';
-import 'package:proyectos_matchy/screens/chat_screen.dart';
 
 // 🔴 CHINCHE DETALLE IMPORT 1 — pantalla detalle de cita publicada
 import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
@@ -97,8 +87,7 @@ class CitasPendientesNotifier extends StateNotifier<List<CitaPendiente>> {
 
   // ✅ Agregar cita
   void add(CitaPendiente cita) {
-    final next = [...state, cita]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final next = [...state, cita]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     state = next;
   }
 
@@ -128,17 +117,13 @@ class CitasPendientesScreen extends ConsumerWidget {
     const double alturaLogo = 50;
     const double espacioLogoTitulo = 15;
 
-    // 🔴 CHINCHE UI 2 — padding inferior para no chocar con barra
+    // 🔴 CHINCHE UI 2 — padding inferior para no chocar con barra del shell
     const double paddingBottom = 90;
 
     final citas = ref.watch(citasPendientesProvider);
 
     return Scaffold(
       backgroundColor: Colors.black,
-
-      // 🔴 CHINCHE NAV INDEX 1 — lo dejamos igual para “zona citas”
-      bottomNavigationBar: const _MatchyBottomNav(currentIndex: 1),
-
       body: Stack(
         children: [
           Positioned.fill(
@@ -237,7 +222,7 @@ class _EmptyState extends StatelessWidget {
 
 // ================================================================
 // 🔹 CARD: CITA PUBLICADA (foto + info + cancelar)
-// ✅ NUEVO: Tap card → Detalle
+// ✅ Tap card → Detalle
 // ================================================================
 class _CitaPendienteCard extends ConsumerWidget {
   final CitaPendiente cita;
@@ -260,7 +245,6 @@ class _CitaPendienteCard extends ConsumerWidget {
         color: cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: InkWell(
-          // 🔴 CHINCHE DETALLE NAV 1 — tocar tarjeta abre detalle
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -290,12 +274,10 @@ class _CitaPendienteCard extends ConsumerWidget {
                 // INFO
                 Expanded(
                   child: Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // NOMBRE LUGAR
                         Text(
                           cita.nombreLugar,
                           maxLines: 1,
@@ -338,7 +320,6 @@ class _CitaPendienteCard extends ConsumerWidget {
                         ),
                         const Spacer(),
 
-                        // BOTONES (código + cancelar)
                         Row(
                           children: [
                             Expanded(
@@ -363,8 +344,6 @@ class _CitaPendienteCard extends ConsumerWidget {
                               ),
                             ),
                             const SizedBox(width: 10),
-
-                            // 🔴 CHINCHE CANCEL BTN 1 — evita que el tap del card se dispare
                             SizedBox(
                               height: 34,
                               child: ElevatedButton(
@@ -376,14 +355,10 @@ class _CitaPendienteCard extends ConsumerWidget {
                                   ),
                                 ),
                                 onPressed: () {
-                                  ref
-                                      .read(citasPendientesProvider.notifier)
-                                      .cancelById(cita.id);
+                                  ref.read(citasPendientesProvider.notifier).cancelById(cita.id);
 
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Cita cancelada.'),
-                                    ),
+                                    const SnackBar(content: Text('Cita cancelada.')),
                                   );
                                 },
                                 child: const Text(
@@ -404,10 +379,9 @@ class _CitaPendienteCard extends ConsumerWidget {
                   ),
                 ),
 
-                // 🔴 CHINCHE CHEVRON 1 — indicador sutil de “toca para ver”
                 const SizedBox(width: 6),
-                Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                const Padding(
+                  padding: EdgeInsets.only(right: 10),
                   child: Icon(
                     Icons.chevron_right,
                     color: Colors.white70,
@@ -452,73 +426,6 @@ class _SafeAssetImage extends StatelessWidget {
         height: height,
         fit: BoxFit.cover,
       ),
-    );
-  }
-}
-
-// ================================================================
-// 🔹 BARRA DE NAVEGACIÓN INFERIOR — IGUAL ESTILO MATCHY
-// ================================================================
-class _MatchyBottomNav extends StatelessWidget {
-  final int currentIndex;
-
-  const _MatchyBottomNav({required this.currentIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    const Color navBackground = Color(0xCC000000);
-    const Color selectedColor = Color(0xFFE0D4FF);
-    final Color unselectedColor = Colors.white70;
-
-    return BottomNavigationBar(
-      backgroundColor: navBackground,
-      type: BottomNavigationBarType.fixed,
-      currentIndex: currentIndex,
-      selectedItemColor: selectedColor,
-      unselectedItemColor: unselectedColor,
-      items: [
-        _navItem('assets/images/profile.png', 'Perfil'),
-        _navItem('assets/images/citas.png', 'Citas'),
-        _navItem('assets/images/panel.png', 'Panel'),
-        _navItem('assets/images/matchy.png', 'Matchy'),
-        _navItem('assets/images/chat.png', 'Chat'),
-      ],
-      onTap: (index) {
-        if (index == currentIndex) return;
-
-        Widget destino;
-        switch (index) {
-          case 0:
-            destino = const PerfilScreen(showBottomNav: true);
-            break;
-          case 1:
-            destino = const CitasScreen();
-            break;
-          case 2:
-            destino = const PanelScreen();
-            break;
-          case 3:
-            destino = const MatchysScreen();
-            break;
-          default:
-            destino = const ChatScreen();
-        }
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => destino),
-              (route) => false,
-        );
-      },
-    );
-  }
-
-  static BottomNavigationBarItem _navItem(String asset, String label) {
-    return BottomNavigationBarItem(
-      icon: SizedBox(
-        height: 24,
-        child: Image.asset(asset, width: 22, height: 22),
-      ),
-      label: label,
     );
   }
 }

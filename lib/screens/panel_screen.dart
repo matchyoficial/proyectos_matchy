@@ -13,9 +13,13 @@
 //    - userDocProvider ahora es nullable. Si no hay sesión, emite null.
 //    - Si no hay sesión: redirige a Splash.
 //
-// ✅ NUEVO (SHELL):
-//    - showBottomNav: por defecto true, pero en HomeShell debe ir false.
-//    - Se removió BottomNav interno para evitar doble nav.
+// ✅ FIX BARRA (SHELL SAFE):
+//    - Si este Panel se abre FUERA del HomeShell (sin barra),
+//      se auto-teletransporta a HomeShell tab Panel.
+//    - Dentro del HomeShell debe venir showBottomNav=false.
+//
+// ✅ IMPORTANTE:
+//    - Este archivo NO dibuja bottom nav. La barra SOLO vive en HomeShell.
 
 import 'dart:io';
 
@@ -40,6 +44,9 @@ import 'package:proyectos_matchy/screens/cita_buscar.dart';
 
 import 'package:proyectos_matchy/screens/splash_screen.dart';
 
+// 🔴 CHINCHE SHELL PANEL FIX 1 — necesitamos HomeShell para teletransporte
+import 'package:proyectos_matchy/screens/home_shell.dart';
+
 // 🔴 CHINCHE FIREBASE PANEL 2 — nombre de colección users
 const String kUsersCollection = 'users';
 
@@ -57,7 +64,10 @@ final userDocProvider = StreamProvider<DocumentSnapshot<Map<String, dynamic>>?>(
 class PanelScreen extends ConsumerStatefulWidget {
   static const String routeName = 'panel';
 
-  final bool showBottomNav; // 🔴 CHINCHE SHELL PANEL 1
+  // 🔴 CHINCHE SHELL PANEL 1
+  // false = viene dentro de HomeShell (barra la pone HomeShell)
+  // true  = se abrió suelta (sin barra) → nos teletransportamos al shell
+  final bool showBottomNav;
 
   const PanelScreen({
     super.key,
@@ -72,12 +82,14 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   bool _redirected = false;
   bool _bootstrapped = false;
 
+  // 🔴 CHINCHE SHELL PANEL FIX 2 — evitar loop de teletransporte
+  bool _sentToShell = false;
+
   String _nombreSeguro(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return 'SIN NOMBRE';
 
-    final parts =
-    clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return 'SIN NOMBRE';
 
     final first = parts.first;
@@ -183,6 +195,16 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // ✅ FIX BARRA: si este Panel se abrió suelto, lo mandamos al HomeShell tab 2
+      if (widget.showBottomNav == true && _sentToShell == false) {
+        _sentToShell = true;
+        if (!mounted) return;
+
+        // 🔴 CHINCHE SHELL PANEL FIX 3 — tab Panel = 2
+        HomeShell.go(context, index: 2);
+        return;
+      }
+
       if (_bootstrapped) return;
       _bootstrapped = true;
 
@@ -336,8 +358,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ? '${c.trim()} - ${p.trim()}'
             : (c.trim().isNotEmpty ? c.trim() : p.trim());
 
-        final profilePhotoUrl =
-        (data['profilePhotoUrl'] ?? '').toString().trim();
+        final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString().trim();
         final List<dynamic> photoUrlsDyn =
         (data['photoUrls'] is List) ? (data['photoUrls'] as List) : <dynamic>[];
         final photoUrls = photoUrlsDyn
@@ -345,8 +366,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             .where((s) => s.trim().isNotEmpty)
             .toList();
 
-        final profileLocal =
-        (data['profilePhotoLocalPath'] ?? '').toString().trim();
+        final profileLocal = (data['profilePhotoLocalPath'] ?? '').toString().trim();
 
         final fotoFinal = profilePhotoUrl.isNotEmpty
             ? profilePhotoUrl
@@ -485,8 +505,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ),
         ],
       ),
-      // ✅ NO bottom nav aquí. El Shell lo pone.
-      bottomNavigationBar: widget.showBottomNav ? const SizedBox.shrink() : null,
+      // ✅ SIEMPRE null: la barra real la maneja HomeShell
+      bottomNavigationBar: null,
     );
   }
 }

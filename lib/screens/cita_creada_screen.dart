@@ -8,13 +8,16 @@
 //
 // ✅ NUEVO (ENGANCHE CITA_BUSCAR):
 // - Guarda preferencia + intencion + datos del creador (nombre/edad/foto) en CitaPendiente
+//
+// ✅ FIX CRÍTICO SHELL:
+// - NO usar pushAndRemoveUntil hacia PanelScreen (mata el HomeShell y desaparece la barra).
+// - Volver al root con popUntil(route.isFirst) para quedar en HomeShell con la barra viva.
 
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
-import 'package:proyectos_matchy/screens/panel_screen.dart';
 
 import 'package:proyectos_matchy/models/lugar_data.dart';
 
@@ -77,9 +80,8 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
     // ===========================================================
     final perfil = ref.read(profileFormProvider);
 
-    final String creadorNombre = (perfil.nombre.trim().isEmpty)
-        ? 'Sin nombre'
-        : perfil.nombre.trim();
+    final String creadorNombre =
+    (perfil.nombre.trim().isEmpty) ? 'Sin nombre' : perfil.nombre.trim();
 
     // 🔴 CHINCHE CREADOR EDAD 1 — parse seguro
     final int creadorEdad = int.tryParse(perfil.edad.trim()) ?? 0;
@@ -126,7 +128,7 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
     return first.isEmpty ? 'assets/images/faro1.jpg' : first;
   }
 
-  // ✅ SOLO ASSET por ahora para evitar reventar en CitaBuscar (que usa Image.asset)
+  // ✅ SOLO ASSET por ahora para evitar reventar en pantallas que usan Image.asset
   String _pickCreadorFotoAssetSafe(ProfileFormState perfil) {
     // 🔴 CHINCHE CREADOR FOTO 2 — fallback fijo
     const String fallback = 'assets/images/perfil1.jpg';
@@ -137,7 +139,6 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
     if (first.isEmpty) return fallback;
 
     // Si NO es asset, por ahora devolvemos fallback.
-    // Cuando conectemos Firebase / FileImage, ahí sí soportamos paths reales.
     if (!first.startsWith('assets/')) return fallback;
 
     return first;
@@ -155,6 +156,14 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
     List.generate(5, (_) => numeros[random.nextInt(numeros.length)]).join();
 
     return '$letrasParte$numerosParte';
+  }
+
+  // ===========================================================
+  // ✅ FIX SHELL: volver al HomeShell sin destruirlo
+  // ===========================================================
+  void _volverAlPanelShellSafe() {
+    // 🔴 CHINCHE SHELL NAV 1 — vuelve al root (HomeShell) manteniendo BottomNav vivo
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -328,7 +337,7 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
 
                       const SizedBox(height: 25),
 
-                      // ✅ CANCELAR: borra la cita y vuelve al panel
+                      // ✅ CANCELAR: borra la cita y vuelve al panel (SHELL-SAFE)
                       SizedBox(
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: alturaBotonCancelar,
@@ -338,11 +347,8 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
                                 .read(citasPendientesProvider.notifier)
                                 .cancelById(_codigoCita);
 
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                  builder: (_) => const PanelScreen()),
-                                  (route) => false,
-                            );
+                            // 🔴 CHINCHE SHELL NAV 2 — NO destruir HomeShell
+                            _volverAlPanelShellSafe();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFE53935),
@@ -365,17 +371,14 @@ class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
 
                       const SizedBox(height: 12),
 
-                      // ✅ BOTÓN AZUL: REGRESAR AL PANEL
+                      // ✅ BOTÓN AZUL: REGRESAR AL PANEL (SHELL-SAFE)
                       SizedBox(
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: alturaBotonRegresarPanel, // 🔴 CHINCHE BOTON PANEL 1
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(
-                                  builder: (_) => const PanelScreen()),
-                                  (route) => false,
-                            );
+                            // 🔴 CHINCHE SHELL NAV 3 — NO pushAndRemoveUntil a PanelScreen
+                            _volverAlPanelShellSafe();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6A5ACD),

@@ -4,6 +4,7 @@
 // ✅ No crashea si falta imagen
 // ✅ Respeta MatchyPageLayout
 // ✅ FIX ÍNDICE: NO usa orderBy en Firestore (evita FAILED_PRECONDITION) y ordena local
+// ✅ SHELL-SAFE: NO usa bottom nav interno (el HomeShell manda)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -92,7 +93,8 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
       (data['lugarFotoAsset'] ?? 'assets/images/faro1.jpg').toString();
       final String lugar = (data['lugarNombre'] ?? 'Lugar').toString();
 
-      final status = fechaHora.isBefore(now) ? CitaStatus.completada : CitaStatus.proxima;
+      final status =
+      fechaHora.isBefore(now) ? CitaStatus.completada : CitaStatus.proxima;
 
       return CitaItem(
         id: d.id,
@@ -116,7 +118,7 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
 class CitasScreen extends ConsumerWidget {
   static const String routeName = 'citas';
 
-  final bool showBottomNav; // 🔴 CHINCHE SHELL CITAS 1
+  final bool showBottomNav; // 🔴 CHINCHE SHELL CITAS 1 (compatibilidad)
 
   const CitasScreen({
     super.key,
@@ -138,7 +140,7 @@ class CitasScreen extends ConsumerWidget {
         spaceLogoToScroll: 15,
       ),
 
-      // 🔴 CHINCHE: NO forzamos bottomNavigationBar aquí (shell-safe real)
+      // ✅ SHELL manda la barra. Aquí NUNCA.
       bottomNavigationBar: null,
     );
   }
@@ -173,8 +175,10 @@ class _CitasContent extends ConsumerWidget {
         ),
       ),
       data: (all) {
-        final proximas = all.where((c) => c.status == CitaStatus.proxima).toList();
-        final completadas = all.where((c) => c.status == CitaStatus.completada).toList();
+        final proximas =
+        all.where((c) => c.status == CitaStatus.proxima).toList();
+        final completadas =
+        all.where((c) => c.status == CitaStatus.completada).toList();
 
         return Column(
           children: [

@@ -1,34 +1,111 @@
 // 📂 lib/screens/match_screen.dart
 // ✅ MATCH SCREEN — “TENEMOS UN MATCHY”
-// ✅ FIX: título en 2 renglones + padding lateral para no recortarse
-// ✅ LOGICA: botón "INICIAR CHAT..." crea/asegura thread en provider y navega a ChatDetalleScreen
-// ✅ NUEVO:
-//    - Hook onMatchAnimationFinished (se dispara una sola vez tras un delay)
-//    - Botón abajo "IR A CITAS" (NO navega automático) habilita cuando guardado ok
-// ⚠️ NO cambia diseños (solo agrega el botón abajo + lógica)
+// ✅ FIX: ChatActions vive aquí (no depende de chat_screen.dart)
+// ✅ FIX PRO: upsertThread (multiusuario) + threadId determinístico uidA__uidB
+// ✅ FIX PRO: Abre ChatDetalle con threadId real
+// ✅ FIX: ChatDetalleScreen requiere foto
+// ✅ FIX HOME_SHELL: IR A CITAS vuelve al HomeShell (mantiene BottomNav)
+// ✅ FIX FOTO "TÚ": ahora usa URL (Storage) > photoUrls > File local > fallback
+// ✅ DEBUG REAL: muestra el error exacto si Firestore niega
 
-import 'dart:math' as math;
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
-import 'package:proyectos_matchy/screens/chat_screen.dart'; // 🔴 provider + modelos
+
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
-import 'package:proyectos_matchy/screens/citas_screen.dart'; // 🔴 IR A CITAS
+import 'package:proyectos_matchy/screens/home_shell.dart'; // ✅ para mantener barra
+
+// ============================================================
+// ✅ CHAT ACTIONS (AQUÍ MISMO) — para no depender de chat_screen.dart
+// ============================================================
+
+/// 🔴 CHINCHE CHAT ACTIONS 1 — nombre colección threads
+const String kChatThreadsCollection = 'chat_threads';
+
+/// 🔴 CHINCHE CHAT ACTIONS 2 — fields thread
+const String kThreadParticipantUids = 'participantUids';
+const String kThreadMeta = 'meta';
+const String kThreadCreatedAt = 'createdAt';
+const String kThreadUpdatedAt = 'updatedAt';
+
+class ChatActions {
+  /// Construye ID determinístico: uidA__uidB (ordenado)
+  static String buildThreadId(String uidA, String uidB) {
+    final a = uidA.trim();
+    final b = uidB.trim();
+    if (a.isEmpty || b.isEmpty) return '';
+    final pair = [a, b]..sort();
+    return '${pair[0]}__${pair[1]}';
+  }
+
+  /// ✅ Crea/actualiza el thread y guarda meta para ambos usuarios.
+  /// Retorna threadId real.
+  static Future<String> upsertThread({
+    required String peerUid,
+    required String peerNombre,
+    required int peerEdad,
+    required String peerFoto,
+    required String myNombre,
+    required int myEdad,
+    required String myFoto,
+  }) async {
+    final me = FirebaseAuth.instance.currentUser;
+    if (me == null) {
+      throw Exception('No hay sesión (FirebaseAuth.currentUser es null)');
+    }
+
+    final myUid = me.uid;
+    final threadId = buildThreadId(myUid, peerUid);
+
+    if (threadId.isEmpty) {
+      throw Exception('threadId inválido (uids vacíos)');
+    }
+
+    final ref = FirebaseFirestore.instance
+        .collection(kChatThreadsCollection)
+        .doc(threadId);
+
+    final snap = await ref.get();
+    final now = FieldValue.serverTimestamp();
+
+    final data = <String, dynamic>{
+      kThreadParticipantUids: [myUid, peerUid],
+      kThreadMeta: {
+        myUid: {
+          'nombre': myNombre,
+          'edad': myEdad,
+          'foto': myFoto,
+        },
+        peerUid: {
+          'nombre': peerNombre,
+          'edad': peerEdad,
+          'foto': peerFoto,
+        },
+      },
+      kThreadUpdatedAt: now,
+      if (!snap.exists) kThreadCreatedAt: now,
+    };
+
+    // ✅ merge true para que no reviente si ya existía (con reglas ya arregladas)
+    await ref.set(data, SetOptions(merge: true));
+    return threadId;
+  }
+}
 
 class MatchScreen extends ConsumerStatefulWidget {
-  // 🔴 CHINCHE MATCH DATA 1 — ID estable del candidato (chica1, chica4, etc.)
-  final String candidatoId;
-
-  // Datos candidato (izquierda)
+  final String candidatoId; // 🔴 CHINCHE PRO 1 — ideal: UID real del otro usuario
   final String candidatoNombre;
   final int candidatoEdad;
   final String candidatoFotoAsset;
 
-  // 🔴 CHINCHE MATCH FLOW 1 — se llama tras un delay (para que la animación se vea)
   final Future<void> Function()? onMatchAnimationFinished;
 
   const MatchScreen({
@@ -53,81 +130,62 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
   late final List<_ConfettiPiece> _confetti;
 
-  // 🔴 CHINCHE MATCH FLOW 2 — delay antes de disparar el hook
   static const Duration _finishDelay = Duration(milliseconds: 2400);
 
   Timer? _finishTimer;
   bool _finishCalled = false;
 
-  // 🔴 CHINCHE MATCH FLOW 3 — estado guardado (habilita botón IR A CITAS)
   bool _guardadoOk = false;
   bool _guardando = false;
 
-  // ============================================================
-  // 🔴 CHINCHE MATCH UI 1 — tamaños generales (NUMÉRICOS)
-  // ============================================================
   static const double topLogoSpace = 28.0; // 🔴
   static const double logoHeight = 48.0; // 🔴
   static const double titleTopSpace = 10.0; // 🔴
   static const double cardsTopSpace = 18.0; // 🔴
   static const double cardsHeight = 230.0; // 🔴
   static const double namesTopSpace = 12.0; // 🔴
-  static const double buttonTopSpace = 18.0; // 🔴
   static const double buttonHeight = 52.0; // 🔴
   static const double sidePadding = 18.0; // 🔴
   static const double midGapAfterNames = 10.0; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE TITLE 1 — PADDING LATERAL Y 2 RENGLONES
-  // ============================================================
-  static const double titleSidePadding = 14.0; // 🔴 CHINCHE
-  static const double titleLineGap = 2.0; // 🔴 CHINCHE
-  static const double titleLine1FontSize = 34.0; // 🔴 CHINCHE
-  static const double titleLine2FontSize = 44.0; // 🔴 CHINCHE
+  static const double titleSidePadding = 14.0; // 🔴
+  static const double titleLineGap = 2.0; // 🔴
+  static const double titleLine1FontSize = 34.0; // 🔴
+  static const double titleLine2FontSize = 44.0; // 🔴
   static const double titleLetterSpacing = 0.6; // 🔴
   static const double titleShadowBlur = 14.0; // 🔴
   static const double titleShadowOffsetY = 5.0; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE CARDS 1 — CONTROL ANCHO/ESPACIADO
-  // ============================================================
   static const double cardsHorizontalGap = 14.0; // 🔴
   static const double cardRadius = 26.0; // 🔴
   static const double cardBorder = 3.0; // 🔴
   static const double cardMinWidth = 145.0; // 🔴
   static const double cardMaxWidth = 190.0; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE HEART 1 — tamaño/posición del corazón central
-  // ============================================================
   static const double heartSize = 74.0; // 🔴
   static const double heartIconSize = 36.0; // 🔴
   static const double heartBorderWidth = 2.0; // 🔴
   static const double heartScaleAmp = 0.06; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE NAME 1 — tamaños nombres (debajo)
-  // ============================================================
   static const double nameFontSize = 18.0; // 🔴
   static const double nameOpacity = 0.92; // 🔴
   static const double nameBoxRadius = 18.0; // 🔴
   static const double nameBoxPadH = 10.0; // 🔴
   static const double nameBoxPadV = 12.0; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE TEXTOS ABAJO
-  // ============================================================
   static const double quoteFontSize = 15.0; // 🔴
   static const double noteFontSize = 12.0; // 🔴
   static const double noteTopGap = 6.0; // 🔴
 
-  // ============================================================
-  // 🔴 CHINCHE COLORS — Matchy vibe
-  // ============================================================
   static const Color matchyPurple = Color(0xFF7E79B6);
   static const Color matchyLilac = Color(0xFFE0D4FF);
   static const Color matchyYellow = Color(0xFFFFC107);
   static const Color noteRed = Color(0xFFFF5252);
+
+  bool _isUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
+  bool _isAsset(String v) => v.startsWith('assets/');
+  bool _looksLikeFilePath(String v) =>
+      v.startsWith('/') || v.contains(r':\') || v.startsWith('file:');
 
   @override
   void initState() {
@@ -153,9 +211,8 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       duration: const Duration(milliseconds: 2600),
     )..repeat();
 
-    _confetti = _buildConfettiPieces(90); // 🔴 CHINCHE CONFETTI 1
+    _confetti = _buildConfettiPieces(90);
 
-    // ✅ Dispara hook una sola vez (para guardar la cita) pero NO navega automático
     _finishTimer = Timer(_finishDelay, () async {
       if (!mounted) return;
       if (_finishCalled) return;
@@ -212,47 +269,117 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     return clean.split(RegExp(r'\s+')).first;
   }
 
-  // ✅ ACCIÓN: crear/asegurar thread y abrir ChatDetalleScreen
-  void _startChat() {
+  // 🔴 CHINCHE FOTO 1 — decide “mi foto” (URL > photoUrls > file > fallback)
+  String _pickMyPhoto(ProfileFormState profile) {
+    final url = (profile.profilePhotoUrl ?? '').trim();
+    if (url.isNotEmpty) return url;
+
+    if (profile.photoUrls.isNotEmpty) {
+      final u = profile.photoUrls.first.trim();
+      if (u.isNotEmpty) return u;
+    }
+
+    if (profile.fotosCargadas.isNotEmpty) {
+      final p = profile.fotosCargadas.first.trim();
+      if (p.isNotEmpty) return p;
+    }
+
+    return 'assets/images/perfil1.jpg';
+  }
+
+  Widget _imageSmart(String value, String fallback) {
+    final v = value.trim();
+    if (v.isEmpty) return Image.asset(fallback, fit: BoxFit.cover);
+
+    if (_isUrl(v)) {
+      return Image.network(
+        v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: Colors.black26,
+            alignment: Alignment.center,
+            child: const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+      );
+    }
+
+    if (_isAsset(v)) {
+      return Image.asset(
+        v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
+      );
+    }
+
+    if (_looksLikeFilePath(v)) {
+      return Image.file(
+        File(v.replaceFirst('file://', '')),
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
+      );
+    }
+
+    return Image.asset(fallback, fit: BoxFit.cover);
+  }
+
+  // ✅ ACCIÓN: Firestore upsert (MULTIUSUARIO) + abrir chat
+  Future<void> _startChat() async {
     final profile = ref.read(profileFormProvider);
 
     final String miNombre = _primerNombre(profile.nombre);
     final int miEdad = int.tryParse(profile.edad.trim()) ?? 0;
 
+    const String miFotoFallback = 'assets/images/perfil1.jpg';
+    final String miFotoSafe = _pickMyPhoto(profile); // ✅ ahora sí
+
     final String suNombre = _primerNombre(widget.candidatoNombre);
-    final int suEdad = widget.candidatoEdad;
 
-    ref.read(chatThreadsProvider.notifier).upsertThread(
-      id: widget.candidatoId,
-      nombre: suNombre,
-      edad: suEdad,
-      fotoAsset: widget.candidatoFotoAsset,
-    );
+    try {
+      final String threadId = await ChatActions.upsertThread(
+        peerUid: widget.candidatoId,
+        peerNombre: suNombre,
+        peerEdad: widget.candidatoEdad,
+        peerFoto: widget.candidatoFotoAsset,
+        myNombre: miNombre,
+        myEdad: miEdad,
+        myFoto: miFotoSafe.isEmpty ? miFotoFallback : miFotoSafe,
+      );
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatDetalleScreen(
-          nombre: suNombre,
-          edad: suEdad.toString(),
-          id: widget.candidatoId,
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatDetalleScreen(
+            nombre: suNombre,
+            edad: widget.candidatoEdad.toString(),
+            id: threadId,
+            foto: widget.candidatoFotoAsset,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Chat creado: $miNombre ↔ $suNombre'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+      // ✅ DEBUG REAL para que nos diga exactamente qué negó Firestore
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ No se pudo crear el chat: $e')),
+      );
+    }
   }
 
   void _irACitas() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => const CitasScreen(showBottomNav: true),
-      ),
-    );
+    HomeShell.go(context, index: 1); // 🔴 CHINCHE SHELL NAV 1
   }
 
   @override
@@ -262,15 +389,8 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final String miNombre = _primerNombre(profile.nombre);
     final int miEdad = int.tryParse(profile.edad.trim()) ?? 0;
 
-    final String? miFoto = profile.fotosCargadas.isNotEmpty
-        ? profile.fotosCargadas.first
-        : null;
-
-    final bool miFotoIsFile = (miFoto ?? '').startsWith('/') ||
-        (miFoto ?? '').contains(r':\') ||
-        (miFoto ?? '').startsWith('file:');
-
-    final String miFotoFallback = 'assets/images/perfil1.jpg';
+    const String miFotoFallback = 'assets/images/perfil1.jpg';
+    final String miFoto = _pickMyPhoto(profile);
 
     final String suNombre = _primerNombre(widget.candidatoNombre);
     final int suEdad = widget.candidatoEdad;
@@ -282,8 +402,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
-
-          // Confeti
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedBuilder(
@@ -299,21 +417,17 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
               ),
             ),
           ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: sidePadding),
               child: Column(
                 children: [
                   const SizedBox(height: topLogoSpace),
-
                   SizedBox(
                     height: logoHeight,
                     child: Image.asset('assets/images/logomatchyplano.png'),
                   ),
-
                   const SizedBox(height: titleTopSpace),
-
                   Align(
                     alignment: Alignment.centerLeft,
                     child: IconButton(
@@ -321,11 +435,9 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       icon: const Icon(Icons.arrow_back, color: Colors.white),
                     ),
                   ),
-
-                  // ✅ TÍTULO: 2 RENGLONES + PADDING LATERAL
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: titleSidePadding, // 🔴 CHINCHE
+                      horizontal: titleSidePadding,
                     ),
                     child: AnimatedBuilder(
                       animation: _titleCtrl,
@@ -361,9 +473,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       },
                     ),
                   ),
-
                   const SizedBox(height: cardsTopSpace),
-
                   SizedBox(
                     height: cardsHeight,
                     child: LayoutBuilder(
@@ -416,11 +526,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                                         width: cardW,
                                         height: cardsHeight,
                                         label: 'TÚ',
-                                        image: _buildMiFotoWidget(
-                                          miFoto,
-                                          miFotoIsFile,
-                                          miFotoFallback,
-                                        ),
+                                        image: _imageSmart(miFoto, miFotoFallback),
                                         radius: cardRadius,
                                         border: cardBorder,
                                         glowColor: matchyLilac,
@@ -457,9 +563,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       },
                     ),
                   ),
-
                   const SizedBox(height: namesTopSpace),
-
                   Row(
                     children: [
                       Expanded(child: _NameLine(name: suNombre, age: suEdad)),
@@ -467,10 +571,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       Expanded(child: _NameLine(name: miNombre, age: miEdad)),
                     ],
                   ),
-
                   const SizedBox(height: midGapAfterNames),
-
-                  // Botón chat
                   AnimatedBuilder(
                     animation: _buttonPulseCtrl,
                     builder: (_, __) {
@@ -506,10 +607,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       );
                     },
                   ),
-
                   const SizedBox(height: 10),
-
-                  // ✅ NUEVO BOTÓN ABAJO: IR A CITAS (no automático)
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -530,9 +628,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                           : Text(
-                        _guardadoOk
-                            ? 'IR A CITAS'
-                            : 'GUARDANDO CITA...',
+                        _guardadoOk ? 'IR A CITAS' : 'GUARDANDO CITA...',
                         style: const TextStyle(
                           color: Colors.black,
                           fontSize: 13.0,
@@ -543,9 +639,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 14.0),
-
                   Text(
                     'BUENA SUERTE CON TU CITA',
                     textAlign: TextAlign.center,
@@ -564,9 +658,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       ],
                     ),
                   ),
-
                   const SizedBox(height: noteTopGap),
-
                   Text(
                     'RECUERDA EN MATCHY EL QUE INVITA PAGA.\nBUENA SUERTE EN TU CITA.',
                     textAlign: TextAlign.center,
@@ -586,7 +678,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       ],
                     ),
                   ),
-
                   const Spacer(),
                 ],
               ),
@@ -596,38 +687,11 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       ),
     );
   }
-
-  Widget _buildMiFotoWidget(String? path, bool isFile, String fallback) {
-    if (path != null && path.trim().isNotEmpty && isFile) {
-      return Image.file(
-        File(path),
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-        errorBuilder: (_, __, ___) => Image.asset(
-          fallback,
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-        ),
-      );
-    }
-
-    return Image.asset(
-      (path == null || path.trim().isEmpty) ? fallback : path,
-      fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
-      errorBuilder: (_, __, ___) => Image.asset(
-        fallback,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-      ),
-    );
-  }
 }
 
 // ============================================================
 // 🔹 TÍTULO CON GRADIENTE ANIMADO
 // ============================================================
-
 class _AnimatedGradientTitle extends StatelessWidget {
   final String text;
   final double fontSize;
@@ -647,7 +711,7 @@ class _AnimatedGradientTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dx = (t * 2.0 - 1.0) * 0.9; // 🔴 CHINCHE TITLE GRAD 1
+    final dx = (t * 2.0 - 1.0) * 0.9;
 
     return ShaderMask(
       shaderCallback: (rect) {
@@ -687,7 +751,6 @@ class _AnimatedGradientTitle extends StatelessWidget {
 // ============================================================
 // 🔹 TARJETA FOTO
 // ============================================================
-
 class _MatchPhotoCard extends StatelessWidget {
   final double width;
   final double height;
@@ -709,11 +772,11 @@ class _MatchPhotoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double glowBlur = 18.0; // 🔴
-    const double glowOffsetY = 10.0; // 🔴
-    const double darkBlur = 14.0; // 🔴
-    const double darkOffsetY = 10.0; // 🔴
-    const double overlayHeight = 95.0; // 🔴
+    const double glowBlur = 18.0;
+    const double glowOffsetY = 10.0;
+    const double darkBlur = 14.0;
+    const double darkOffsetY = 10.0;
+    const double overlayHeight = 95.0;
 
     return Container(
       width: width,
@@ -800,7 +863,6 @@ class _MatchPhotoCard extends StatelessWidget {
 // ============================================================
 // 🔹 NOMBRE + EDAD
 // ============================================================
-
 class _NameLine extends StatelessWidget {
   final String name;
   final int age;
@@ -850,7 +912,6 @@ class _NameLine extends StatelessWidget {
 // ============================================================
 // 🎉 CONFETI
 // ============================================================
-
 class _ConfettiPiece {
   double x;
   double y;
