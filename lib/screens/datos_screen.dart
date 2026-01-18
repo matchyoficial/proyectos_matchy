@@ -13,6 +13,14 @@
 //    - Prioriza photoUrls (cross-device) para render en la UI
 //    - Al guardar, convierte el draft local a URLs para que no queden File paths rotos
 //    - En Firestore, no guarda photosLocalPaths con rutas reales (solo assets/urls)
+//
+// ✅ NUEVO (VITAL PARA MATCH REAL):
+//    - Preferencia de citas: "¿Prefieres tener citas con?" (Hombres/Mujeres/Ambos)
+//    - Se guarda en Firestore: users/{uid}.preferenciaCitas
+//
+// ✅ NUEVO (VITAL):
+//    - Género obligatorio (Hombre/Mujer/Otro/Prefiero no decirlo)
+//    - Se guarda en Firestore: users/{uid}.genero
 
 import 'dart:io';
 
@@ -57,6 +65,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   // 🔴 CHINCHE FOTO PICKER 1 — instancia picker
   final ImagePicker _picker = ImagePicker();
 
+  // ✅ Preferencia citas (single-choice)
+  // 🔴 CHINCHE PREFCITAS 1 — default seguro
+  String _preferenciaCitas = 'Ambos'; // 'Hombres' | 'Mujeres' | 'Ambos'
+
+  // ✅ NUEVO: género obligatorio (canónico del provider)
+  // 🔴 CHINCHE GENERO UI 1 — default vacío (obligatorio)
+  String _genero = ''; // 'hombre' | 'mujer' | 'otro' | 'no_decir'
+
   // 🔹 Fotos demo (assets)
   final List<String> fotosDisponibles = const [
     'assets/images/perfil1.jpg',
@@ -84,6 +100,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _detalleCtrl = TextEditingController(text: s.detalle);
     _estaturaCtrl = TextEditingController(text: s.estatura);
 
+    // ✅ Lee preferencia/género desde provider (ya existen de verdad)
+    _preferenciaCitas = s.preferenciaCitas.trim().isEmpty ? 'Ambos' : s.preferenciaCitas.trim();
+    _genero = s.genero.trim();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(profileFormProvider.notifier).loadDraft();
 
@@ -94,6 +114,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       _biografiaCtrl.text = loaded.biografia;
       _detalleCtrl.text = loaded.detalle;
       _estaturaCtrl.text = loaded.estatura;
+
+      if (!mounted) return;
+      setState(() {
+        _preferenciaCitas = loaded.preferenciaCitas.trim().isEmpty ? 'Ambos' : loaded.preferenciaCitas.trim();
+        _genero = loaded.genero.trim();
+      });
     });
 
     _nombreCtrl.addListener(() {
@@ -135,18 +161,17 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     return edadInt != null && edadInt >= 18 && edadInt <= 99;
   }
 
-  bool _paisOk(ProfileFormState s) =>
-      (s.paisSeleccionado ?? '').trim().isNotEmpty;
-  bool _ciudadOk(ProfileFormState s) =>
-      (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+  bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
+  bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+
+  // ✅ Género obligatorio (cualquier opción, incluso no_decir)
+  bool _generoOk() => _genero.trim().isNotEmpty;
 
   // 🔴 FIX: fotos ok debe considerar URLs cross-device también
-  bool _fotosOk(ProfileFormState s) =>
-      s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
+  bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
   bool _isAssetPath(String v) => v.startsWith('assets/');
-  bool _isNetworkUrl(String v) =>
-      v.startsWith('http://') || v.startsWith('https://');
+  bool _isNetworkUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
   bool _isGsUrl(String v) => v.startsWith('gs://');
 
   bool _fileExists(String path) {
@@ -174,7 +199,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         out.add(v);
       } else if (_isGsUrl(v)) {
         // gs:// no lo renderizamos aquí, debe ser https
-        // lo ignoramos para no romper UI
       } else {
         // File path
         if (_fileExists(v)) out.add(v);
@@ -184,15 +208,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   }
 
   // ===================== FIREBASE STORAGE UPLOAD =====================
-  // 🔴 sube fotos reales y devuelve URLs
   Future<List<String>> _uploadRealPhotosToStorage({
     required String uid,
     required List<String> fotosCargadas,
   }) async {
     final urls = <String>[];
 
-    // Solo subimos rutas reales (File). Assets demo NO se suben aquí.
-    // Si ya es URL, NO intentamos subirla como File()
     final filesToUpload = fotosCargadas
         .where((p) =>
     p.trim().isNotEmpty &&
@@ -207,13 +228,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     for (var i = 0; i < filesToUpload.length; i++) {
       final path = filesToUpload[i];
-
       final file = File(path);
 
-      // Si el archivo no existe, lo saltamos (evita crash)
       if (!file.existsSync()) continue;
 
-      // Nombre único y estable por guardado
       final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
       final ref = storage.ref().child('users/$uid/photos/$fileName');
 
@@ -239,19 +257,15 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     final int? edadInt = int.tryParse(s.edad.trim());
 
-    // ✅ Base: lo que el usuario “ve” en el momento (puede contener files/urls/assets)
     final List<String> localRaw = List<String>.from(s.fotosCargadas);
 
-    // ✅ Conserva URLs que ya existían (si las hubiera en fotosCargadas)
     final existingUrls = localRaw.where((p) => _isNetworkUrl(p.trim())).toList();
 
-    // ✅ Sube solo files reales existentes
     final uploadedUrls = await _uploadRealPhotosToStorage(
       uid: uid,
       fotosCargadas: localRaw,
     );
 
-    // ✅ photoUrls final cross-device
     final List<String> photoUrls = [...existingUrls, ...uploadedUrls]
         .map((e) => e.trim())
         .where((e) => _isNetworkUrl(e))
@@ -259,12 +273,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     final String? profilePhotoUrl = photoUrls.isNotEmpty ? photoUrls.first : null;
 
-    // ✅ Assets (demo) sí se pueden guardar como referencia (no se rompen)
-    final List<String> photosAssets =
-    localRaw.where((p) => _isAssetPath(p.trim())).toList();
+    final List<String> photosAssets = localRaw.where((p) => _isAssetPath(p.trim())).toList();
 
-    // 🔴 FIX: NO guardamos paths reales muertos en Firestore
-    // Solo guardamos assets/urls (si quieres debug, aquí no sirve el file path)
     final List<String> photosLocalPathsSafe = [
       ...photosAssets,
       ...existingUrls,
@@ -273,9 +283,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final payload = <String, dynamic>{
       'uid': uid,
       'email': user.email,
-      'provider': user.providerData.isNotEmpty
-          ? user.providerData.first.providerId
-          : null,
+      'provider': user.providerData.isNotEmpty ? user.providerData.first.providerId : null,
 
       'nombre': s.nombre.trim(),
       'edad': edadInt,
@@ -286,22 +294,25 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'pais': (s.paisSeleccionado ?? '').trim(),
       'ciudad': (s.ciudadSeleccionada ?? '').trim(),
 
+      // ✅ NUEVO: género obligatorio
+      // 🔴 CHINCHE GENERO FIRESTORE 1 — field estable
+      'genero': _genero,
+
+      // ✅ Preferencia global citas
+      // 🔴 CHINCHE PREFCITAS FIRESTORE 1 — field estable
+      'preferenciaCitas': _preferenciaCitas,
+
       'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
       'buscoSeleccion': List<String>.from(s.buscoSeleccion),
       'interesesSeleccion': List<String>.from(s.interesesSeleccion),
 
-      // ✅ Lo importante
       'photoUrls': photoUrls,
       'profilePhotoUrl': profilePhotoUrl,
 
-      // ✅ Extras seguros (no rompen al limpiar cache)
       'photosAssets': photosAssets,
       'photosLocalPaths': photosLocalPathsSafe,
-      'profilePhotoLocalPath': photosLocalPathsSafe.isNotEmpty
-          ? photosLocalPathsSafe.first
-          : null,
+      'profilePhotoLocalPath': photosLocalPathsSafe.isNotEmpty ? photosLocalPathsSafe.first : null,
 
-      // ✅ flags
       'onboarding_completed': true,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastProfileUpdateAt': FieldValue.serverTimestamp(),
@@ -314,7 +325,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     await docRef.set(payload, SetOptions(merge: true));
 
-    // ✅ devolvemos photoUrls para re-escribir draft local como URLs
     return photoUrls;
   }
 
@@ -357,8 +367,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                   itemBuilder: (_, i) {
                     final item = _estaturas[i];
                     return ListTile(
-                      title:
-                      Text(item, style: const TextStyle(color: Colors.white)),
+                      title: Text(item, style: const TextStyle(color: Colors.white)),
                       onTap: () => Navigator.pop(context, item),
                     );
                   },
@@ -416,8 +425,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               const SizedBox(height: 12),
               ListTile(
                 leading: const Icon(Icons.photo_library, color: Colors.white),
-                title:
-                const Text('Galería', style: TextStyle(color: Colors.white)),
+                title: const Text('Galería', style: TextStyle(color: Colors.white)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _pickFrom(ImageSource.gallery, ctrl);
@@ -425,8 +433,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.photo_camera, color: Colors.white),
-                title:
-                const Text('Cámara', style: TextStyle(color: Colors.white)),
+                title: const Text('Cámara', style: TextStyle(color: Colors.white)),
                 onTap: () async {
                   Navigator.pop(context);
                   await _pickFrom(ImageSource.camera, ctrl);
@@ -434,8 +441,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.auto_awesome, color: Colors.white70),
-                title:
-                const Text('Demo (assets)', style: TextStyle(color: Colors.white70)),
+                title: const Text('Demo (assets)', style: TextStyle(color: Colors.white70)),
                 onTap: () {
                   Navigator.pop(context);
                   final nextIndex = display.length;
@@ -530,8 +536,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
             return DragTarget<int>(
               onWillAccept: (from) => from != null && from != index,
               onAccept: (from) {
-                // 🔴 CHINCHE: reorder lo hacemos sobre fotosCargadas (fuente del UI)
-                // Si display son URLs, guardamos URLs en fotosCargadas para persistir.
                 final current = List<String>.from(displayFotos);
                 if (from < 0 || from >= current.length) return;
                 if (index < 0 || index >= current.length) return;
@@ -592,6 +596,18 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     );
   }
 
+  // ===================== PREF CITAS (UI + Provider) =====================
+  void _setPreferenciaCitas(ProfileFormController ctrl, String v) {
+    setState(() => _preferenciaCitas = v);
+    ctrl.setPreferenciaCitas(v);
+  }
+
+  // ===================== GENERO (UI + Provider) =====================
+  void _setGenero(ProfileFormController ctrl, String v) {
+    setState(() => _genero = v);
+    ctrl.setGenero(v);
+  }
+
   @override
   Widget build(BuildContext context) {
     const double espacioBarraLogo = 35;
@@ -629,9 +645,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final String? ciudadSafe =
     ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
 
+    // ✅ OJO: removimos género de "Sobre mí" para que NO duplique ni confunda.
     const List<List<String>> sobreMiOpciones = [
-      ['🚹 Hombre', '🚺 Mujer'],
-      ['🌈 Otro género', '🤫 Prefiero no decirlo'],
       ['💬 Soltero', '❤️ En una relación'],
       ['👶 Con hijo', '🙅‍♂️ Sin hijo'],
       ['🚬 Fumo', '🚭 No fumo'],
@@ -668,6 +683,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     final bool puedeContinuar = ctrl.puedeGuardar && ctrl.isDirty;
     final bool showErrors = _mostrarErrores;
+
+    final bool showGeneroError = showErrors && !_generoOk();
 
     return Scaffold(
       body: Stack(
@@ -754,8 +771,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           child: _buildTextField(
                             label: 'Estatura (selección)',
                             controller: _estaturaCtrl,
-                            suffixIcon:
-                            const Icon(Icons.arrow_drop_down, color: Colors.white),
+                            suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white),
                           ),
                         ),
                       ),
@@ -773,13 +789,76 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         onCiudadChanged: (value) => ctrl.setCiudad(value),
                       ),
 
+                      // =========================================================
+                      // ✅ NUEVO: Género obligatorio (SECCIÓN REAL)
+                      // =========================================================
+                      const SizedBox(height: 18),
+
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Género *',
+                          style: textTheme.titleMedium?.copyWith(
+                            color: showGeneroError ? Colors.redAccent : Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      _GeneroSelector(
+                        value: _genero,
+                        showError: showGeneroError,
+                        onChanged: _saving ? null : (v) => _setGenero(ctrl, v),
+                      ),
+
+                      if (showGeneroError) ...[
+                        const SizedBox(height: 6),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Selecciona tu género para continuar.',
+                            style: TextStyle(
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.none,
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      // =========================================================
+                      // ✅ Preferencia de citas (global)
+                      // =========================================================
+                      const SizedBox(height: 14),
+
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '¿Prefieres tener citas con?',
+                          style: textTheme.titleMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            decoration: TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      _PreferenciaCitasSelector(
+                        value: _preferenciaCitas,
+                        onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v),
+                      ),
+
                       const SizedBox(height: 24),
 
                       Text(
                         'Agrega tus fotos (mínimo 1, máximo 5) *',
                         style: TextStyle(
-                          color:
-                          showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white,
+                          color: showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white,
                           fontSize: 16,
                           decoration: TextDecoration.none,
                           fontWeight: showErrors && !_fotosOk(state)
@@ -800,8 +879,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           ),
                           child: const Text(
                             'CARGAR FOTO',
-                            style:
-                            TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
@@ -835,8 +913,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                                     child: GestureDetector(
                                       onTap: _saving ? null : () => ctrl.toggleSobreMi(opcion),
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 12, horizontal: 8),
+                                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                                         decoration: BoxDecoration(
                                           color: seleccionado
                                               ? const Color(0xFFB3D9FF)
@@ -894,8 +971,9 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
                             try {
                               // 1) Sync Firestore (+ Storage) y obtenemos photoUrls
-                              final urls =
-                              await _syncProfileToFirestore(ref.read(profileFormProvider));
+                              final urls = await _syncProfileToFirestore(
+                                ref.read(profileFormProvider),
+                              );
 
                               // 2) Reescribe el draft local a URLs (NO paths muertos)
                               if (urls.isNotEmpty) {
@@ -922,9 +1000,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           }
                               : () => setState(() => _mostrarErrores = true)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: puedeContinuar
-                                ? const Color(0xFFB3D9FF)
-                                : const Color(0x66B3D9FF),
+                            backgroundColor:
+                            puedeContinuar ? const Color(0xFFB3D9FF) : const Color(0x66B3D9FF),
                             shape: const StadiumBorder(),
                           ),
                           child: _saving
@@ -978,8 +1055,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           fontWeight: showError ? FontWeight.bold : FontWeight.normal,
         ),
         errorText: showError ? (errorText ?? 'Campo obligatorio') : null,
-        errorStyle:
-        const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+        errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
         suffixIcon: suffixIcon,
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide(color: showError ? Colors.redAccent : Colors.white),
@@ -1024,14 +1100,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               borderSide: BorderSide(color: Color(0xFFB3D9FF)),
             ),
             errorText: showPaisError ? 'Campo obligatorio' : null,
-            errorStyle:
-            const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
           ),
           iconEnabledColor: Colors.white,
           style: const TextStyle(color: Colors.white),
-          items: paises
-              .map((p) => DropdownMenuItem<String>(value: p, child: Text(p)))
-              .toList(),
+          items: paises.map((p) => DropdownMenuItem<String>(value: p, child: Text(p))).toList(),
           onChanged: onPaisChanged,
         ),
         const SizedBox(height: 12),
@@ -1055,17 +1128,116 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
               borderSide: BorderSide(color: Color(0xFFB3D9FF)),
             ),
             errorText: showCiudadError ? 'Campo obligatorio' : null,
-            errorStyle:
-            const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
           ),
           iconEnabledColor: Colors.white,
           style: const TextStyle(color: Colors.white),
-          items: ciudades
-              .map((c) => DropdownMenuItem<String>(value: c, child: Text(c)))
-              .toList(),
+          items: ciudades.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))).toList(),
           onChanged: ciudades.isEmpty ? null : onCiudadChanged,
         ),
       ],
+    );
+  }
+}
+
+// =====================================================
+// ✅ NUEVO: Selector “Género” obligatorio (misma estética de pills)
+// =====================================================
+class _GeneroSelector extends StatelessWidget {
+  final String value;
+  final ValueChanged<String>? onChanged;
+  final bool showError;
+
+  const _GeneroSelector({
+    required this.value,
+    required this.onChanged,
+    required this.showError,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final opciones = <Map<String, String>>[
+      {'label': 'Hombre', 'value': kGeneroHombre},
+      {'label': 'Mujer', 'value': kGeneroMujer},
+      {'label': 'Otro género', 'value': kGeneroOtro},
+      {'label': 'Prefiero no decirlo', 'value': kGeneroNoDecir},
+    ];
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: opciones.map((op) {
+        final bool selected = op['value'] == value;
+
+        return GestureDetector(
+          onTap: onChanged == null ? null : () => onChanged!(op['value']!),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
+              borderRadius: BorderRadius.circular(50),
+              border: showError && !selected && value.trim().isEmpty
+                  ? Border.all(color: Colors.redAccent, width: 1.2)
+                  : null,
+            ),
+            child: Text(
+              op['label']!,
+              style: TextStyle(
+                color: selected ? Colors.black : Colors.white,
+                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// =====================================================
+// ✅ Selector “Preferencia de citas”
+// =====================================================
+class _PreferenciaCitasSelector extends StatelessWidget {
+  final String value;
+  final ValueChanged<String>? onChanged;
+
+  const _PreferenciaCitasSelector({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const opciones = ['Hombres', 'Mujeres', 'Ambos'];
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: opciones.map((op) {
+        final bool selected = op == value;
+
+        return GestureDetector(
+          onTap: onChanged == null ? null : () => onChanged!(op),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
+              borderRadius: BorderRadius.circular(50),
+            ),
+            child: Text(
+              op,
+              style: TextStyle(
+                color: selected ? Colors.black : Colors.white,
+                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
@@ -1089,8 +1261,7 @@ class _FotoThumb extends StatelessWidget {
   });
 
   bool _isAssetPath(String v) => v.startsWith('assets/');
-  bool _isNetworkUrl(String v) =>
-      v.startsWith('http://') || v.startsWith('https://');
+  bool _isNetworkUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
 
   bool _fileExists(String path) {
     try {
@@ -1114,11 +1285,9 @@ class _FotoThumb extends StatelessWidget {
         v,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
-        errorBuilder: (_, __, ___) =>
-        const Icon(Icons.broken_image, color: Colors.white70),
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white70),
       );
     } else {
-      // File path (puede estar muerto si limpian caché)
       if (!_fileExists(v)) {
         img = const Icon(Icons.broken_image, color: Colors.white70);
       } else {
@@ -1126,8 +1295,7 @@ class _FotoThumb extends StatelessWidget {
           File(v),
           fit: BoxFit.cover,
           alignment: Alignment.topCenter,
-          errorBuilder: (_, __, ___) =>
-          const Icon(Icons.broken_image, color: Colors.white70),
+          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white70),
         );
       }
     }
@@ -1236,9 +1404,7 @@ class _SeccionBotonesChipsRiverpod extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                           decoration: BoxDecoration(
-                            color: seleccionado
-                                ? const Color(0xFFB3D9FF)
-                                : const Color(0x33FFFFFF),
+                            color: seleccionado ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
                             borderRadius: BorderRadius.circular(50),
                           ),
                           child: Center(

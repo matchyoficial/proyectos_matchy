@@ -22,6 +22,10 @@
 //    - Siempre sincronizamos photoUrls/profilePhotoUrl con fotosCargadas
 //    - Si Firestore tiene photoUrls, también los copiamos a fotosCargadas
 //      para que el UI NO dependa de paths locales muertos.
+//
+// ✅ NUEVO (VITAL MATCH REAL):
+//    - genero obligatorio: 'hombre' | 'mujer' | 'otro' | 'no_decir'
+//    - preferenciaCitas: 'Hombres' | 'Mujeres' | 'Ambos'
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -50,6 +54,12 @@ const int kMaxFotos = 5;
 // 🔴 CHINCHE FIREBASE PROVIDER 2 — colección users
 const String kUsersCollection = 'users';
 
+// 🔴 CHINCHE GENERO 1 — valores canónicos (NO cambiar sin migración)
+const String kGeneroHombre = 'hombre';
+const String kGeneroMujer = 'mujer';
+const String kGeneroOtro = 'otro';
+const String kGeneroNoDecir = 'no_decir';
+
 @immutable
 class ProfileFormState {
   // Textos
@@ -63,6 +73,12 @@ class ProfileFormState {
   // País / ciudad
   final String? paisSeleccionado;
   final String? ciudadSeleccionada;
+
+  // ✅ NUEVO: Género obligatorio (canónico)
+  final String genero; // '' si no seleccionado
+
+  // ✅ NUEVO: Preferencia global de citas
+  final String preferenciaCitas; // 'Hombres' | 'Mujeres' | 'Ambos'
 
   // Chips
   final List<String> sobreMiSeleccion;
@@ -93,6 +109,8 @@ class ProfileFormState {
     this.estatura = '',
     this.paisSeleccionado,
     this.ciudadSeleccionada,
+    this.genero = '',
+    this.preferenciaCitas = 'Ambos',
     this.sobreMiSeleccion = const [],
     this.buscoSeleccion = const [],
     this.interesesSeleccion = const [],
@@ -114,6 +132,8 @@ class ProfileFormState {
     String? estatura,
     String? paisSeleccionado,
     String? ciudadSeleccionada,
+    String? genero,
+    String? preferenciaCitas,
     List<String>? sobreMiSeleccion,
     List<String>? buscoSeleccion,
     List<String>? interesesSeleccion,
@@ -134,6 +154,8 @@ class ProfileFormState {
       estatura: estatura ?? this.estatura,
       paisSeleccionado: paisSeleccionado ?? this.paisSeleccionado,
       ciudadSeleccionada: ciudadSeleccionada ?? this.ciudadSeleccionada,
+      genero: genero ?? this.genero,
+      preferenciaCitas: preferenciaCitas ?? this.preferenciaCitas,
       sobreMiSeleccion: sobreMiSeleccion ?? this.sobreMiSeleccion,
       buscoSeleccion: buscoSeleccion ?? this.buscoSeleccion,
       interesesSeleccion: interesesSeleccion ?? this.interesesSeleccion,
@@ -156,6 +178,8 @@ class ProfileFormState {
     'estatura': estatura,
     'paisSeleccionado': paisSeleccionado,
     'ciudadSeleccionada': ciudadSeleccionada,
+    'genero': genero,
+    'preferenciaCitas': preferenciaCitas,
     'sobreMiSeleccion': sobreMiSeleccion,
     'buscoSeleccion': buscoSeleccion,
     'interesesSeleccion': interesesSeleccion,
@@ -181,6 +205,9 @@ class ProfileFormState {
     final profileUrlRaw = (json['profilePhotoUrl'] ?? '').toString().trim();
     final profileUrl = profileUrlRaw.isEmpty ? null : profileUrlRaw;
 
+    final generoRaw = (json['genero'] ?? '').toString().trim();
+    final prefRaw = (json['preferenciaCitas'] ?? 'Ambos').toString().trim();
+
     return ProfileFormState(
       nombre: (json['nombre'] ?? '').toString(),
       edad: (json['edad'] ?? '').toString(),
@@ -190,6 +217,8 @@ class ProfileFormState {
       estatura: (json['estatura'] ?? '').toString(),
       paisSeleccionado: json['paisSeleccionado'] as String?,
       ciudadSeleccionada: json['ciudadSeleccionada'] as String?,
+      genero: generoRaw,
+      preferenciaCitas: prefRaw.isEmpty ? 'Ambos' : prefRaw,
       sobreMiSeleccion: safeList(json['sobreMiSeleccion']),
       buscoSeleccion: safeList(json['buscoSeleccion']),
       interesesSeleccion: safeList(json['interesesSeleccion']),
@@ -301,7 +330,17 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     );
   }
 
-  void setCiudad(String? ciudad) => state = state.copyWith(ciudadSeleccionada: ciudad, error: null);
+  void setCiudad(String? ciudad) =>
+      state = state.copyWith(ciudadSeleccionada: ciudad, error: null);
+
+  // ===========================================================
+  // ✅ NUEVO: género obligatorio + preferencia citas
+  // ===========================================================
+
+  void setGenero(String v) => state = state.copyWith(genero: v.trim(), error: null);
+
+  void setPreferenciaCitas(String v) =>
+      state = state.copyWith(preferenciaCitas: v.trim().isEmpty ? 'Ambos' : v.trim(), error: null);
 
   List<String> _toggleInList(List<String> list, String item) {
     final copy = List<String>.from(list);
@@ -382,7 +421,10 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     // ✅ Fotos ok con URLs o fotosCargadas
     final fotosOk = state.photoUrls.isNotEmpty || state.fotosCargadas.isNotEmpty;
 
-    return nombreOk && edadOk && paisOk && ciudadOk && fotosOk;
+    // ✅ NUEVO: género obligatorio (cualquier opción vale, incluso no_decir)
+    final generoOk = state.genero.trim().isNotEmpty;
+
+    return nombreOk && edadOk && paisOk && ciudadOk && fotosOk && generoOk;
   }
 
   bool get isDirty {
@@ -417,11 +459,8 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
 
       state = loaded.copyWith(
         fotosCargadas: mergedFotos,
-        photoUrls: urls.isNotEmpty
-            ? urls
-            : mergedFotos.where((e) => _isHttpUrl(e)).toList(),
-        profilePhotoUrl: loaded.profilePhotoUrl ??
-            (urls.isNotEmpty ? urls.first : null),
+        photoUrls: urls.isNotEmpty ? urls : mergedFotos.where((e) => _isHttpUrl(e)).toList(),
+        profilePhotoUrl: loaded.profilePhotoUrl ?? (urls.isNotEmpty ? urls.first : null),
         isLoading: false,
         lastSavedJson: raw,
         hasSavedOnce: true,
@@ -533,6 +572,11 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
       'estatura': state.estatura.trim(),
       'pais': (state.paisSeleccionado ?? '').trim(),
       'ciudad': (state.ciudadSeleccionada ?? '').trim(),
+
+      // ✅ NUEVO: genero + preferenciaCitas
+      'genero': state.genero.trim(),
+      'preferenciaCitas': state.preferenciaCitas.trim().isEmpty ? 'Ambos' : state.preferenciaCitas.trim(),
+
       'sobreMiSeleccion': state.sobreMiSeleccion,
       'buscoSeleccion': state.buscoSeleccion,
       'interesesSeleccion': state.interesesSeleccion,
@@ -543,8 +587,7 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
 
       // ✅ cross-device
       'photoUrls': urls,
-      'profilePhotoUrl': state.profilePhotoUrl ??
-          (urls.isNotEmpty ? urls.first : null),
+      'profilePhotoUrl': state.profilePhotoUrl ?? (urls.isNotEmpty ? urls.first : null),
 
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -624,6 +667,9 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
       final pais = s(data['pais']).trim().isEmpty ? null : s(data['pais']).trim();
       final ciudad = s(data['ciudad']).trim().isEmpty ? null : s(data['ciudad']).trim();
 
+      final genero = s(data['genero']).trim();
+      final prefCitas = s(data['preferenciaCitas']).trim().isEmpty ? 'Ambos' : s(data['preferenciaCitas']).trim();
+
       // ✅ PRIORIDAD: si hay photoUrls, también las copiamos a fotosCargadas para que el UI viva
       final fotosParaUI = normalizedPhotoUrls.isNotEmpty ? normalizedPhotoUrls : fotosLocalSafe;
 
@@ -636,13 +682,17 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
         estatura: s(data['estatura']),
         paisSeleccionado: pais,
         ciudadSeleccionada: ciudad,
+
+        genero: genero,
+        preferenciaCitas: prefCitas,
+
         sobreMiSeleccion: listStr(data['sobreMiSeleccion']),
         buscoSeleccion: listStr(data['buscoSeleccion']),
         interesesSeleccion: listStr(data['interesesSeleccion']),
         fotosCargadas: fotosParaUI,
         photoUrls: normalizedPhotoUrls,
-        profilePhotoUrl: normalizedProfileUrl ??
-            (normalizedPhotoUrls.isNotEmpty ? normalizedPhotoUrls.first : null),
+        profilePhotoUrl:
+        normalizedProfileUrl ?? (normalizedPhotoUrls.isNotEmpty ? normalizedPhotoUrls.first : null),
       );
 
       // Guardamos draft local (fallback)

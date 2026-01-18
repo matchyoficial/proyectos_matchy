@@ -1,12 +1,10 @@
 // 📂 lib/screens/match_screen.dart
 // ✅ MATCH SCREEN — “TENEMOS UN MATCHY”
-// ✅ FIX: ChatActions vive aquí (no depende de chat_screen.dart)
-// ✅ FIX PRO: upsertThread (multiusuario) + threadId determinístico uidA__uidB
-// ✅ FIX PRO: Abre ChatDetalle con threadId real
-// ✅ FIX: ChatDetalleScreen requiere foto
-// ✅ FIX HOME_SHELL: IR A CITAS vuelve al HomeShell (mantiene BottomNav)
-// ✅ FIX FOTO "TÚ": ahora usa URL (Storage) > photoUrls > File local > fallback
-// ✅ DEBUG REAL: muestra el error exacto si Firestore niega
+// ✅ FIX CRÍTICO: elimina ChatActions duplicado y usa SOLO lib/services/chat_actions.dart
+// ✅ FIX CRÍTICO: evita crear threads con candidatoId tipo alias (ej: "chica4")
+// ✅ Abre ChatDetalle con threadId real
+// ✅ HOME_SHELL: IR A CITAS vuelve al HomeShell (mantiene BottomNav)
+// ✅ FOTO "TÚ": URL (Storage) > photoUrls > File local > fallback
 
 import 'dart:async';
 import 'dart:io';
@@ -16,92 +14,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart'; // ✅ para mantener barra
 
-// ============================================================
-// ✅ CHAT ACTIONS (AQUÍ MISMO) — para no depender de chat_screen.dart
-// ============================================================
-
-/// 🔴 CHINCHE CHAT ACTIONS 1 — nombre colección threads
-const String kChatThreadsCollection = 'chat_threads';
-
-/// 🔴 CHINCHE CHAT ACTIONS 2 — fields thread
-const String kThreadParticipantUids = 'participantUids';
-const String kThreadMeta = 'meta';
-const String kThreadCreatedAt = 'createdAt';
-const String kThreadUpdatedAt = 'updatedAt';
-
-class ChatActions {
-  /// Construye ID determinístico: uidA__uidB (ordenado)
-  static String buildThreadId(String uidA, String uidB) {
-    final a = uidA.trim();
-    final b = uidB.trim();
-    if (a.isEmpty || b.isEmpty) return '';
-    final pair = [a, b]..sort();
-    return '${pair[0]}__${pair[1]}';
-  }
-
-  /// ✅ Crea/actualiza el thread y guarda meta para ambos usuarios.
-  /// Retorna threadId real.
-  static Future<String> upsertThread({
-    required String peerUid,
-    required String peerNombre,
-    required int peerEdad,
-    required String peerFoto,
-    required String myNombre,
-    required int myEdad,
-    required String myFoto,
-  }) async {
-    final me = FirebaseAuth.instance.currentUser;
-    if (me == null) {
-      throw Exception('No hay sesión (FirebaseAuth.currentUser es null)');
-    }
-
-    final myUid = me.uid;
-    final threadId = buildThreadId(myUid, peerUid);
-
-    if (threadId.isEmpty) {
-      throw Exception('threadId inválido (uids vacíos)');
-    }
-
-    final ref = FirebaseFirestore.instance
-        .collection(kChatThreadsCollection)
-        .doc(threadId);
-
-    final snap = await ref.get();
-    final now = FieldValue.serverTimestamp();
-
-    final data = <String, dynamic>{
-      kThreadParticipantUids: [myUid, peerUid],
-      kThreadMeta: {
-        myUid: {
-          'nombre': myNombre,
-          'edad': myEdad,
-          'foto': myFoto,
-        },
-        peerUid: {
-          'nombre': peerNombre,
-          'edad': peerEdad,
-          'foto': peerFoto,
-        },
-      },
-      kThreadUpdatedAt: now,
-      if (!snap.exists) kThreadCreatedAt: now,
-    };
-
-    // ✅ merge true para que no reviente si ya existía (con reglas ya arregladas)
-    await ref.set(data, SetOptions(merge: true));
-    return threadId;
-  }
-}
+// ✅ ÚNICA fuente de verdad
+import 'package:proyectos_matchy/services/chat_actions.dart';
 
 class MatchScreen extends ConsumerStatefulWidget {
-  final String candidatoId; // 🔴 CHINCHE PRO 1 — ideal: UID real del otro usuario
+  // 🔴 CHINCHE PRO 1 — ESTE ID DEBE SER EL UID REAL DE FIREBASE AUTH DEL OTRO USUARIO
+  // Ejemplo válido: "PnbYWhbjd6PPJiTaSNMdl8qNXC52"
+  // Ejemplo inválido: "chica4"
+  final String candidatoId;
+
   final String candidatoNombre;
   final int candidatoEdad;
   final String candidatoFotoAsset;
@@ -269,6 +196,17 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     return clean.split(RegExp(r'\s+')).first;
   }
 
+  // 🔴 CHINCHE UID 1 — heurística para detectar alias (como "chica4")
+  // UID reales de Firebase Auth suelen ser largos (20+), mixtos alfanuméricos.
+  bool _looksLikeAuthUid(String v) {
+    final s = v.trim();
+    if (s.isEmpty) return false;
+    if (s.contains('__')) return true; // threadId no, pero uid sí no debería contenerlo normalmente
+    // Si es muy corto, huele a alias.
+    if (s.length < 18) return false;
+    return true;
+  }
+
   // 🔴 CHINCHE FOTO 1 — decide “mi foto” (URL > photoUrls > file > fallback)
   String _pickMyPhoto(ProfileFormState profile) {
     final url = (profile.profilePhotoUrl ?? '').trim();
@@ -341,13 +279,22 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final int miEdad = int.tryParse(profile.edad.trim()) ?? 0;
 
     const String miFotoFallback = 'assets/images/perfil1.jpg';
-    final String miFotoSafe = _pickMyPhoto(profile); // ✅ ahora sí
+    final String miFotoSafe = _pickMyPhoto(profile);
 
     final String suNombre = _primerNombre(widget.candidatoNombre);
 
     try {
+      // 🔴 CHINCHE UID 2 — BLOQUEO DE CANDIDATOID INVÁLIDO (ALIAS)
+      // Si aquí entra "chica4", se creará un thread inválido que Valentina NUNCA podrá leer.
+      if (!_looksLikeAuthUid(widget.candidatoId)) {
+        throw Exception(
+          'candidatoId NO es UID real de Firebase Auth: "${widget.candidatoId}". '
+              'Debes pasar el uid real (ej: "PnbYWh...") al MatchScreen.',
+        );
+      }
+
       final String threadId = await ChatActions.upsertThread(
-        peerUid: widget.candidatoId,
+        peerUid: widget.candidatoId.trim(),
         peerNombre: suNombre,
         peerEdad: widget.candidatoEdad,
         peerFoto: widget.candidatoFotoAsset,
@@ -371,7 +318,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (e) {
       if (!mounted) return;
 
-      // ✅ DEBUG REAL para que nos diga exactamente qué negó Firestore
+      // ✅ DEBUG REAL para que nos diga exactamente qué negó / qué dato venía mal
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('❌ No se pudo crear el chat: $e')),
       );

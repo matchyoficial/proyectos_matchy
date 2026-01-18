@@ -1,11 +1,20 @@
 // 📂 lib/screens/creacita_screen.dart
-// ✅ CREA CITA SCREEN (con lógica real)
+// ✅ CREA CITA SCREEN (con lógica REAL)
 // ✅ Recibe LugarData seleccionado y muestra foto/info real
+// ✅ AHORA: crea la cita en Firestore (citas/{citaId}) con ownerUid + status + timestamps
+// ✅ Luego navega a CitaCreadaScreen pasando citaId + todo
+// ✅ Botón de regreso arriba-izquierda (MatchyBackButton)
 // ✅ Botones con texto BLANCO garantizado
-// ✅ Al crear → navega a CitaCreadaScreen pasando todo
 
 import 'package:flutter/material.dart';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:proyectos_matchy/models/lugar_data.dart';
+
+// 🔴 CHINCHE CREA BACK 0 — botón global de regreso
+import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 
 // 🔴 CHINCHE CREA 0 — imports para navegación inferior
 import 'package:proyectos_matchy/screens/panel_screen.dart';
@@ -41,6 +50,16 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
   String _preferencia = 'Hombres';
   String _intencion = 'Conocernos';
 
+  // 🔴 CHINCHE FIRESTORE 1 — guardamos selección real (para timestamp robusto)
+  DateTime? _pickedDate;
+  TimeOfDay? _pickedTime;
+
+  // 🔴 CHINCHE FIRESTORE 2 — loading al crear cita
+  bool _creating = false;
+
+  // 🔴 CHINCHE FIRESTORE 3 — colección de citas
+  static const String _citasCollection = 'citas';
+
   // ===========================================================
   // 🔹 SELECTOR DE FECHA – 100% ESPAÑOL
   // ===========================================================
@@ -50,7 +69,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     final picked = await showDatePicker(
       context: context,
       locale: const Locale('es', 'ES'),
-      initialDate: now,
+      initialDate: _pickedDate ?? now,
       firstDate: now,
       lastDate: DateTime(now.year + 2),
       builder: (context, child) {
@@ -64,6 +83,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
 
     if (picked != null) {
       setState(() {
+        _pickedDate = picked;
         _fecha = '${picked.day}/${picked.month}/${picked.year}';
       });
     }
@@ -77,7 +97,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
 
     final picked = await showTimePicker(
       context: context,
-      initialTime: now,
+      initialTime: _pickedTime ?? now,
       builder: (context, child) {
         return Localizations.override(
           context: context,
@@ -94,8 +114,117 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       final displayHour = hour % 12 == 0 ? 12 : hour % 12;
 
       setState(() {
+        _pickedTime = picked;
         _hora = '$displayHour:$minute $amPm';
       });
+    }
+  }
+
+  // ===========================================================
+  // ✅ FIRESTORE: crear cita online (ownerUid + status + timestamps)
+  // ===========================================================
+  Future<String> _crearCitaEnFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('No hay sesión iniciada (FirebaseAuth.currentUser es null)');
+    }
+
+    if (_pickedDate == null || _pickedTime == null) {
+      throw Exception('Falta fecha u hora');
+    }
+
+    final lugar = widget.lugar;
+
+    // ✅ Timestamp “programado” (útil para orden, conteos, etc.)
+    final scheduledAtLocal = DateTime(
+      _pickedDate!.year,
+      _pickedDate!.month,
+      _pickedDate!.day,
+      _pickedTime!.hour,
+      _pickedTime!.minute,
+    );
+
+    // 🔴 CHINCHE CITA STATUS 1 — estado inicial de la cita (online/publicada)
+    const String statusOnline = 'online';
+
+    final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
+    final nowServer = FieldValue.serverTimestamp();
+
+    // ✅ Data mínima, robusta, basada en propiedades que YA usas en LugarPlantilla
+    final data = <String, dynamic>{
+      'ownerUid': user.uid,
+      'status': statusOnline, // 🔴 CHINCHE CITA STATUS 1
+      'createdAt': nowServer,
+      'updatedAt': nowServer,
+
+      // ✅ Campos de cita
+      'fecha': _fecha, // string para UI rápida
+      'hora': _hora, // string para UI rápida
+      'scheduledAt': Timestamp.fromDate(scheduledAtLocal), // para queries/orden
+      'preferencia': _preferencia,
+      'intencion': _intencion,
+
+      // ✅ Snapshot del lugar seleccionado (evita depender de assets cambiantes)
+      'lugar': {
+        'nombre': lugar.nombre,
+        'direccion': lugar.direccion,
+        'bio': lugar.bio,
+        'mapsQueryFinal': lugar.mapsQueryFinal,
+        'fotoPortada': (lugar.fotos.isNotEmpty) ? lugar.fotos.first : '',
+        'fotos': lugar.fotos.take(8).toList(), // límite razonable
+      },
+    };
+
+    await docRef.set(data);
+    return docRef.id;
+  }
+
+  Future<void> _onCrearCitaPressed() async {
+    if (_creating) return;
+
+    // 🔴 CHINCHE VALIDACIÓN 1 — (mínimo) exige fecha/hora
+    if (_pickedDate == null || _pickedTime == null || _fecha.isEmpty || _hora.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecciona fecha y hora antes de crear la cita.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _creating = true);
+
+    try {
+      final citaId = await _crearCitaEnFirestore();
+
+      if (!mounted) return;
+
+      // ✅ Navega a confirmación con ID real
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CitaCreadaScreen(
+            // 🔴 CHINCHE CITA ID 1 — nuevo parámetro: citaId (debe existir en tu pantalla)
+            citaId: citaId,
+            lugar: widget.lugar,
+            fecha: _fecha,
+            hora: _hora,
+            preferencia: _preferencia,
+            intencion: _intencion,
+          ),
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Firestore: ${e.code} — ${e.message ?? e.toString()}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ No se pudo crear la cita: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _creating = false);
     }
   }
 
@@ -124,6 +253,12 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
               'assets/images/fondo.jpg',
               fit: BoxFit.cover,
             ),
+          ),
+
+          // ✅ BOTÓN REGRESO (arriba-izquierda)
+          const MatchyBackButton(
+            top: 10, // 🔴 CHINCHE CREA BACK A — sube/baja el botón
+            left: 16, // 🔴 CHINCHE CREA BACK B — mueve horizontal
           ),
 
           Column(
@@ -220,10 +355,12 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: alturaBotonFecha,
                         child: ElevatedButton(
-                          onPressed: _seleccionarFecha,
+                          onPressed: _creating ? null : _seleccionarFecha,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6A5ACD),
                             foregroundColor: Colors.white, // ✅ FIX
+                            disabledBackgroundColor:
+                            const Color(0xFF6A5ACD).withOpacity(0.45),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
@@ -245,10 +382,12 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: alturaBotonHora,
                         child: ElevatedButton(
-                          onPressed: _seleccionarHora,
+                          onPressed: _creating ? null : _seleccionarHora,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6A5ACD),
                             foregroundColor: Colors.white, // ✅ FIX
+                            disabledBackgroundColor:
+                            const Color(0xFF6A5ACD).withOpacity(0.45),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
@@ -368,42 +507,31 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
 
                       const SizedBox(height: 16),
 
-                      // ✅ BOTÓN CREAR CITA → pasa todo a CitaCreadaScreen
+                      // ✅ BOTÓN CREAR CITA → CREA EN FIRESTORE + NAVEGA
                       SizedBox(
                         width: MediaQuery.of(context).size.width * 0.8,
                         height: alturaBotonCrear,
                         child: ElevatedButton(
-                          onPressed: () {
-                            // 🔴 CHINCHE VALIDACIÓN 1 — (mínimo) exige fecha/hora
-                            if (_fecha.isEmpty || _hora.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Selecciona fecha y hora antes de crear la cita.'),
-                                ),
-                              );
-                              return;
-                            }
-
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => CitaCreadaScreen(
-                                  lugar: lugar,
-                                  fecha: _fecha,
-                                  hora: _hora,
-                                  preferencia: _preferencia,
-                                  intencion: _intencion,
-                                ),
-                              ),
-                            );
-                          },
+                          onPressed: _creating ? null : _onCrearCitaPressed,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6A5ACD),
                             foregroundColor: Colors.white, // ✅ FIX
+                            disabledBackgroundColor:
+                            const Color(0xFF6A5ACD).withOpacity(0.45),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(18),
                             ),
                           ),
-                          child: const Text(
+                          child: _creating
+                              ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                              : const Text(
                             "CREAR TU CITA",
                             style: TextStyle(
                               color: Colors.white,
