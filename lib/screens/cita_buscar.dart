@@ -1,28 +1,9 @@
-// 📂 lib/screens/cita_buscar.dart
-// ✅ CITA BUSCAR — Swipe tipo Tinder (Matchy style) + FIRESTORE REAL
-// ✅ Swipe IZQUIERDA = DESCARTAR persistente
-// ✅ Swipe DERECHA = CREA CANDIDATO (docId = uid, idempotente)
-// ✅ Tap foto candidato => abre CandidatoGaleriaScreen (diseño restaurante)
-// ✅ Tap foto lugar => abre LugarGaleriaScreen (diseño restaurante)
-// ✅ FIX: corazón NO opaco
-// ✅ FIX SWIPE: fling usa DIAGONAL real (no queda esquina)
-// ✅ FIX CRÍTICO: Firestore NO bloquea swipe (write en background)
-// ✅ NUEVO CLAVE: el usuario NO ve SUS PROPIAS citas (guardia)
-// ✅ NUEVO (2026): lógica REAL con genero + preferencias (mutua)
-// ✅ NUEVO: si NO hay citas -> mensaje claro + OCULTA botones
-// ✅ NUEVO: flecha SIEMPRE vuelve a Panel
-
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
-
-// ✅ Pantallas reales (ya existen en tu proyecto)
 import 'package:proyectos_matchy/screens/lugar_galeria_screen.dart';
 import 'package:proyectos_matchy/screens/candidato_galeria_screen.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
@@ -30,128 +11,96 @@ import 'package:proyectos_matchy/screens/panel_screen.dart';
 class CitaBuscarScreen extends ConsumerStatefulWidget {
   static const String routeName = 'cita_buscar';
   const CitaBuscarScreen({super.key});
-
   @override
   ConsumerState<CitaBuscarScreen> createState() => _CitaBuscarScreenState();
 }
 
 class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     with SingleTickerProviderStateMixin {
-  // ============================================================
-  // SWIPE
-  // ============================================================
-  static const double decisionThresholdPx = 75.0; // 🔴 CHINCHE SWIPE 1
-  static const double rotationDivisor = 14.0; // 🔴 CHINCHE SWIPE 2
-  static const double opacityDivisor = 100.0; // 🔴 CHINCHE SWIPE 3
 
-  // 🔴 CHINCHE SWIPE 4 — VELOCIDAD MEDIA (antes 300)
-  // Ajuste: más “cine” y menos “teletransportación”.
-  static const int flingDurationMs = 380;
+  // ---------------------------
+  // CONFIG DE SWIPE
+  // ---------------------------
+  static const double decisionThresholdPx = 75.0;
+  static const double rotationDivisor = 14.0;
+  static const double opacityDivisor = 100.0;
 
-  static const int resetDurationMs = 250; // 🔴 CHINCHE SWIPE 5
+  // Velocidad del SWIPE ARRÁSTRADO
+  static const int flingDurationMsSwipe = 680;
 
-  // 🔴 CHINCHE SWIPE 6 — qué tan lejos se va el fling (basado en diagonal)
+  // Velocidad de los BOTONES X / ❤️
+  static const int flingDurationMsButtons = 900;
+
+  static const int resetDurationMs = 250;
   static const double offscreenDiagMultiplier = 2.2;
-
-  // 🔴 CHINCHE SWIPE 7 — extra por rotación / esquinas
   static const double offscreenExtraPx = 180.0;
 
-  // ============================================================
-  // MATCHY STYLE
-  // ============================================================
-  static const String backgroundAsset = 'assets/images/fondo.jpg'; // 🔴 CHINCHE MATCHY 1
-  static const String logoAsset = 'assets/images/logomatchyplano.png'; // 🔴 CHINCHE MATCHY 2
-  static const double topSpacing = 35.0; // 🔴 CHINCHE MATCHY 3
+  // ---------------------------
+  // LAYOUT
+  // ---------------------------
+  static const String backgroundAsset = 'assets/images/fondo.jpg';
+  static const String logoAsset = 'assets/images/logomatchyplano.png';
+  static const double topSpacing = 35.0;
   static const double logoHeight = 50.0;
   static const double logoOffsetY = 0.0;
   static const double spaceLogoToScroll = 15.0;
 
-  // ============================================================
-  // LAYOUT
-  // ============================================================
-  static const double screenSideMargin = 14.0; // 🔴 CHINCHE UI 1
-  static const double gapLogoToSwipeBlock = 8.0; // 🔴 CHINCHE UI 2
-  static const double photoHeightFactorOfScreen = 0.52; // 🔴 CHINCHE UI 3
-  static const double photoMinHeight = 380.0; // 🔴 CHINCHE UI 4
-  static const double photoMaxHeight = 560.0; // 🔴 CHINCHE UI 5
-  static const double infoCardHeight = 165.0; // 🔴 CHINCHE UI 6
-  static const double gapPhotoToInfo = 14.0; // 🔴 CHINCHE UI 7
-  static const double photoRadius = 28.0; // 🔴 CHINCHE UI 8
-  static const double infoRadius = 16.0; // 🔴 CHINCHE UI 9
-  static const double shadowOpacity = 0.45; // 🔴 CHINCHE UI 10
+  static const double screenSideMargin = 14.0;
+  static const double gapLogoToSwipeBlock = 8.0;
+  static const double photoHeightFactor = 0.52;
+  static const double photoMinHeight = 380.0;
+  static const double photoMaxHeight = 560.0;
+  static const double infoCardHeight = 165.0;
+  static const double gapPhotoToInfo = 14.0;
+  static const double photoRadius = 28.0;
+  static const double infoRadius = 16.0;
+
+  static const double shadowOpacity = 0.45;
   static const double shadowBlur = 12.0;
   static const double shadowOffsetY = 7.0;
 
-  // ============================================================
-  // TITULO ABAJO-IZQUIERDA
-  // ============================================================
-  static const double titleLeft = 24.0; // 🔴 CHINCHE TITLE X
-  static const double titleBottom = 16.0; // 🔴 CHINCHE TITLE Y
-  static const double titleNameSize = 27.0; // 🔴 CHINCHE TITLE SIZE 1
-  static const double titleAgeSize = 27.0; // 🔴 CHINCHE TITLE SIZE 2
-  static const double titleMaxWidthFactor = 0.78; // 🔴 CHINCHE TITLE WIDTH
-  static const double titleShadowBlur = 10.0; // 🔴 CHINCHE TITLE SHADOW 1
-  static const double titleShadowOpacity = 0.70; // 🔴 CHINCHE TITLE SHADOW 2
+  static const double titleLeft = 24.0;
+  static const double titleBottom = 16.0;
+  static const double titleNameSize = 27.0;
+  static const double titleAgeSize = 27.0;
+  static const double titleMaxWidthFactor = 0.78;
+  static const double titleShadowBlur = 10.0;
+  static const double titleShadowOpacity = 0.70;
 
-  // ============================================================
-  // DEGRADADO FOTO
-  // ============================================================
-  static const double photoGradientHeight = 170.0; // 🔴 CHINCHE GRAD 1
-  static const double photoGradientBottomOpacity = 0.85; // 🔴 CHINCHE GRAD 2
+  static const double photoGradientHeight = 170.0;
+  static const double photoGradientBottomOpacity = 0.85;
 
-  // ============================================================
-  // BOTONES
-  // ============================================================
-  static const double actionButtonSize = 76.0; // 🔴 CHINCHE BTN 1
-  static const double actionIconSize = 70.0; // 🔴 CHINCHE BTN 2
-  static const Color actionCircleColor = Color(0xFF7E79B6); // 🔴 CHINCHE BTN 3
-  static const double actionButtonsGap = 74.0; // 🔴 CHINCHE BTN 4
-  static const double gapSwipeBlockToButtons = 18.0; // 🔴 CHINCHE BTN 5
-  static const double bottomPadding = 14.0; // 🔴 CHINCHE BTN 6
-  static const String iconClose = 'assets/images/ic_close_white.png'; // 🔴 CHINCHE BTN 7
+  static const double actionButtonSize = 76.0;
+  static const double actionIconSize = 70.0;
+  static const Color actionCircleColor = Color(0xFF7E79B6);
+  static const double actionButtonsGap = 74.0;
+  static const double gapSwipeBlockToButtons = 18.0;
+  static const double bottomPadding = 14.0;
+  static const String iconClose = 'assets/images/ic_close_white.png';
   static const String iconFav = 'assets/images/ic_favorite_white.png';
 
-  // ============================================================
-  // UNDO (NO SE MUESTRA)
-  // ============================================================
-  static const bool showUndoButton = false; // 🔴 CHINCHE UNDO 0
-
-  // ============================================================
-  // 🔴 CHINCHE STATUS 1 — status publico real en tu DB
-  // ============================================================
+  static const bool showUndoButton = false;
   static const String publicStatus = 'online';
 
-  // ============================================================
-  // Firestore collections/fields
-  // ============================================================
+  // ---------------------------
+  // FIRESTORE CONFIG
+  // ---------------------------
   static const String kCitasCol = 'citas';
   static const String kUsersCol = 'users';
   static const String kSubCandidatos = 'candidatos';
-  static const String kSubDescartes = 'descartes'; // 🔴 CHINCHE DESC 1
-
-  // 🔴 CHINCHE FIRESTORE 2 — campo ownerUid en la cita
+  static const String kSubDescartes = 'descartes';
   static const String kOwnerUidField = 'ownerUid';
-
-  // 🔴 CHINCHE FIRESTORE 3 — campo lugar (map) (legacy)
   static const String kLugarField = 'lugar';
-  static const String kLugarNombreField = 'nombre';
-  static const String kLugarDireccionField = 'direccion';
-  static const String kLugarFotoPortadaField = 'fotoPortada';
-
-  // 🔴 CHINCHE FIRESTORE 4 — fecha/hora (strings)
   static const String kFechaField = 'fecha';
   static const String kHoraField = 'hora';
-
-  // 🔴 CHINCHE USERS 1 — campos en users/{uid}
   static const String kUserGeneroField = 'genero';
   static const String kUserPreferenciaCitasField = 'preferenciaCitas';
 
-  // ============================================================
-  // Estado swipe
-  // ============================================================
+  // ---------------------------
+  // STATE
+  // ---------------------------
   List<_CitaCardModel> _deck = const [];
   int _topIndex = 0;
-
   double _dx = 0.0;
   bool _isAnimating = false;
 
@@ -162,9 +111,7 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this)
-      ..addListener(() {
-        if (_dxAnim != null) setState(() => _dx = _dxAnim!.value);
-      })
+      ..addListener(() => setState(() => _dx = _dxAnim?.value ?? _dx))
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) {
           _dxAnim = null;
@@ -179,77 +126,66 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     super.dispose();
   }
 
-  // ============================================================
-  // Streams
-  // ============================================================
+  // ---------------------------
+  // STREAMS
+  // ---------------------------
   Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream(String uid) {
     return FirebaseFirestore.instance.collection(kUsersCol).doc(uid).snapshots();
   }
 
-  // ✅ IMPORTANTE:
-  // - SOLO filtramos por status aquí
-  // - NO usamos isNotEqualTo (evita líos de índices/inequality)
-  // - La exclusión de “mis propias citas” se hace en app (guardia)
   Stream<QuerySnapshot<Map<String, dynamic>>> _citasPublicasStream() {
     return FirebaseFirestore.instance
         .collection(kCitasCol)
         .where('status', isEqualTo: publicStatus)
-        .limit(50) // 🔴 CHINCHE LIMIT 1
+        .limit(50)
         .snapshots();
   }
 
-  // ============================================================
-  // Helpers Firestore (writes)
-  // ============================================================
+  // ---------------------------
+  // FIRESTORE WRITES
+  // ---------------------------
   Future<void> _writeDescartado({
     required String citaId,
-    required String currentUid,
+    required String uid,
   }) async {
     await FirebaseFirestore.instance
         .collection(kCitasCol)
         .doc(citaId)
         .collection(kSubDescartes)
-        .doc(currentUid)
+        .doc(uid)
         .set({
-      'uid': currentUid,
+      'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
   Future<void> _writeCandidato({
     required _CitaCardModel model,
-    required String currentUid,
+    required String uid,
   }) async {
     await FirebaseFirestore.instance
         .collection(kCitasCol)
         .doc(model.citaId)
         .collection(kSubCandidatos)
-        .doc(currentUid)
+        .doc(uid)
         .set({
-      'uid': currentUid,
+      'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
-
-  // ============================================================
-  // Movement
-  // ============================================================
+  // ---------------------------
+  // SWIPE MOVEMENT
+  // ---------------------------
   double get _rotationDeg => _dx / rotationDivisor;
+  double get _likeOpacityValue =>
+      _dx > 0 ? (_dx.abs() / opacityDivisor).clamp(0.0, 1.0) : 0.0;
+  double get _nopeOpacityValue =>
+      _dx < 0 ? (_dx.abs() / opacityDivisor).clamp(0.0, 1.0) : 0.0;
 
-  double get _likeOpacityValue {
-    final o = (_dx > 0) ? (_dx.abs() / opacityDivisor) : 0.0;
-    return o.clamp(0.0, 1.0);
-  }
-
-  double get _nopeOpacityValue {
-    final o = (_dx < 0) ? (_dx.abs() / opacityDivisor) : 0.0;
-    return o.clamp(0.0, 1.0);
-  }
-
-  Future<void> _animateTo(double targetDx, Duration duration) async {
+  Future<void> _animateTo(double target, Duration dur) async {
     _controller.stop();
-    _controller.duration = duration;
-    _dxAnim = Tween<double>(begin: _dx, end: targetDx).animate(
+    _controller.duration = dur;
+    _dxAnim = Tween<double>(begin: _dx, end: target).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
     await _controller.forward(from: 0.0);
@@ -257,127 +193,124 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
 
   Future<void> _resetCard() async {
     _isAnimating = true;
-    await _animateTo(0.0, const Duration(milliseconds: resetDurationMs));
+    await _animateTo(
+      0.0,
+      Duration(milliseconds: resetDurationMs),
+    );
   }
 
-  double _screenDiagonal(Size s) => math.sqrt(s.width * s.width + s.height * s.height);
+  double _screenDiag(Size s) => math.sqrt(s.width * s.width + s.height * s.height);
 
+  // ---------------------------
+  // FLING OUT
+  // ---------------------------
   Future<void> _flingOut({
-    required bool toRight,
-    required Size screenSize,
+    required bool right,
+    required Size size,
     required _CitaCardModel model,
-    required String currentUid,
+    required String uid,
+    required int durationMs,
   }) async {
     if (_topIndex >= _deck.length) return;
 
     _isAnimating = true;
 
-    // ✅ OFFSCREEN: diagonal real => nunca queda “esquina”
-    final diag = _screenDiagonal(screenSize);
-    final targetDx =
-        (toRight ? 1 : -1) * (diag * offscreenDiagMultiplier + offscreenExtraPx);
+    final diag = _screenDiag(size);
+    final target = (right ? 1 : -1) *
+        (diag * offscreenDiagMultiplier + offscreenExtraPx);
 
-    // 1) Animar salida
-    await _animateTo(targetDx, const Duration(milliseconds: flingDurationMs));
+    await _animateTo(
+      target,
+      Duration(milliseconds: durationMs),
+    );
 
-    // 2) AVANZAR TARJETA INMEDIATO (NO BLOQUEAR UI)
     if (!mounted) return;
+
     setState(() {
       _topIndex++;
       _dx = 0.0;
     });
 
-    // 3) Escribir Firestore en background (sin bloquear swipe)
-    Future<void>(() async {
+    // Guardar like / dislike en segundo plano
+    Future(() async {
       try {
-        if (toRight) {
-          await _writeCandidato(model: model, currentUid: currentUid);
+        if (right) {
+          await _writeCandidato(model: model, uid: uid);
         } else {
-          await _writeDescartado(citaId: model.citaId, currentUid: currentUid);
+          await _writeDescartado(citaId: model.citaId, uid: uid);
         }
-      } catch (e) {
-        debugPrint('Firestore write error en swipe: $e');
-      }
+      } catch (_) {}
     });
   }
 
-  void _handlePanUpdate(DragUpdateDetails details) {
+  // ---------------------------
+  // SWIPE HANDLERS
+  // ---------------------------
+  void _onPanUpdate(DragUpdateDetails d) {
     if (_isAnimating) return;
-    setState(() => _dx += details.delta.dx);
+    setState(() => _dx += d.delta.dx);
   }
 
-  Future<void> _handlePanEnd(
-      DragEndDetails details, Size screenSize, String currentUid) async {
+  Future<void> _onPanEnd(DragEndDetails d, Size size, String uid) async {
     if (_isAnimating) return;
 
-    final decisionMade = _dx.abs() >= decisionThresholdPx;
-    if (!decisionMade) {
+    if (_dx.abs() < decisionThresholdPx) {
       await _resetCard();
       return;
     }
 
-    final int idx = _topIndex;
-    if (idx < 0 || idx >= _deck.length) {
-      await _resetCard();
-      return;
-    }
+    if (_topIndex >= _deck.length) return;
 
-    final model = _deck[idx];
-
-    if (_dx < 0) {
-      await _flingOut(
-        toRight: false,
-        screenSize: screenSize,
-        model: model,
-        currentUid: currentUid,
-      );
-      return;
-    }
+    final model = _deck[_topIndex];
 
     await _flingOut(
-      toRight: true,
-      screenSize: screenSize,
+      right: _dx > 0,
+      size: size,
       model: model,
-      currentUid: currentUid,
+      uid: uid,
+      durationMs: flingDurationMsSwipe,   // swipe arrastrado
     );
   }
 
-  Future<void> _onNopeTap(Size screenSize, String currentUid) async {
-    if (_isAnimating) return;
-    if (_topIndex >= _deck.length) return;
+  Future<void> _onNope(Size size, String uid) async {
+    if (_isAnimating || _topIndex >= _deck.length) return;
 
     _dx = -decisionThresholdPx;
-    final model = _deck[_topIndex];
+
     await _flingOut(
-      toRight: false,
-      screenSize: screenSize,
-      model: model,
-      currentUid: currentUid,
+      right: false,
+      size: size,
+      model: _deck[_topIndex],
+      uid: uid,
+      durationMs: flingDurationMsButtons,   // botón X
     );
   }
 
-  Future<void> _onLikeTap(Size screenSize, String currentUid) async {
-    if (_isAnimating) return;
-    if (_topIndex >= _deck.length) return;
+  Future<void> _onLike(Size size, String uid) async {
+    if (_isAnimating || _topIndex >= _deck.length) return;
 
     _dx = decisionThresholdPx;
-    final model = _deck[_topIndex];
+
     await _flingOut(
-      toRight: true,
-      screenSize: screenSize,
-      model: model,
-      currentUid: currentUid,
+      right: true,
+      size: size,
+      model: _deck[_topIndex],
+      uid: uid,
+      durationMs: flingDurationMsButtons,   // botón ❤️
     );
   }
 
-  // ============================================================
-  // Helpers de formato fecha/hora
-  // ============================================================
+  // ---------------------------
+  // HELPERS
+  // ---------------------------
+  String _s(dynamic v) => v is String ? v : (v?.toString() ?? '');
+
   String _two(int n) => n.toString().padLeft(2, '0');
 
-  String _formatFecha(DateTime dt) => '${_two(dt.day)}/${_two(dt.month)}/${dt.year}';
+  String _fmtFecha(DateTime dt) =>
+      '${_two(dt.day)}/${_two(dt.month)}/${dt.year}';
 
-  String _formatHora(DateTime dt) {
+  String _fmtHora(DateTime dt) {
     int h = dt.hour;
     final ampm = h >= 12 ? 'PM' : 'AM';
     h = h % 12;
@@ -385,203 +318,257 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     return '$h:${_two(dt.minute)} $ampm';
   }
 
-  // ============================================================
-  // Normalizaciones (preferencia / genero)
-  // ============================================================
-  String _normalizePref(String v) {
-    final t = v.trim().toLowerCase();
+  List<String> _safeList(dynamic v) =>
+      v is List
+          ? v.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList()
+          : <String>[];
+
+  Map<String, dynamic> _safeMap(dynamic v) =>
+      v is Map ? Map<String, dynamic>.from(v) : {};
+
+  String _normPref(String v) {
+    final t = v.toLowerCase();
     if (t.contains('hombre')) return 'Hombres';
     if (t.contains('mujer')) return 'Mujeres';
     if (t.contains('amb')) return 'Ambos';
     return 'Ambos';
   }
 
-  // users/{uid}.genero viene como: "hombre" | "mujer" | "otro" | "prefiero no decirlo"
-  String _normalizeGenero(String v) {
-    final t = v.trim().toLowerCase();
+  String _normGenero(String v) {
+    final t = v.toLowerCase();
     if (t.contains('hombre')) return 'Hombres';
     if (t.contains('mujer')) return 'Mujeres';
-    if (t.contains('otro')) return 'Otro';
-    if (t.contains('prefiero')) return 'NoDecir';
     return 'NoDecir';
   }
 
-  // ============================================================
-  // ✅ Reglas correctas de visibilidad (mutua)
-  // ============================================================
-  bool _citaAceptaGeneroUsuario({
-    required String preferenciaCita,
-    required String generoUsuarioNorm, // 'Hombres' | 'Mujeres' | 'Otro' | 'NoDecir'
+  bool _citaAcepta({
+    required String prefCita,
+    required String generoUser,
   }) {
-    final pref = _normalizePref(preferenciaCita);
-
-    // Si la cita acepta Ambos, entra cualquiera.
-    if (pref == 'Ambos') return true;
-
-    // Si el usuario no declara genero (o es "Otro"), solo entra si la cita acepta Ambos.
-    if (generoUsuarioNorm != 'Hombres' && generoUsuarioNorm != 'Mujeres') {
-      return false;
-    }
-
-    return pref == generoUsuarioNorm;
+    final p = _normPref(prefCita);
+    if (p == 'Ambos') return true;
+    if (generoUser != 'Hombres' && generoUser != 'Mujeres') return false;
+    return p == generoUser;
   }
 
-  bool _usuarioAceptaGeneroDelDueno({
-    required String prefUsuarioGlobal,
-    required String generoDuenoNorm, // 'Hombres' | 'Mujeres' | 'Otro' | 'NoDecir'
+  bool _userAcepta({
+    required String prefGlobal,
+    required String genDueno,
   }) {
-    final pref = _normalizePref(prefUsuarioGlobal);
+    final p = _normPref(prefGlobal);
+    if (p == 'Ambos') return true;
+    if (genDueno != 'Hombres' && genDueno != 'Mujeres') return false;
+    return p == genDueno;
+  }
 
-    if (pref == 'Ambos') return true;
+  // ---------------------------
+  // FILTRO FINAL (NO REPETIR TARJETAS)
+  // ---------------------------
+  Future<List<_CitaCardModel>> _applyFilters({
+    required List<_CitaCardModel> raw,
+    required String uid,
+    required String generoUser,
+    required String prefGlobal,
+  }) async {
+    final out = <_CitaCardModel>[];
 
-    // Si el dueño no declara genero (o es "Otro"), solo entra si el usuario acepta Ambos.
-    if (generoDuenoNorm != 'Hombres' && generoDuenoNorm != 'Mujeres') {
-      return false;
+    for (final m in raw) {
+      final docDesc = await FirebaseFirestore.instance
+          .collection(kCitasCol)
+          .doc(m.citaId)
+          .collection(kSubDescartes)
+          .doc(uid)
+          .get();
+
+      final docCand = await FirebaseFirestore.instance
+          .collection(kCitasCol)
+          .doc(m.citaId)
+          .collection(kSubCandidatos)
+          .doc(uid)
+          .get();
+
+      // Si ya hizo swipe derecha o izquierda → NO vuelve a salir
+      if (docDesc.exists || docCand.exists) continue;
+
+      out.add(m);
     }
 
-    return pref == generoDuenoNorm;
-  }
+    final ownerUids =
+    out.map((e) => e.ownerUid).where((e) => e.isNotEmpty && e != uid).toSet().toList();
 
-  // ============================================================
-  // Deck builder
-  // ============================================================
-  List<String> _safeStringList(dynamic v) {
-    if (v is List) {
-      return v.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+    final Map<String, String> genDueno = {};
+
+    for (final ou in ownerUids) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection(kUsersCol).doc(ou).get();
+        genDueno[ou] =
+            _normGenero((snap.data() ?? {})[kUserGeneroField]?.toString() ?? '');
+      } catch (_) {
+        genDueno[ou] = 'NoDecir';
+      }
     }
-    return <String>[];
+
+    final filtrados = <_CitaCardModel>[];
+
+    for (final m in out) {
+      final g = genDueno[m.ownerUid] ?? 'NoDecir';
+
+      if (_citaAcepta(prefCita: m.preferencia, generoUser: generoUser) &&
+          _userAcepta(prefGlobal: prefGlobal, genDueno: g)) {
+        filtrados.add(m);
+      }
+    }
+
+    return filtrados;
   }
+  // ---------------------------
+  // MAPEO DE SNAPSHOTS → MODELOS
+  // ---------------------------
+  Map<String, dynamic> _readCreador(Map<String, dynamic> data) =>
+      _safeMap(data['creador']);
 
-  Map<String, dynamic> _safeMap(dynamic v) {
-    if (v is Map) return Map<String, dynamic>.from(v);
-    return <String, dynamic>{};
-  }
-
-  String _s(dynamic v) => v is String ? v : (v?.toString() ?? '');
-
-  // 🔴 CHINCHE CREADOR 1 — lectura REAL desde mapa "creador"
-  Map<String, dynamic> _readCreadorMap(Map<String, dynamic> data) {
-    final m = _safeMap(data['creador']);
-    return m;
-  }
-
-  List<_CitaCardModel> _mapDocsToDeck({
+  Future<List<_CitaCardModel>> _mapDocsToDeck({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-    required String currentUid,
-  }) {
+    required String uid,
+  }) async {
     final out = <_CitaCardModel>[];
 
     for (final d in docs) {
       final data = d.data();
-
       final ownerUid = _s(data[kOwnerUidField]).trim();
 
-      // ✅ Guardia: NO mostrar propias
-      if (ownerUid.isNotEmpty && ownerUid == currentUid) continue;
+      // No mostrar mis propias citas
+      if (ownerUid.isNotEmpty && ownerUid == uid) continue;
 
-      // ✅ Lugar (puede venir en map "lugar" o plano)
       final lugar = _safeMap(data[kLugarField]);
-
-      final String nombreLugar = _s(lugar[kLugarNombreField]).trim().isNotEmpty
-          ? _s(lugar[kLugarNombreField]).trim()
-          : _s(data['nombre']).trim().isNotEmpty
-          ? _s(data['nombre']).trim()
-          : _s(data['nombreLugar']).trim().isNotEmpty
-          ? _s(data['nombreLugar']).trim()
+      final nombreLugar = _s(lugar['nombre']).isNotEmpty
+          ? _s(lugar['nombre'])
+          : _s(data['nombre']).isNotEmpty
+          ? _s(data['nombre'])
           : 'Lugar';
 
-      final String direccionLugar = _s(lugar[kLugarDireccionField]).trim().isNotEmpty
-          ? _s(lugar[kLugarDireccionField]).trim()
-          : _s(data['direccion']).trim().isNotEmpty
-          ? _s(data['direccion']).trim()
-          : _s(data['direccionLugar']).trim().isNotEmpty
-          ? _s(data['direccionLugar']).trim()
+      final direccionLugar = _s(lugar['direccion']).isNotEmpty
+          ? _s(lugar['direccion'])
+          : _s(data['direccion']).isNotEmpty
+          ? _s(data['direccion'])
           : 'Sin dirección';
 
-      // ✅ Preferencia de ESTA cita (a quién acepta)
-      final String preferenciaCita = _s(data['preferencia']).trim().isEmpty
-          ? 'Ambos'
-          : _s(data['preferencia']).trim();
+      final prefCita =
+      _s(data['preferencia']).isEmpty ? 'Ambos' : _s(data['preferencia']);
 
-      final String fotoPortada = _s(lugar[kLugarFotoPortadaField]).trim().isNotEmpty
-          ? _s(lugar[kLugarFotoPortadaField]).trim()
-          : _s(data['fotoPortada']).trim().isNotEmpty
-          ? _s(data['fotoPortada']).trim()
-          : _s(data['fotoLugar']).trim().isNotEmpty
-          ? _s(data['fotoLugar']).trim()
-          : _s(data['fotoLugarAsset']).trim();
+      String fotoPortada = _s(lugar['fotoPortada']);
+      if (fotoPortada.isEmpty) fotoPortada = _s(data['fotoPortada']);
+      if (fotoPortada.isEmpty) fotoPortada = _s(data['fotoLugar']);
+      if (fotoPortada.isEmpty) fotoPortada = _s(data['fotoLugarAsset']);
 
       final placePhotos = <String>[];
       if (fotoPortada.isNotEmpty) placePhotos.add(fotoPortada);
-
-      final fotos = _safeStringList(data['fotos']);
-      for (final f in fotos) {
+      for (final f in _safeList(data['fotos'])) {
         if (!placePhotos.contains(f)) placePhotos.add(f);
       }
-      if (placePhotos.isEmpty) placePhotos.add('assets/images/perfil1.jpg');
-
-      String fecha = _s(data[kFechaField]).trim();
-      String hora = _s(data[kHoraField]).trim();
-
-      // Si existe scheduledAt Timestamp, prioriza
-      final sched = data['scheduledAt'];
-      if (sched is Timestamp) {
-        final dt = sched.toDate();
-        fecha = _formatFecha(dt);
-        hora = _formatHora(dt);
-      } else {
-        if (fecha.isEmpty) fecha = _s(data['fecha']).trim();
-        if (hora.isEmpty) hora = _s(data['hora']).trim();
+      if (placePhotos.isEmpty) {
+        placePhotos.add('assets/images/perfil1.jpg');
       }
 
-      final String intencion = _s(data['intencion']).trim().isEmpty
-          ? 'Amistad'
-          : _s(data['intencion']).trim();
+      String fecha = _s(data[kFechaField]);
+      String hora = _s(data[kHoraField]);
+      final sched = data['scheduledAt'];
 
-      // 🔴 CHINCHE CREADOR 2 — prioridad: mapa creador.{nombre,edad,foto,uid}
-      final creador = _readCreadorMap(data);
-      final creadorNombre = _s(creador['nombre']).trim();
+      if (sched is Timestamp) {
+        final dt = sched.toDate();
+        fecha = _fmtFecha(dt);
+        hora = _fmtHora(dt);
+      }
+
+      final intencion =
+      _s(data['intencion']).isEmpty ? 'Amistad' : _s(data['intencion']);
+
+      final creador = _readCreador(data);
+
+      String creadorNombre = _s(creador['nombre']);
       final creadorEdadRaw = creador['edad'];
-      final creadorFoto = _s(creador['foto']).trim();
-      final creadorUid = _s(creador['uid']).trim();
+      String creadorFoto = _s(creador['foto']);
+      final creadorUid = _s(creador['uid']);
 
-      // ✅ Fallbacks por si hay citas viejas “planas”
-      final legacyNombre = _s(data['creadorNombre']).trim();
+      final legacyNombre = _s(data['creadorNombre']);
       final legacyEdadRaw = data['creadorEdad'];
-      final legacyFoto = _s(data['creadorFoto']).trim();
+      final legacyFoto = _s(data['creadorFoto']);
 
-      final String finalNombre = creadorNombre.isNotEmpty
-          ? creadorNombre
-          : (legacyNombre.isNotEmpty ? legacyNombre : 'Usuario');
+      final ownerFinal = ownerUid.isNotEmpty
+          ? ownerUid
+          : (creadorUid.isNotEmpty ? creadorUid : 'unknown');
 
-      final int finalEdad = (creadorEdadRaw is int)
+      // ---------------------------
+      // NOMBRE FINAL DEL CREADOR
+      // ---------------------------
+      if (creadorNombre.isEmpty) {
+        if (legacyNombre.isNotEmpty) {
+          creadorNombre = legacyNombre;
+        } else {
+          try {
+            final snapUser = await FirebaseFirestore.instance
+                .collection(kUsersCol)
+                .doc(ownerFinal)
+                .get();
+
+            final dUser = snapUser.data() ?? {};
+            final nUser = _s(dUser['nombre']);
+
+            creadorNombre = nUser.isNotEmpty ? nUser : 'Usuario';
+          } catch (_) {
+            creadorNombre = 'Usuario';
+          }
+        }
+      }
+
+      // ---------------------------
+      // EDAD FINAL DEL CREADOR
+      // ---------------------------
+      final edadFinal =
+      (creadorEdadRaw is int)
           ? creadorEdadRaw
           : int.tryParse(creadorEdadRaw?.toString() ?? '') ??
-          ((legacyEdadRaw is int)
+          (legacyEdadRaw is int
               ? legacyEdadRaw
               : int.tryParse(legacyEdadRaw?.toString() ?? '') ?? 0);
 
-      final String finalFoto = creadorFoto.isNotEmpty ? creadorFoto : legacyFoto;
+      // ---------------------------
+      // FOTO FINAL DEL CREADOR
+      // ---------------------------
+      String fotoFinal =
+      creadorFoto.isNotEmpty ? creadorFoto : legacyFoto;
 
-      // ✅ ownerUid real: si viene vacío, usa creador.uid
-      final String finalOwnerUid = ownerUid.isNotEmpty
-          ? ownerUid
-          : (creadorUid.isNotEmpty ? creadorUid : 'unknown'); // 🔴 CHINCHE SAFE 1
+      if (fotoFinal.isEmpty || fotoFinal == 'assets/images/perfil1.jpg') {
+        try {
+          final snapUser = await FirebaseFirestore.instance
+              .collection(kUsersCol)
+              .doc(ownerFinal)
+              .get();
+
+          final dUser = snapUser.data() ?? {};
+          final List urls = dUser['photoUrls'] ?? [];
+
+          if (urls.isNotEmpty &&
+              urls.first.toString().trim().isNotEmpty) {
+            fotoFinal = urls.first.toString().trim();
+          }
+        } catch (_) {}
+      }
 
       out.add(
         _CitaCardModel(
           citaId: d.id,
-          ownerUid: finalOwnerUid,
-          creatorName: finalNombre,
-          creatorAge: finalEdad,
-          creatorPhoto: finalFoto,
+          ownerUid: ownerFinal,
+          creatorName: creadorNombre,
+          creatorAge: edadFinal,
+          creatorPhoto: fotoFinal,
           placePhotos: placePhotos,
           placeName: nombreLugar,
           placeAddress: direccionLugar,
           fecha: fecha.isEmpty ? 'Fecha pendiente' : fecha,
           hora: hora.isEmpty ? 'Hora pendiente' : hora,
           intencion: intencion,
-          preferencia: preferenciaCita,
+          preferencia: prefCita,
         ),
       );
     }
@@ -589,99 +576,9 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     return out;
   }
 
-  Future<List<_CitaCardModel>> _filterOutDescartadas({
-    required List<_CitaCardModel> input,
-    required String currentUid,
-  }) async {
-    if (input.isEmpty) return input;
-
-    final out = <_CitaCardModel>[];
-    for (final m in input) {
-      try {
-        final doc = await FirebaseFirestore.instance
-            .collection(kCitasCol)
-            .doc(m.citaId)
-            .collection(kSubDescartes)
-            .doc(currentUid)
-            .get();
-        if (!doc.exists) out.add(m);
-      } catch (_) {
-        out.add(m);
-      }
-    }
-    return out;
-  }
-
-  // ✅ NUEVO: filtro por compatibilidad MUTUA usando genero (users) + preferencia global (users) + preferencia cita (citas)
-  Future<List<_CitaCardModel>> _filterByGeneroMutuo({
-    required List<_CitaCardModel> input,
-    required String currentUid,
-    required String generoUsuarioNorm,
-    required String prefUsuarioGlobal,
-  }) async {
-    if (input.isEmpty) return input;
-
-    // 1) Obtener generos de dueños (unique)
-    final ownerUids = input
-        .map((e) => e.ownerUid.trim())
-        .where((e) => e.isNotEmpty && e != 'unknown' && e != currentUid)
-        .toSet()
-        .toList();
-
-    final Map<String, String> generoPorUid = {};
-
-    await Future.wait(ownerUids.map((ouid) async {
-      try {
-        final snap = await FirebaseFirestore.instance.collection(kUsersCol).doc(ouid).get();
-        final data = snap.data() ?? {};
-        final generoRaw = (data[kUserGeneroField] ?? '').toString();
-        generoPorUid[ouid] = _normalizeGenero(generoRaw);
-      } catch (_) {
-        generoPorUid[ouid] = 'NoDecir';
-      }
-    }));
-
-    // 2) Aplicar regla mutua
-    final out = <_CitaCardModel>[];
-
-    for (final m in input) {
-      final generoDueno = generoPorUid[m.ownerUid] ?? 'NoDecir';
-
-      final ok1 = _citaAceptaGeneroUsuario(
-        preferenciaCita: m.preferencia,
-        generoUsuarioNorm: generoUsuarioNorm,
-      );
-
-      final ok2 = _usuarioAceptaGeneroDelDueno(
-        prefUsuarioGlobal: prefUsuarioGlobal,
-        generoDuenoNorm: generoDueno,
-      );
-
-      if (ok1 && ok2) out.add(m);
-    }
-
-    return out;
-  }
-
-  Future<List<_CitaCardModel>> _applyAllFilters({
-    required List<_CitaCardModel> rawDeck,
-    required String currentUid,
-    required String generoUsuarioNorm,
-    required String prefUsuarioGlobal,
-  }) async {
-    final step1 = await _filterOutDescartadas(input: rawDeck, currentUid: currentUid);
-    final step2 = await _filterByGeneroMutuo(
-      input: step1,
-      currentUid: currentUid,
-      generoUsuarioNorm: generoUsuarioNorm,
-      prefUsuarioGlobal: prefUsuarioGlobal,
-    );
-    return step2;
-  }
-
-  // ============================================================
-  // Back: SIEMPRE vuelve a Panel
-  // ============================================================
+  // ---------------------------
+  // UI NAV
+  // ---------------------------
   void _backToPanel() {
     final nav = Navigator.of(context);
     if (nav.canPop()) {
@@ -690,13 +587,13 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     }
     nav.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const PanelScreen()),
-          (route) => false,
+          (_) => false,
     );
   }
 
-  // ============================================================
-  // UI
-  // ============================================================
+  // ---------------------------
+  // BUILD PRINCIPAL
+  // ---------------------------
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -705,7 +602,7 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
       return const Scaffold(
         body: Center(
           child: Text(
-            'Debes iniciar sesión para buscar citas.',
+            'Debes iniciar sesión',
             style: TextStyle(color: Colors.white),
           ),
         ),
@@ -725,7 +622,6 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
             scrollContent: _buildBody(user.uid),
           ),
 
-          // 🔙 Flecha garantizada a Panel
           Positioned(
             top: 10,
             left: 16,
@@ -750,27 +646,26 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
     );
   }
 
+  // ---------------------------
+  // BODY (DECK + BOTONES)
+  // ---------------------------
   Widget _buildBody(String uid) {
     final Size screen = MediaQuery.sizeOf(context);
-    final double blockWidth = screen.width - (screenSideMargin * 2);
-
-    final double rawPhotoHeight = screen.height * photoHeightFactorOfScreen;
-    final double photoHeight = rawPhotoHeight.clamp(photoMinHeight, photoMaxHeight);
-
-    final double swipeBlockHeight = photoHeight + gapPhotoToInfo + infoCardHeight;
+    final double blockW =
+        screen.width - (screenSideMargin * 2);
+    final double photoH =
+    (screen.height * photoHeightFactor)
+        .clamp(photoMinHeight, photoMaxHeight);
+    final double swipeH = photoH + gapPhotoToInfo + infoCardHeight;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _userDocStream(uid),
       builder: (context, userSnap) {
-        final userData = userSnap.data?.data() ?? {};
-
-        final prefUsuarioGlobal = _normalizePref(
-          (userData[kUserPreferenciaCitasField] ?? 'Ambos').toString(),
-        );
-
-        final generoUsuarioNorm = _normalizeGenero(
-          (userData[kUserGeneroField] ?? 'Prefiero no decirlo').toString(),
-        );
+        final udata = userSnap.data?.data() ?? {};
+        final prefGlobal = _normPref(
+            (udata[kUserPreferenciaCitasField] ?? 'Ambos').toString());
+        final generoUser = _normGenero(
+            (udata[kUserGeneroField] ?? 'Prefiero no decirlo').toString());
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _citasPublicasStream(),
@@ -778,44 +673,47 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
             if (citasSnap.hasError) {
               return Center(
                 child: Text(
-                  'Error cargando citas: ${citasSnap.error}',
-                  style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
+                  'Error: ${citasSnap.error}',
+                  style: TextStyle(color: Colors.redAccent),
                 ),
               );
             }
 
             if (!citasSnap.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
             }
 
             final docs = citasSnap.data!.docs;
 
-            final rawDeck = _mapDocsToDeck(
-              docs: docs,
-              currentUid: uid,
-            );
-
             return FutureBuilder<List<_CitaCardModel>>(
-              future: _applyAllFilters(
-                rawDeck: rawDeck,
-                currentUid: uid,
-                generoUsuarioNorm: generoUsuarioNorm,
-                prefUsuarioGlobal: prefUsuarioGlobal,
+              future: _mapDocsToDeck(docs: docs, uid: uid).then(
+                    (raw) => _applyFilters(
+                  raw: raw,
+                  uid: uid,
+                  generoUser: generoUser,
+                  prefGlobal: prefGlobal,
+                ),
               ),
-              builder: (context, filteredSnap) {
-                if (filteredSnap.connectionState == ConnectionState.waiting && _deck.isEmpty) {
-                  return const Center(child: CircularProgressIndicator());
+              builder: (context, filtered) {
+                if (filtered.connectionState ==
+                    ConnectionState.waiting &&
+                    _deck.isEmpty) {
+                  return const Center(
+                      child: CircularProgressIndicator());
                 }
 
-                final newDeck = filteredSnap.data ?? rawDeck;
+                final newDeck = filtered.data ?? [];
 
-                final bool needsReset = _deck.length != newDeck.length ||
-                    (_deck.isNotEmpty &&
-                        newDeck.isNotEmpty &&
-                        _deck.first.citaId != newDeck.first.citaId);
+                final needReset =
+                    _deck.length != newDeck.length ||
+                        (_deck.isNotEmpty &&
+                            newDeck.isNotEmpty &&
+                            _deck.first.citaId !=
+                                newDeck.first.citaId);
 
-                if (needsReset) {
+                if (needReset) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!mounted) return;
                     setState(() {
@@ -826,112 +724,148 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
                   });
                 } else {
                   _deck = newDeck;
-                  if (_topIndex > _deck.length) _topIndex = _deck.length;
+                  if (_topIndex > _deck.length) {
+                    _topIndex = _deck.length;
+                  }
                 }
 
-                final noMore = _deck.isEmpty || _topIndex >= _deck.length;
+                final noMore =
+                    _deck.isEmpty || _topIndex >= _deck.length;
 
                 return Center(
                   child: Padding(
-                    padding: const EdgeInsets.only(top: gapLogoToSwipeBlock),
+                    padding:
+                    EdgeInsets.only(top: gapLogoToSwipeBlock),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
-                          width: blockWidth,
-                          height: swipeBlockHeight,
+                          width: blockW,
+                          height: swipeH,
                           child: Stack(
                             children: [
-                              if (!noMore && _topIndex + 1 < _deck.length)
+                              if (!noMore &&
+                                  _topIndex + 1 < _deck.length)
                                 Positioned.fill(
                                   child: _SwipeBundle(
                                     model: _deck[_topIndex + 1],
                                     likeOpacity: 0.0,
                                     nopeOpacity: 0.0,
-                                    width: blockWidth,
-                                    photoHeight: photoHeight,
+                                    width: blockW,
+                                    photoHeight: photoH,
                                     infoHeight: infoCardHeight,
                                     onCreatorPhotoTap: () {
-                                      final model = _deck[_topIndex + 1];
+                                      final m = _deck[_topIndex + 1];
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
-                                          builder: (_) => CandidatoGaleriaScreen(
-                                            userUid: model.ownerUid,
-                                            fallbackSinglePhoto: model.creatorPhoto,
-                                            placeName: model.placeName,
-                                            placeAddress: model.placeAddress,
-                                            fecha: model.fecha,
-                                            hora: model.hora,
-                                            preferencia: model.preferencia,
-                                            intencion: model.intencion,
-                                          ),
+                                          builder: (_) =>
+                                              CandidatoGaleriaScreen(
+                                                userUid: m.ownerUid,
+                                                fallbackSinglePhoto:
+                                                m.creatorPhoto,
+                                                placeName: m.placeName,
+                                                placeAddress:
+                                                m.placeAddress,
+                                                fecha: m.fecha,
+                                                hora: m.hora,
+                                                preferencia:
+                                                m.preferencia,
+                                                intencion: m.intencion,
+                                              ),
                                         ),
                                       );
                                     },
                                     onPlacePhotoTap: () {
-                                      final model = _deck[_topIndex + 1];
+                                      final m = _deck[_topIndex + 1];
                                       Navigator.of(context).push(
                                         MaterialPageRoute(
-                                          builder: (_) => LugarGaleriaScreen(
-                                            placePhotos: model.placePhotos,
-                                            placeName: model.placeName,
-                                            placeAddress: model.placeAddress,
-                                            fecha: model.fecha,
-                                            hora: model.hora,
-                                            preferencia: model.preferencia,
-                                            intencion: model.intencion,
-                                          ),
+                                          builder: (_) =>
+                                              LugarGaleriaScreen(
+                                                placePhotos:
+                                                m.placePhotos,
+                                                placeName: m.placeName,
+                                                placeAddress:
+                                                m.placeAddress,
+                                                fecha: m.fecha,
+                                                hora: m.hora,
+                                                preferencia:
+                                                m.preferencia,
+                                                intencion: m.intencion,
+                                              ),
                                         ),
                                       );
                                     },
                                   ),
                                 ),
+
                               if (!noMore)
                                 Positioned.fill(
                                   child: GestureDetector(
-                                    onPanUpdate: _handlePanUpdate,
-                                    onPanEnd: (d) => _handlePanEnd(d, screen, uid),
+                                    onPanUpdate: _onPanUpdate,
+                                    onPanEnd: (d) =>
+                                        _onPanEnd(d, screen, uid),
                                     child: Transform.translate(
                                       offset: Offset(_dx, 0),
                                       child: Transform.rotate(
-                                        angle: _rotationDeg * (math.pi / 180),
+                                        angle: _rotationDeg *
+                                            (math.pi / 180),
                                         child: _SwipeBundle(
                                           model: _deck[_topIndex],
-                                          likeOpacity: _likeOpacityValue,
-                                          nopeOpacity: _nopeOpacityValue,
-                                          width: blockWidth,
-                                          photoHeight: photoHeight,
-                                          infoHeight: infoCardHeight,
+                                          likeOpacity:
+                                          _likeOpacityValue,
+                                          nopeOpacity:
+                                          _nopeOpacityValue,
+                                          width: blockW,
+                                          photoHeight: photoH,
+                                          infoHeight:
+                                          infoCardHeight,
                                           onCreatorPhotoTap: () {
-                                            final model = _deck[_topIndex];
-                                            Navigator.of(context).push(
+                                            final m =
+                                            _deck[_topIndex];
+                                            Navigator.of(context)
+                                                .push(
                                               MaterialPageRoute(
-                                                builder: (_) => CandidatoGaleriaScreen(
-                                                  userUid: model.ownerUid,
-                                                  fallbackSinglePhoto: model.creatorPhoto,
-                                                  placeName: model.placeName,
-                                                  placeAddress: model.placeAddress,
-                                                  fecha: model.fecha,
-                                                  hora: model.hora,
-                                                  preferencia: model.preferencia,
-                                                  intencion: model.intencion,
-                                                ),
+                                                builder: (_) =>
+                                                    CandidatoGaleriaScreen(
+                                                      userUid:
+                                                      m.ownerUid,
+                                                      fallbackSinglePhoto:
+                                                      m.creatorPhoto,
+                                                      placeName:
+                                                      m.placeName,
+                                                      placeAddress:
+                                                      m.placeAddress,
+                                                      fecha: m.fecha,
+                                                      hora: m.hora,
+                                                      preferencia:
+                                                      m.preferencia,
+                                                      intencion:
+                                                      m.intencion,
+                                                    ),
                                               ),
                                             );
                                           },
                                           onPlacePhotoTap: () {
-                                            final model = _deck[_topIndex];
-                                            Navigator.of(context).push(
+                                            final m =
+                                            _deck[_topIndex];
+                                            Navigator.of(context)
+                                                .push(
                                               MaterialPageRoute(
-                                                builder: (_) => LugarGaleriaScreen(
-                                                  placePhotos: model.placePhotos,
-                                                  placeName: model.placeName,
-                                                  placeAddress: model.placeAddress,
-                                                  fecha: model.fecha,
-                                                  hora: model.hora,
-                                                  preferencia: model.preferencia,
-                                                  intencion: model.intencion,
-                                                ),
+                                                builder: (_) =>
+                                                    LugarGaleriaScreen(
+                                                      placePhotos:
+                                                      m.placePhotos,
+                                                      placeName:
+                                                      m.placeName,
+                                                      placeAddress:
+                                                      m.placeAddress,
+                                                      fecha: m.fecha,
+                                                      hora: m.hora,
+                                                      preferencia:
+                                                      m.preferencia,
+                                                      intencion:
+                                                      m.intencion,
+                                                    ),
                                               ),
                                             );
                                           },
@@ -941,28 +875,33 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
                                   ),
                                 ),
 
-                              // ✅ EMPTY STATE: SOLO MENSAJE (sin preferencia/género)
                               if (noMore)
                                 Positioned.fill(
                                   child: Center(
                                     child: Container(
-                                      width: blockWidth * 0.92,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      width: blockW * 0.92,
+                                      padding: EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 14),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.38),
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(color: Colors.white24, width: 1),
+                                        color: Colors.black
+                                            .withOpacity(0.38),
+                                        borderRadius:
+                                        BorderRadius.circular(
+                                            18),
+                                        border: Border.all(
+                                          color: Colors.white24,
+                                          width: 1,
+                                        ),
                                       ),
                                       child: const Text(
-                                        // 🔴 CHINCHE EMPTY 1 — texto final limpio
-                                        'No hay citas disponibles ahora.\n\n'
-                                            'Vuelve a intentarlo más tarde.',
+                                        'No hay citas disponibles ahora.\n\nVuelve a intentarlo más tarde.',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 15,
-                                          height: 1.25,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight:
+                                          FontWeight.w700,
                                         ),
                                       ),
                                     ),
@@ -972,33 +911,41 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
                           ),
                         ),
 
-                        // ✅ Si no hay citas, NO mostramos botones X / ❤️
-                        if (!noMore) ...[
-                          SizedBox(height: gapSwipeBlockToButtons),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        if (!noMore)
+                          Column(
                             children: [
-                              _AssetCircleButton(
-                                asset: iconClose,
-                                size: actionButtonSize,
-                                iconSize: actionIconSize,
-                                backgroundColor: actionCircleColor,
-                                onTap: () => _onNopeTap(screen, uid),
+                              SizedBox(
+                                  height: gapSwipeBlockToButtons),
+                              Row(
+                                mainAxisAlignment:
+                                MainAxisAlignment.center,
+                                children: [
+                                  _AssetCircleButton(
+                                    asset: iconClose,
+                                    size: actionButtonSize,
+                                    iconSize: actionIconSize,
+                                    backgroundColor:
+                                    actionCircleColor,
+                                    onTap: () =>
+                                        _onNope(screen, uid),
+                                  ),
+                                  SizedBox(
+                                      width: actionButtonsGap),
+                                  _AssetCircleButton(
+                                    asset: iconFav,
+                                    size: actionButtonSize,
+                                    iconSize: actionIconSize,
+                                    backgroundColor:
+                                    actionCircleColor,
+                                    onTap: () =>
+                                        _onLike(screen, uid),
+                                  ),
+                                ],
                               ),
-                              SizedBox(width: actionButtonsGap),
-                              _AssetCircleButton(
-                                asset: iconFav,
-                                size: actionButtonSize,
-                                iconSize: actionIconSize,
-                                backgroundColor: actionCircleColor,
-                                onTap: () => _onLikeTap(screen, uid),
-                              ),
+                              SizedBox(height: bottomPadding),
                             ],
                           ),
-                          SizedBox(height: bottomPadding),
-                        ] else ...[
-                          const SizedBox(height: 18),
-                        ],
+                        if (noMore) const SizedBox(height: 18),
                       ],
                     ),
                   ),
@@ -1012,18 +959,16 @@ class _CitaBuscarScreenState extends ConsumerState<CitaBuscarScreen>
   }
 }
 
-// ================================================================
-// SWIPE BUNDLE (FOTO + INFO)
-// ================================================================
+// =====================================================
+// SWIPE BUNDLE (FOTO + INFO + BADGES + TÍTULO)
+// =====================================================
 class _SwipeBundle extends StatelessWidget {
   final _CitaCardModel model;
   final double likeOpacity;
   final double nopeOpacity;
-
   final double width;
   final double photoHeight;
   final double infoHeight;
-
   final VoidCallback onCreatorPhotoTap;
   final VoidCallback onPlacePhotoTap;
 
@@ -1038,46 +983,45 @@ class _SwipeBundle extends StatelessWidget {
     required this.onPlacePhotoTap,
   });
 
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
+  bool _isNet(String v) =>
+      v.startsWith('http://') || v.startsWith('https://');
 
-  Widget _buildCreatorPhoto() {
+  Widget _creatorPhoto() {
     final src = model.creatorPhoto.trim();
+
     if (src.isEmpty) {
       return Image.asset(
-        model.creatorPhotoFallbackAsset,
+        'assets/images/perfil1.jpg',
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
       );
     }
-    if (_isNetwork(src)) {
+
+    if (_isNet(src)) {
       return Image.network(
         src,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
-        errorBuilder: (_, __, ___) =>
-            Image.asset(model.creatorPhotoFallbackAsset, fit: BoxFit.cover),
+        errorBuilder: (_, __, ___) => Image.asset(
+          'assets/images/perfil1.jpg',
+          fit: BoxFit.cover,
+        ),
       );
     }
+
     return Image.asset(
       src,
       fit: BoxFit.cover,
       alignment: Alignment.topCenter,
-      errorBuilder: (_, __, ___) =>
-          Image.asset(model.creatorPhotoFallbackAsset, fit: BoxFit.cover),
+      errorBuilder: (_, __, ___) => Image.asset(
+        'assets/images/perfil1.jpg',
+        fit: BoxFit.cover,
+      ),
     );
-  }
-
-  String _firstName(String fullName) {
-    final trimmed = fullName.trim();
-    if (trimmed.isEmpty) return 'Usuario';
-    final parts = trimmed.split(RegExp(r'\s+'));
-    return parts.isEmpty ? trimmed : parts.first;
   }
 
   @override
   Widget build(BuildContext context) {
-    final String primerNombre = _firstName(model.creatorName);
-
     return SizedBox(
       width: width,
       child: Column(
@@ -1086,12 +1030,16 @@ class _SwipeBundle extends StatelessWidget {
             width: width,
             height: photoHeight,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_CitaBuscarScreenState.photoRadius),
+              borderRadius: BorderRadius.circular(
+                  _CitaBuscarScreenState.photoRadius),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(_CitaBuscarScreenState.shadowOpacity),
-                  blurRadius: _CitaBuscarScreenState.shadowBlur,
-                  offset: Offset(0, _CitaBuscarScreenState.shadowOffsetY),
+                  color: Colors.black.withOpacity(
+                      _CitaBuscarScreenState.shadowOpacity),
+                  blurRadius:
+                  _CitaBuscarScreenState.shadowBlur,
+                  offset: Offset(
+                      0, _CitaBuscarScreenState.shadowOffsetY),
                 ),
               ],
             ),
@@ -1099,7 +1047,10 @@ class _SwipeBundle extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                GestureDetector(onTap: onCreatorPhotoTap, child: _buildCreatorPhoto()),
+                GestureDetector(
+                    onTap: onCreatorPhotoTap,
+                    child: _creatorPhoto()),
+
                 Positioned(
                   left: 0,
                   right: 0,
@@ -1107,20 +1058,27 @@ class _SwipeBundle extends StatelessWidget {
                   child: IgnorePointer(
                     ignoring: true,
                     child: Container(
-                      height: _CitaBuscarScreenState.photoGradientHeight,
+                      height:
+                      _CitaBuscarScreenState.photoGradientHeight,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            Colors.black.withOpacity(_CitaBuscarScreenState.photoGradientBottomOpacity),
+                            Colors.black.withOpacity(
+                                _CitaBuscarScreenState
+                                    .photoGradientBottomOpacity),
                           ],
                         ),
                       ),
                     ),
                   ),
                 ),
+
+                // ---------------------------
+                // TÍTULO: NOMBRE + EDAD
+                // ---------------------------
                 Positioned(
                   left: _CitaBuscarScreenState.titleLeft,
                   bottom: _CitaBuscarScreenState.titleBottom,
@@ -1128,7 +1086,9 @@ class _SwipeBundle extends StatelessWidget {
                     ignoring: true,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxWidth: width * _CitaBuscarScreenState.titleMaxWidthFactor,
+                        maxWidth: width *
+                            _CitaBuscarScreenState
+                                .titleMaxWidthFactor,
                       ),
                       child: RichText(
                         maxLines: 1,
@@ -1136,30 +1096,44 @@ class _SwipeBundle extends StatelessWidget {
                         text: TextSpan(
                           children: [
                             TextSpan(
-                              text: primerNombre,
+                              text: model.creatorName,
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: _CitaBuscarScreenState.titleNameSize,
+                                fontSize: _CitaBuscarScreenState
+                                    .titleNameSize,
                                 fontWeight: FontWeight.w900,
                                 shadows: [
                                   Shadow(
-                                    blurRadius: _CitaBuscarScreenState.titleShadowBlur,
-                                    color: Colors.black.withOpacity(_CitaBuscarScreenState.titleShadowOpacity),
+                                    blurRadius:
+                                    _CitaBuscarScreenState
+                                        .titleShadowBlur,
+                                    color: Colors.black
+                                        .withOpacity(
+                                        _CitaBuscarScreenState
+                                            .titleShadowOpacity),
                                     offset: const Offset(0, 2),
                                   ),
                                 ],
                               ),
                             ),
                             TextSpan(
-                              text: model.creatorAge > 0 ? ', ${model.creatorAge}' : '',
+                              text: model.creatorAge > 0
+                                  ? ', ${model.creatorAge}'
+                                  : '',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontSize: _CitaBuscarScreenState.titleAgeSize,
+                                fontSize: _CitaBuscarScreenState
+                                    .titleAgeSize,
                                 fontWeight: FontWeight.w900,
                                 shadows: [
                                   Shadow(
-                                    blurRadius: _CitaBuscarScreenState.titleShadowBlur,
-                                    color: Colors.black.withOpacity(_CitaBuscarScreenState.titleShadowOpacity),
+                                    blurRadius:
+                                    _CitaBuscarScreenState
+                                        .titleShadowBlur,
+                                    color: Colors.black
+                                        .withOpacity(
+                                        _CitaBuscarScreenState
+                                            .titleShadowOpacity),
                                     offset: const Offset(0, 2),
                                   ),
                                 ],
@@ -1172,9 +1146,7 @@ class _SwipeBundle extends StatelessWidget {
                   ),
                 ),
 
-                if (_CitaBuscarScreenState.showUndoButton) const SizedBox.shrink(),
-
-                // BADGES ocultos
+                // BADGES (LIKE / NOPE)
                 IgnorePointer(
                   ignoring: true,
                   child: Opacity(
@@ -1218,7 +1190,10 @@ class _SwipeBundle extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: _CitaBuscarScreenState.gapPhotoToInfo),
+
+          SizedBox(
+              height: _CitaBuscarScreenState.gapPhotoToInfo),
+
           _CitaInfoCard(
             width: width,
             height: infoHeight,
@@ -1231,6 +1206,9 @@ class _SwipeBundle extends StatelessWidget {
   }
 }
 
+// =====================================================
+// INFO CARD
+// =====================================================
 class _CitaInfoCard extends StatelessWidget {
   final double width;
   final double height;
@@ -1244,27 +1222,27 @@ class _CitaInfoCard extends StatelessWidget {
     required this.onPlaceTap,
   });
 
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
+  bool _isNet(String v) => v.startsWith('http');
 
   @override
   Widget build(BuildContext context) {
-    final src = (model.placePhotos.isNotEmpty ? model.placePhotos.first : '').trim();
+    final src =
+    (model.placePhotos.isNotEmpty ? model.placePhotos.first : '').trim();
 
     Widget bg;
+
     if (src.isEmpty) {
       bg = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
-    } else if (_isNetwork(src)) {
-      bg = Image.network(
-        src,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
+    } else if (_isNet(src)) {
+      bg = Image.network(src,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Image.asset('assets/images/perfil1.jpg'));
     } else {
-      bg = Image.asset(
-        src,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
+      bg = Image.asset(src,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              Image.asset('assets/images/perfil1.jpg'));
     }
 
     return GestureDetector(
@@ -1273,7 +1251,8 @@ class _CitaInfoCard extends StatelessWidget {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(_CitaBuscarScreenState.infoRadius),
+          borderRadius:
+          BorderRadius.circular(_CitaBuscarScreenState.infoRadius),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.30),
@@ -1289,9 +1268,9 @@ class _CitaInfoCard extends StatelessWidget {
             bg,
             Container(color: Colors.black.withOpacity(0.35)),
             Positioned(
-              left: 14.0,
-              right: 14.0,
-              top: 10.0,
+              left: 14,
+              right: 14,
+              top: 10,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1304,7 +1283,7 @@ class _CitaInfoCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 22.0,
+                            fontSize: 22,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -1313,7 +1292,7 @@ class _CitaInfoCard extends StatelessWidget {
                         model.hora,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 19.0,
+                          fontSize: 19,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -1326,7 +1305,7 @@ class _CitaInfoCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 14.0,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1337,7 +1316,7 @@ class _CitaInfoCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13.0,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1345,9 +1324,9 @@ class _CitaInfoCard extends StatelessWidget {
               ),
             ),
             Positioned(
-              left: 14.0,
-              right: 14.0,
-              bottom: 12.0,
+              left: 14,
+              right: 14,
+              bottom: 12,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1357,7 +1336,7 @@ class _CitaInfoCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13.0,
+                      fontSize: 13,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -1368,7 +1347,7 @@ class _CitaInfoCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 11.0,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1382,9 +1361,9 @@ class _CitaInfoCard extends StatelessWidget {
   }
 }
 
-// ================================================================
-// UI Components
-// ================================================================
+// =====================================================
+// BADGE LIKE / NOPE
+// =====================================================
 class _ChoiceBadge extends StatelessWidget {
   final String text;
   final Color borderColor;
@@ -1399,23 +1378,33 @@ class _ChoiceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding:
+      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         border: Border.all(color: borderColor, width: 4),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w900,
-          shadows: [Shadow(blurRadius: 10, color: Color.fromRGBO(0, 0, 0, 0.30))],
-        ).copyWith(color: textColor),
+          color: textColor,
+          shadows: [
+            Shadow(
+              blurRadius: 10,
+              color: Colors.black.withOpacity(0.30),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
+// =====================================================
+// BOTÓN REDONDO CON ASSET
+// =====================================================
 class _AssetCircleButton extends StatelessWidget {
   final String asset;
   final double size;
@@ -1457,22 +1446,18 @@ class _AssetCircleButton extends StatelessWidget {
   }
 }
 
-// ================================================================
-// Model
-// ================================================================
+// =====================================================
+// MODELO DE CITA
+// =====================================================
 class _CitaCardModel {
   final String citaId;
   final String ownerUid;
-
   final String creatorName;
   final int creatorAge;
   final String creatorPhoto;
-  final String creatorPhotoFallbackAsset;
-
   final List<String> placePhotos;
   final String placeName;
   final String placeAddress;
-
   final String fecha;
   final String hora;
   final String intencion;
@@ -1484,7 +1469,6 @@ class _CitaCardModel {
     required this.creatorName,
     required this.creatorAge,
     required this.creatorPhoto,
-    this.creatorPhotoFallbackAsset = 'assets/images/perfil1.jpg',
     required this.placePhotos,
     required this.placeName,
     required this.placeAddress,
