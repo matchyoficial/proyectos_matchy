@@ -1,30 +1,29 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS (threads) — filtrado por participantUids (evita permission-denied)
-// ✅ Usa SOLO constantes desde lib/services/chat_actions.dart
-// ✅ Mantiene diseño Matchy (fondo, logo, título)
-// ✅ Shell-safe: NO dibuja bottom nav interno (HomeShell lo pone)
+// ✅ LISTA DE CHATS (DISEÑO PRO FINAL + FADE OUT)
+// 🔥 UI: Logo ajustado a 45.
+// 🔥 UI: Título "CHATS" centrado, grande y con sombra.
+// 🔥 UI: Degradado negro inferior (Fade Out).
 
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 
+// UI Model
 class ChatThreadUI {
   final String id;
+  final String otherUid;
   final String nombre;
-  final String edad;
-  final String foto;
+  final String foto; // Solo nombre y foto
   final String lastText;
   final DateTime? lastAt;
 
   ChatThreadUI({
     required this.id,
+    required this.otherUid,
     required this.nombre,
-    required this.edad,
     required this.foto,
     required this.lastText,
     required this.lastAt,
@@ -32,127 +31,97 @@ class ChatThreadUI {
 }
 
 class ChatScreen extends StatefulWidget {
-  final bool showBottomNav; // 🔴 CHINCHE SHELL CHAT 1 — en HomeShell debe ir false
-
-  const ChatScreen({
-    super.key,
-    this.showBottomNav = true,
-  });
+  final bool showBottomNav;
+  const ChatScreen({super.key, this.showBottomNav = true});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  // 🔴 CHINCHE UI CHAT A — separación superior antes del logo
-  static const double espacioBarraLogo = 35;
 
-  // 🔴 CHINCHE UI CHAT B — altura logo
-  static const double alturaLogo = 50;
+  // ===========================================================================
+  // 🔴🔴 CHINCHES MAESTROS (DISEÑO CHAT PRO) 🔴🔴
+  // ===========================================================================
+  static const double kTopSpacing   = 35.0;  // Espacio superior
+  static const double kLogoHeight   = 45.0;  // 🔥 AJUSTADO A 45
+  static const double kPaddingH     = 20.0;  // Padding lateral
+  static const double kCardHeight   = 85.0;  // Altura tarjeta chat
+  static const double kAvatarSize   = 60.0;  // Tamaño avatar
+  static const double kCardRadius   = 22.0;  // Redondeo tarjeta
+  static const double kAvatarRadius = 16.0;  // Redondeo foto (Cuadrado rounded)
 
-  // 🔴 CHINCHE UI CHAT C — padding horizontal lista
-  static const double padH = 18;
+  // Colores PRO
+  static const List<Color> kCardGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
+  static const BoxShadow kCardShadow = BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4));
+  // ===========================================================================
 
-  // 🔴 CHINCHE UI CHAT D — alto de cada item
-  static const double itemHeight = 78;
-
-  bool _isUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
+  bool _isUrl(String v) => v.startsWith('http');
   bool _isAsset(String v) => v.startsWith('assets/');
-  bool _looksLikeFilePath(String v) =>
-      v.startsWith('/') || v.contains(r':\') || v.startsWith('file:');
 
   Widget _safeAvatar(String value) {
     final v = value.trim();
     const fallback = 'assets/images/perfil1.jpg';
 
     if (v.isEmpty) {
-      return Image.asset(fallback, fit: BoxFit.cover);
+      return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
     }
 
     if (_isUrl(v)) {
       return Image.network(
         v,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
+        alignment: Alignment.topCenter,
+        errorBuilder: (_,__,___) => Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter),
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
           return Container(
-            color: Colors.black26,
+            color: Colors.white10,
             alignment: Alignment.center,
-            child: const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
+            child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
           );
         },
       );
     }
 
     if (_isAsset(v)) {
-      return Image.asset(
-        v,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
-      );
+      return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter));
     }
 
-    if (_looksLikeFilePath(v)) {
-      return Image.file(
-        File(v.replaceFirst('file://', '')),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
-      );
+    if (v.startsWith('/') || v.contains(r':\')) {
+      return Image.file(File(v), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter));
     }
 
-    return Image.asset(fallback, fit: BoxFit.cover);
+    return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
   }
 
-  ChatThreadUI _mapThreadDocToUI({
-    required String myUid,
-    required QueryDocumentSnapshot<Map<String, dynamic>> d,
-  }) {
-    final data = d.data();
+  ChatThreadUI _mapData(String myUid, QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
 
-    // lastText/lastAt
-    final lastText = (data[kThreadLastText] ?? '').toString();
+    // Fecha y Texto
+    final lastText = (data['lastText'] ?? '').toString();
     DateTime? lastAt;
-    final rawAt = data[kThreadLastAt];
-    if (rawAt is Timestamp) lastAt = rawAt.toDate();
+    if (data['lastAt'] is Timestamp) lastAt = (data['lastAt'] as Timestamp).toDate();
 
-    // Esquema nuevo: participantUids + meta
+    // Identificar al otro usuario
+    final List parts = (data['participantUids'] is List) ? data['participantUids'] : [];
+    final otherUid = parts.firstWhere((id) => id != myUid, orElse: () => '').toString();
+
+    // Metadatos visuales
     String nombre = 'Matchy';
-    String edad = '—';
     String foto = '';
 
-    final puidsRaw = data[kThreadParticipantUids];
-    final List<String> puids = (puidsRaw is List)
-        ? puidsRaw.map((e) => e.toString()).toList()
-        : <String>[];
-
-    final otherUid = puids.firstWhere(
-          (u) => u != myUid,
-      orElse: () => '',
-    );
-
-    final metaRaw = data[kThreadMeta];
-    if (otherUid.isNotEmpty && metaRaw is Map) {
-      final otherMeta = metaRaw[otherUid];
-      if (otherMeta is Map) {
-        nombre = (otherMeta['nombre'] ?? nombre).toString().trim();
-        edad = (otherMeta['edad'] ?? edad).toString().trim();
-        foto = (otherMeta['foto'] ?? foto).toString().trim();
-        if (edad.isEmpty) edad = '—';
-      }
+    final meta = data['meta'];
+    if (otherUid.isNotEmpty && meta is Map && meta.containsKey(otherUid)) {
+      final info = meta[otherUid];
+      nombre = info['nombre'] ?? 'Matchy';
+      foto = info['foto'] ?? '';
     }
 
-    if (nombre.trim().isEmpty) nombre = 'Matchy';
-    if (edad.trim().isEmpty) edad = '—';
-
     return ChatThreadUI(
-      id: d.id,
+      id: doc.id,
+      otherUid: otherUid,
       nombre: nombre,
-      edad: edad,
       foto: foto,
       lastText: lastText,
       lastAt: lastAt,
@@ -167,171 +136,136 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
+          // 1. Fondo
+          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: espacioBarraLogo),
-              Center(
-                child: SizedBox(
-                  height: alturaLogo,
-                  child: Image.asset('assets/images/logomatchyplano.png'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Padding(
-                padding: EdgeInsets.only(left: padH),
+              const SizedBox(height: kTopSpacing),
+              Center(child: SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png'))),
+
+              const SizedBox(height: 20),
+
+              // 🔥 TÍTULO CENTRADO Y GRANDE
+              const Center(
                 child: Text(
                   'CHATS',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
+                    fontSize: 24, // Más grande
                     fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.0,
+                    shadows: [
+                      Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+
+              const SizedBox(height: 15),
+
               Expanded(
-                child: (user == null)
-                    ? const Center(
-                  child: Text(
-                    '⚠️ No hay sesión iniciada',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                )
-                    : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  // ✅ SOLO threads donde yo soy participante
+                child: user == null
+                    ? const Center(child: Text("Inicia sesión", style: TextStyle(color: Colors.white)))
+                    : StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
-                      .collection(kChatThreadsCollection)
-                      .where(kThreadParticipantUids, arrayContains: user.uid)
+                      .collection('chat_threads')
+                      .where('participantUids', arrayContains: user.uid)
                       .snapshots(),
                   builder: (context, snap) {
-                    if (snap.hasError) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          child: Text(
-                            '❌ Error cargando chats: ${snap.error}',
-                            style: const TextStyle(color: Colors.white),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      );
-                    }
-
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      );
-                    }
+                    if (snap.hasError) return Center(child: Text("Error: ${snap.error}", style: const TextStyle(color: Colors.white)));
+                    if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
                     final docs = snap.data?.docs ?? [];
 
-                    final threads = docs
-                        .map((d) => _mapThreadDocToUI(
-                      myUid: user.uid,
-                      d: d,
-                    ))
-                        .toList()
-                      ..sort((a, b) {
-                        final da = a.lastAt;
-                        final db = b.lastAt;
-                        if (da == null && db == null) return 0;
-                        if (da == null) return 1;
-                        if (db == null) return -1;
-                        return db.compareTo(da);
-                      });
-
-                    if (threads.isEmpty) {
-                      return const Center(
-                        child: Text(
-                          'Aún no tienes chats 🙂',
-                          style: TextStyle(color: Colors.white),
+                    // Estado vacío elegante
+                    if (docs.isEmpty) {
+                      return Container(
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.chat_bubble_outline, color: Colors.white.withOpacity(0.5), size: 48),
+                            const SizedBox(height: 10),
+                            const Text("Aún no tienes chats activos", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins')),
+                          ],
                         ),
                       );
                     }
 
-                    return ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(padH, 0, padH, 16),
-                      itemCount: threads.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, i) {
-                        final t = threads[i];
+                    // Mapeo y Ordenamiento
+                    final threads = docs.map((d) => _mapData(user.uid, d)).toList();
+                    threads.sort((a, b) => (b.lastAt ?? DateTime(0)).compareTo(a.lastAt ?? DateTime(0)));
 
+                    return ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(kPaddingH, 0, kPaddingH, 100), // Espacio inferior para el fade
+                      itemCount: threads.length,
+                      separatorBuilder: (_,__) => const SizedBox(height: 14),
+                      itemBuilder: (ctx, i) {
+                        final t = threads[i];
                         return GestureDetector(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => ChatDetalleScreen(
-                                  id: t.id,
-                                  nombre: t.nombre,
-                                  edad: t.edad,
-                                  foto: t.foto,
-                                ),
-                              ),
-                            );
-                          },
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatDetalleScreen(
+                            id: t.id,
+                            otherUid: t.otherUid,
+                            nombre: t.nombre,
+                            edad: '', // Ya no mostramos edad
+                            foto: t.foto,
+                          ))),
                           child: Container(
-                            height: itemHeight,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                            height: kCardHeight,
+                            padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.35),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(kCardRadius),
+                              gradient: const LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: kCardGradient,
                               ),
+                              boxShadow: const [kCardShadow],
+                              border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
                             ),
                             child: Row(
                               children: [
+                                // FOTO
                                 ClipRRect(
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: SizedBox(
-                                    width: 56,
-                                    height: 56,
-                                    child: _safeAvatar(t.foto),
-                                  ),
+                                    borderRadius: BorderRadius.circular(kAvatarRadius),
+                                    child: SizedBox(
+                                        width: kAvatarSize,
+                                        height: kAvatarSize,
+                                        child: _safeAvatar(t.foto)
+                                    )
                                 ),
-                                const SizedBox(width: 12),
+
+                                const SizedBox(width: 15),
+
+                                // TEXTOS
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        '${t.nombre}, ${t.edad}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 16,
-                                          fontFamily: 'Poppins',
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                          t.nombre,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        t.lastText.isEmpty
-                                            ? 'Sin mensajes aún'
-                                            : t.lastText,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.75),
-                                          fontSize: 13,
-                                          fontFamily: 'Poppins',
-                                        ),
+                                          t.lastText.isEmpty ? "Nuevo match 💖" : t.lastText,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13, fontFamily: 'Poppins')
                                       ),
                                     ],
                                   ),
                                 ),
-                                Icon(
-                                  Icons.chevron_right,
-                                  color: Colors.white.withOpacity(0.6),
-                                ),
+
+                                // Flecha
+                                Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.4), size: 28)
                               ],
                             ),
                           ),
@@ -340,13 +274,34 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   },
                 ),
-              ),
+              )
             ],
+          ),
+
+          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: 90, // Altura del fade
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.95), // Negro intenso al final
+                    ],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
-
-      // ✅ En HomeShell esto NO se usa; el shell pone la barra.
       bottomNavigationBar: widget.showBottomNav ? const SizedBox.shrink() : null,
     );
   }

@@ -1,42 +1,26 @@
 // 📂 lib/screens/datos_screen.dart
-// ✅ DATOSSCREEN FLUTTER (Conectado a Riverpod + guardado local)
-// ✅ GUARDAR: solo se activa si cumple mínimos + hay cambios (dirty)
-// ✅ Al guardar: marca onboarding_completed = true
-// ✅ Fotos REAL: galería/cámara con image_picker + reorder + delete (X)
-// ✅ Foto #1 = foto de perfil
-//
-// ✅ FIREBASE: Sync del perfil a Firestore users/{uid} al guardar (merge:true)
-// ✅ STORAGE: Sube fotos reales a Firebase Storage y guarda URLs en Firestore
-//
-// ✅ FIX CRÍTICO:
-//    - Evita mostrar paths muertos tras limpiar caché (Image.file crash)
-//    - Prioriza photoUrls (cross-device) para render en la UI
-//    - Al guardar, convierte el draft local a URLs para que no queden File paths rotos
-//    - En Firestore, no guarda photosLocalPaths con rutas reales (solo assets/urls)
-//
-// ✅ NUEVO (VITAL PARA MATCH REAL):
-//    - Preferencia de citas: "¿Prefieres tener citas con?" (Hombres/Mujeres/Ambos)
-//    - Se guarda en Firestore: users/{uid}.preferenciaCitas
-//
-// ✅ NUEVO (VITAL):
-//    - Género obligatorio (Hombre/Mujer/Otro/Prefiero no decirlo)
-//    - Se guarda en Firestore: users/{uid}.genero
+// ✅ DATOSSCREEN (DISEÑO FINAL PRO + ZONA SEGURA FOTO PERFIL INTERACTIVA)
+// 🔥 REQUIERE PAQUETE: 'photo_view' en pubspec.yaml.
+// 🔥 FIX UI FOTO PERFIL: Reemplazado Image estándar por 'PhotoView'.
+//    Ahora el usuario puede hacer PAN y ZOOM real sobre su foto completa
+//    para elegir el encuadre deseado dentro del marco cuadrado.
+// 🔥 UI FOTOS: Layout "Capsula": Izquierda (Perfil Grande) | Derecha (Grid 2x2).
+// ✅ DRAG & DROP: Funcional.
 
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+// 🔥 IMPORTANTE: Importar el paquete photo_view
+import 'package:photo_view/photo_view.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
-// 🔴 CHINCHE FIREBASE DATOS 1 — imports Firebase
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-// 🔴 CHINCHE FIREBASE STORAGE 1 — import Storage
 import 'package:firebase_storage/firebase_storage.dart';
 
 class DatosScreen extends ConsumerStatefulWidget {
@@ -49,6 +33,14 @@ class DatosScreen extends ConsumerStatefulWidget {
 }
 
 class _DatosScreenState extends ConsumerState<DatosScreen> {
+  // ==========================================================
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS (TAMAÑOS DE TEXTO) 🔴🔴
+  // ==========================================================
+  static const double kChincheTituloSeccion = 18.0;
+  static const double kChincheLabelInput = 16.0;
+  static const double kChincheTextoInput = 15.0;
+  // ==========================================================
+
   late final TextEditingController _nombreCtrl;
   late final TextEditingController _edadCtrl;
   late final TextEditingController _profesionCtrl;
@@ -56,31 +48,14 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   late final TextEditingController _detalleCtrl;
   late final TextEditingController _estaturaCtrl;
 
-  // 🔴 CHINCHE VALID UI 1 — al intentar guardar, mostramos obligatorios
   bool _mostrarErrores = false;
-
-  // 🔴 CHINCHE FIREBASE DATOS 3 — bloquea doble tap + muestra loading
   bool _saving = false;
+  bool _isLoadingCloudData = true;
 
-  // 🔴 CHINCHE FOTO PICKER 1 — instancia picker
   final ImagePicker _picker = ImagePicker();
 
-  // ✅ Preferencia citas (single-choice)
-  // 🔴 CHINCHE PREFCITAS 1 — default seguro
-  String _preferenciaCitas = 'Ambos'; // 'Hombres' | 'Mujeres' | 'Ambos'
-
-  // ✅ NUEVO: género obligatorio (canónico del provider)
-  // 🔴 CHINCHE GENERO UI 1 — default vacío (obligatorio)
-  String _genero = ''; // 'hombre' | 'mujer' | 'otro' | 'no_decir'
-
-  // 🔹 Fotos demo (assets)
-  final List<String> fotosDisponibles = const [
-    'assets/images/perfil1.jpg',
-    'assets/images/perfil2.jpg',
-    'assets/images/perfil3.jpg',
-    'assets/images/perfil4.jpg',
-    'assets/images/perfil5.jpg',
-  ];
+  String _preferenciaCitas = 'Ambos';
+  String _genero = '';
 
   final List<String> _estaturas = List.generate(76, (i) {
     final v = 1.40 + (i * 0.01);
@@ -100,46 +75,83 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _detalleCtrl = TextEditingController(text: s.detalle);
     _estaturaCtrl = TextEditingController(text: s.estatura);
 
-    // ✅ Lee preferencia/género desde provider (ya existen de verdad)
     _preferenciaCitas = s.preferenciaCitas.trim().isEmpty ? 'Ambos' : s.preferenciaCitas.trim();
     _genero = s.genero.trim();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await ref.read(profileFormProvider.notifier).loadDraft();
+      final ctrl = ref.read(profileFormProvider.notifier);
+      await ctrl.loadDraft();
 
-      final loaded = ref.read(profileFormProvider);
-      _nombreCtrl.text = loaded.nombre;
-      _edadCtrl.text = loaded.edad;
-      _profesionCtrl.text = loaded.profesion;
-      _biografiaCtrl.text = loaded.biografia;
-      _detalleCtrl.text = loaded.detalle;
-      _estaturaCtrl.text = loaded.estatura;
+      final localState = ref.read(profileFormProvider);
+      if (localState.nombre.isEmpty) {
+        await _hydrateFromFirestore(ctrl);
+      } else {
+        if (mounted) setState(() => _isLoadingCloudData = false);
+      }
+
+      final finalState = ref.read(profileFormProvider);
+      _nombreCtrl.text = finalState.nombre;
+      _edadCtrl.text = finalState.edad;
+      _profesionCtrl.text = finalState.profesion;
+      _biografiaCtrl.text = finalState.biografia;
+      _detalleCtrl.text = finalState.detalle;
+      _estaturaCtrl.text = finalState.estatura;
 
       if (!mounted) return;
       setState(() {
-        _preferenciaCitas = loaded.preferenciaCitas.trim().isEmpty ? 'Ambos' : loaded.preferenciaCitas.trim();
-        _genero = loaded.genero.trim();
+        _preferenciaCitas = finalState.preferenciaCitas.trim().isEmpty ? 'Ambos' : finalState.preferenciaCitas.trim();
+        _genero = finalState.genero.trim();
+        _isLoadingCloudData = false;
       });
     });
 
-    _nombreCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setNombre(_nombreCtrl.text);
-    });
-    _edadCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setEdad(_edadCtrl.text);
-    });
-    _profesionCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setProfesion(_profesionCtrl.text);
-    });
-    _biografiaCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setBiografia(_biografiaCtrl.text);
-    });
-    _detalleCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setDetalle(_detalleCtrl.text);
-    });
-    _estaturaCtrl.addListener(() {
-      ref.read(profileFormProvider.notifier).setEstatura(_estaturaCtrl.text);
-    });
+    _nombreCtrl.addListener(() => ref.read(profileFormProvider.notifier).setNombre(_nombreCtrl.text));
+    _edadCtrl.addListener(() => ref.read(profileFormProvider.notifier).setEdad(_edadCtrl.text));
+    _profesionCtrl.addListener(() => ref.read(profileFormProvider.notifier).setProfesion(_profesionCtrl.text));
+    _biografiaCtrl.addListener(() => ref.read(profileFormProvider.notifier).setBiografia(_biografiaCtrl.text));
+    _detalleCtrl.addListener(() => ref.read(profileFormProvider.notifier).setDetalle(_detalleCtrl.text));
+    _estaturaCtrl.addListener(() => ref.read(profileFormProvider.notifier).setEstatura(_estaturaCtrl.text));
+  }
+
+  Future<void> _hydrateFromFirestore(ProfileFormController ctrl) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+
+        ctrl.setNombre(data['nombre'] ?? '');
+        if (data['edad'] != null) ctrl.setEdad(data['edad'].toString());
+        ctrl.setProfesion(data['profesion'] ?? '');
+        ctrl.setBiografia(data['biografia'] ?? '');
+        ctrl.setDetalle(data['detalle'] ?? '');
+        ctrl.setEstatura(data['estatura'] ?? '');
+        ctrl.setPais(data['pais']);
+        ctrl.setCiudad(data['ciudad']);
+
+        ctrl.setGenero(data['genero'] ?? '');
+        ctrl.setPreferenciaCitas(data['preferenciaCitas'] ?? 'Ambos');
+
+        if (data['sobreMiSeleccion'] is List) {
+          for (var item in data['sobreMiSeleccion']) ctrl.toggleSobreMi(item);
+        }
+        if (data['buscoSeleccion'] is List) {
+          for (var item in data['buscoSeleccion']) ctrl.toggleBusco(item);
+        }
+        if (data['interesesSeleccion'] is List) {
+          for (var item in data['interesesSeleccion']) ctrl.toggleInteres(item);
+        }
+
+        if (data['photoUrls'] is List) {
+          final urls = List<String>.from(data['photoUrls']);
+          ctrl.setFotos(urls);
+        }
+      }
+    } catch (e) {
+      debugPrint("Error recuperando datos: $e");
+    }
   }
 
   @override
@@ -153,138 +165,76 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     super.dispose();
   }
 
-  // ===================== VALIDACIONES UI =====================
+  // ===================== VALIDACIONES =====================
   bool _nombreOk(ProfileFormState s) => s.nombre.trim().isNotEmpty;
-
   bool _edadOk(ProfileFormState s) {
     final edadInt = int.tryParse(s.edad.trim());
     return edadInt != null && edadInt >= 18 && edadInt <= 99;
   }
-
   bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
   bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
-
-  // ✅ Género obligatorio (cualquier opción, incluso no_decir)
   bool _generoOk() => _genero.trim().isNotEmpty;
-
-  // 🔴 FIX: fotos ok debe considerar URLs cross-device también
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
   bool _isAssetPath(String v) => v.startsWith('assets/');
   bool _isNetworkUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
   bool _isGsUrl(String v) => v.startsWith('gs://');
 
-  bool _fileExists(String path) {
-    try {
-      return File(path).existsSync();
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // 🔴 FIX: lista “renderizable” (filtra paths muertos)
   List<String> _buildDisplayFotos(ProfileFormState s) {
-    // Prioridad: URLs buenas
-    final urls = s.photoUrls.where((e) => _isNetworkUrl(e.trim())).toList();
-    if (urls.isNotEmpty) return urls;
-
-    // Si no hay URLs, usamos fotosCargadas pero filtrando archivos muertos
     final out = <String>[];
     for (final raw in s.fotosCargadas) {
       final v = raw.trim();
       if (v.isEmpty) continue;
-      if (_isNetworkUrl(v)) {
-        out.add(v);
-      } else if (_isAssetPath(v)) {
-        out.add(v);
-      } else if (_isGsUrl(v)) {
-        // gs:// no lo renderizamos aquí, debe ser https
-      } else {
-        // File path
-        if (_fileExists(v)) out.add(v);
-      }
+      out.add(v);
     }
     return out;
   }
 
-  // ===================== FIREBASE STORAGE UPLOAD =====================
   Future<List<String>> _uploadRealPhotosToStorage({
     required String uid,
     required List<String> fotosCargadas,
   }) async {
     final urls = <String>[];
-
-    final filesToUpload = fotosCargadas
-        .where((p) =>
-    p.trim().isNotEmpty &&
-        !_isAssetPath(p) &&
-        !_isNetworkUrl(p) &&
-        !_isGsUrl(p))
-        .toList();
+    final filesToUpload = fotosCargadas.where((p) => p.trim().isNotEmpty && !_isAssetPath(p) && !_isNetworkUrl(p) && !_isGsUrl(p)).toList();
 
     if (filesToUpload.isEmpty) return urls;
 
     final storage = FirebaseStorage.instance;
-
     for (var i = 0; i < filesToUpload.length; i++) {
       final path = filesToUpload[i];
       final file = File(path);
-
       if (!file.existsSync()) continue;
 
       final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
       final ref = storage.ref().child('users/$uid/photos/$fileName');
-
       final task = await ref.putFile(file);
       final url = await task.ref.getDownloadURL();
-
       if (url.trim().isNotEmpty) urls.add(url.trim());
     }
-
     return urls;
   }
 
-  // ===================== FIREBASE SYNC =====================
   Future<List<String>> _syncProfileToFirestore(ProfileFormState s) async {
     final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      throw Exception('No hay usuario autenticado. Debes iniciar sesión primero.');
-    }
+    if (user == null) throw Exception('No hay usuario autenticado.');
 
     final uid = user.uid;
     final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
-
     final int? edadInt = int.tryParse(s.edad.trim());
-
     final List<String> localRaw = List<String>.from(s.fotosCargadas);
-
     final existingUrls = localRaw.where((p) => _isNetworkUrl(p.trim())).toList();
 
-    final uploadedUrls = await _uploadRealPhotosToStorage(
-      uid: uid,
-      fotosCargadas: localRaw,
-    );
+    final uploadedUrls = await _uploadRealPhotosToStorage(uid: uid, fotosCargadas: localRaw);
 
-    final List<String> photoUrls = [...existingUrls, ...uploadedUrls]
-        .map((e) => e.trim())
-        .where((e) => _isNetworkUrl(e))
-        .toList();
-
+    final List<String> photoUrls = [...existingUrls, ...uploadedUrls].map((e) => e.trim()).where((e) => _isNetworkUrl(e)).toList();
     final String? profilePhotoUrl = photoUrls.isNotEmpty ? photoUrls.first : null;
-
     final List<String> photosAssets = localRaw.where((p) => _isAssetPath(p.trim())).toList();
-
-    final List<String> photosLocalPathsSafe = [
-      ...photosAssets,
-      ...existingUrls,
-    ];
+    final List<String> photosLocalPathsSafe = [...photosAssets, ...existingUrls];
 
     final payload = <String, dynamic>{
       'uid': uid,
       'email': user.email,
       'provider': user.providerData.isNotEmpty ? user.providerData.first.providerId : null,
-
       'nombre': s.nombre.trim(),
       'edad': edadInt,
       'profesion': s.profesion.trim(),
@@ -293,489 +243,275 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'estatura': s.estatura.trim(),
       'pais': (s.paisSeleccionado ?? '').trim(),
       'ciudad': (s.ciudadSeleccionada ?? '').trim(),
-
-      // ✅ NUEVO: género obligatorio
-      // 🔴 CHINCHE GENERO FIRESTORE 1 — field estable
       'genero': _genero,
-
-      // ✅ Preferencia global citas
-      // 🔴 CHINCHE PREFCITAS FIRESTORE 1 — field estable
       'preferenciaCitas': _preferenciaCitas,
-
       'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
       'buscoSeleccion': List<String>.from(s.buscoSeleccion),
       'interesesSeleccion': List<String>.from(s.interesesSeleccion),
-
       'photoUrls': photoUrls,
       'profilePhotoUrl': profilePhotoUrl,
-
       'photosAssets': photosAssets,
       'photosLocalPaths': photosLocalPathsSafe,
       'profilePhotoLocalPath': photosLocalPathsSafe.isNotEmpty ? photosLocalPathsSafe.first : null,
-
       'onboarding_completed': true,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastProfileUpdateAt': FieldValue.serverTimestamp(),
     };
 
     final snap = await docRef.get();
-    if (!snap.exists) {
-      payload['createdAt'] = FieldValue.serverTimestamp();
-    }
-
+    if (!snap.exists) payload['createdAt'] = FieldValue.serverTimestamp();
     await docRef.set(payload, SetOptions(merge: true));
-
     return photoUrls;
   }
 
-  // ===================== ESTATURA SELECTOR =====================
   Future<void> _seleccionarEstatura(BuildContext context) async {
     final selected = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.black87,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Selecciona tu estatura',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 320,
-                child: ListView.builder(
-                  itemCount: _estaturas.length,
-                  itemBuilder: (_, i) {
-                    final item = _estaturas[i];
-                    return ListTile(
-                      title: Text(item, style: const TextStyle(color: Colors.white)),
-                      onTap: () => Navigator.pop(context, item),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+        context: context, backgroundColor: Colors.black87,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+        builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10), Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20))),
+          const SizedBox(height: 12), const Text('Selecciona tu estatura', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 10),
+          SizedBox(height: 320, child: ListView.builder(itemCount: _estaturas.length, itemBuilder: (_, i) => ListTile(title: Text(_estaturas[i], style: const TextStyle(color: Colors.white)), onTap: () => Navigator.pop(context, _estaturas[i]))))
+        ]))
     );
-
-    if (selected != null) {
-      _estaturaCtrl.text = selected;
-    }
+    if (selected != null) _estaturaCtrl.text = selected;
   }
 
-  // ===================== FOTO PICKER REAL =====================
-  Future<void> _mostrarPicker(
-      BuildContext context,
-      ProfileFormController ctrl,
-      ProfileFormState state,
-      ) async {
+  Future<void> _mostrarPicker(BuildContext context, ProfileFormController ctrl, ProfileFormState state) async {
     final display = _buildDisplayFotos(state);
-    if (display.length >= kMaxFotos) return;
+    if (display.length >= 5) return;
 
     await showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Cargar foto',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.white),
-                title: const Text('Galería', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _pickFrom(ImageSource.gallery, ctrl);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera, color: Colors.white),
-                title: const Text('Cámara', style: TextStyle(color: Colors.white)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _pickFrom(ImageSource.camera, ctrl);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.auto_awesome, color: Colors.white70),
-                title: const Text('Demo (assets)', style: TextStyle(color: Colors.white70)),
-                onTap: () {
-                  Navigator.pop(context);
-                  final nextIndex = display.length;
-                  final demo = fotosDisponibles.take(nextIndex + 1).toList();
-                  ctrl.setFotos(demo);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
+        context: context, backgroundColor: Colors.black87,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+        builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 10), Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20))),
+          const SizedBox(height: 14), const Text('Cargar foto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 12),
+          ListTile(leading: const Icon(Icons.photo_library, color: Colors.white), title: const Text('Galería', style: TextStyle(color: Colors.white)), onTap: () async { Navigator.pop(context); await _pickFrom(ImageSource.gallery, ctrl); }),
+          ListTile(leading: const Icon(Icons.photo_camera, color: Colors.white), title: const Text('Cámara', style: TextStyle(color: Colors.white)), onTap: () async { Navigator.pop(context); await _pickFrom(ImageSource.camera, ctrl); }),
+        ]))
     );
   }
 
   Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
     try {
-      final XFile? file = await _picker.pickImage(
-        source: source,
-        imageQuality: 85,
-      );
-      if (file == null) return;
-
-      ctrl.addFoto(file.path);
-    } catch (_) {}
+      final XFile? file = await _picker.pickImage(source: source, imageQuality: 85);
+      if (file != null) {
+        ctrl.addFoto(file.path);
+      }
+    } catch (e) {
+      debugPrint("Error picking image: $e");
+    }
   }
 
-  // ===================== REORDER + UI =====================
-  Widget _buildFotoReorderArea({
-    required BuildContext context,
-    required ProfileFormState state,
-    required ProfileFormController ctrl,
-  }) {
+  // =========================================================================
+  // 🔥 UI FOTOS: CÁPSULA 1+4 (Izquierda: Perfil INTERACTIVO, Derecha: Grid 2x2)
+  // =========================================================================
+  Widget _buildFotoReorderArea({required BuildContext context, required ProfileFormState state, required ProfileFormController ctrl}) {
     final displayFotos = _buildDisplayFotos(state);
 
-    if (displayFotos.isEmpty) {
-      return Container(
-        margin: const EdgeInsets.only(top: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0x33FFFFFF),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Text(
-          'Aún no has cargado fotos.\nLa primera foto que quede arriba será tu foto de perfil.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 13,
-            height: 1.3,
-            decoration: TextDecoration.none,
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 15),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.touch_app_rounded, color: Color(0xFFBEB3FF), size: 16),
+              SizedBox(width: 8),
+              Text("Arrastra para reordenar. Pellizca la principal para ajustar.", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
           ),
-        ),
-      );
-    }
+          const SizedBox(height: 12),
 
-    const double sizePerfil = 120;
-    const double sizeNormal = 70;
+          // Layout dividido en dos mitades
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. MITAD IZQUIERDA: Foto de Perfil (Grande e Interactiva)
+              Expanded(
+                flex: 1,
+                child: AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Stack(
+                    children: [
+                      _buildDraggablePhotoSlot(
+                          index: 0,
+                          displayFotos: displayFotos,
+                          ctrl: ctrl,
+                          isProfile: true // 🔥 Activa el modo interactivo
+                      ),
+                      if (displayFotos.isNotEmpty)
+                        Positioned(
+                          bottom: 8, right: 8,
+                          child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)),
+                              child: const Icon(Icons.zoom_out_map, color: Colors.white, size: 14)
+                          ),
+                        )
+                    ],
+                  ),
+                ),
+              ),
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.25),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Text(
-            'Ordena tus fotos: arrastra para cambiar.\n⭐ La Foto #1 será tu FOTO DE PERFIL',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              height: 1.25,
-              decoration: TextDecoration.none,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          alignment: WrapAlignment.center,
-          children: List.generate(displayFotos.length, (index) {
-            final pathOrAssetOrUrl = displayFotos[index];
-            final bool esPerfil = index == 0;
-            final double size = esPerfil ? sizePerfil : sizeNormal;
+              const SizedBox(width: 10),
 
-            return DragTarget<int>(
-              onWillAccept: (from) => from != null && from != index,
-              onAccept: (from) {
-                final current = List<String>.from(displayFotos);
-                if (from < 0 || from >= current.length) return;
-                if (index < 0 || index >= current.length) return;
-
-                final item = current.removeAt(from);
-                current.insert(index, item);
-
-                ctrl.setFotos(current);
-              },
-              builder: (context, _, __) {
-                return LongPressDraggable<int>(
-                  data: index,
-                  feedback: Opacity(
-                    opacity: 0.85,
-                    child: _FotoThumb(
-                      pathOrAsset: pathOrAssetOrUrl,
-                      size: size,
-                      esPerfil: esPerfil,
-                      isGhost: true,
-                      onRemove: () {
-                        final current = List<String>.from(displayFotos);
-                        if (index < 0 || index >= current.length) return;
-                        current.removeAt(index);
-                        ctrl.setFotos(current);
-                      },
+              // 2. MITAD DERECHA: Grid 2x2 (Estáticas)
+              Expanded(
+                flex: 1,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 1, displayFotos: displayFotos, ctrl: ctrl))),
+                        const SizedBox(width: 8),
+                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 2, displayFotos: displayFotos, ctrl: ctrl))),
+                      ],
                     ),
-                  ),
-                  childWhenDragging: _FotoThumb(
-                    pathOrAsset: pathOrAssetOrUrl,
-                    size: size,
-                    esPerfil: esPerfil,
-                    isGhost: true,
-                    onRemove: () {
-                      final current = List<String>.from(displayFotos);
-                      if (index < 0 || index >= current.length) return;
-                      current.removeAt(index);
-                      ctrl.setFotos(current);
-                    },
-                  ),
-                  child: _FotoThumb(
-                    pathOrAsset: pathOrAssetOrUrl,
-                    size: size,
-                    esPerfil: esPerfil,
-                    isGhost: false,
-                    onRemove: () {
-                      final current = List<String>.from(displayFotos);
-                      if (index < 0 || index >= current.length) return;
-                      current.removeAt(index);
-                      ctrl.setFotos(current);
-                    },
-                  ),
-                );
-              },
-            );
-          }),
-        ),
-      ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 3, displayFotos: displayFotos, ctrl: ctrl))),
+                        const SizedBox(width: 8),
+                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 4, displayFotos: displayFotos, ctrl: ctrl))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  // ===================== PREF CITAS (UI + Provider) =====================
-  void _setPreferenciaCitas(ProfileFormController ctrl, String v) {
-    setState(() => _preferenciaCitas = v);
-    ctrl.setPreferenciaCitas(v);
+  // Helper para construir cada slot arrastrable
+  Widget _buildDraggablePhotoSlot({
+    required int index,
+    required List<String> displayFotos,
+    required ProfileFormController ctrl,
+    bool isProfile = false,
+  }) {
+    if (index >= displayFotos.length) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: const Icon(Icons.add_photo_alternate, color: Colors.white12, size: 20),
+      );
+    }
+
+    final pathOrAsset = displayFotos[index];
+
+    return DragTarget<int>(
+      onWillAccept: (from) => from != null && from != index,
+      onAccept: (from) {
+        final current = List<String>.from(displayFotos);
+        if (from < 0 || from >= current.length) return;
+        final item = current.removeAt(from);
+        current.insert(index, item);
+        ctrl.setFotos(current);
+      },
+      builder: (context, _, __) => LongPressDraggable<int>(
+        data: index,
+        feedback: Opacity(
+            opacity: 0.85,
+            child: SizedBox(
+                width: 80, height: 80,
+                // Feedback siempre estático (isInteractive: false)
+                child: _FotoThumb(pathOrAsset: pathOrAsset, size: 80, esPerfil: isProfile, isGhost: true, onRemove: () {}, isInteractive: false)
+            )
+        ),
+        childWhenDragging: Container(
+          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16)),
+        ),
+        child: _FotoThumb(
+            pathOrAsset: pathOrAsset,
+            size: double.infinity,
+            esPerfil: isProfile,
+            isGhost: false,
+            isInteractive: isProfile, // 🔥 Solo la principal es interactiva
+            onRemove: () {
+              final current = List<String>.from(displayFotos);
+              current.removeAt(index);
+              ctrl.setFotos(current);
+            }
+        ),
+      ),
+    );
   }
 
-  // ===================== GENERO (UI + Provider) =====================
-  void _setGenero(ProfileFormController ctrl, String v) {
-    setState(() => _genero = v);
-    ctrl.setGenero(v);
-  }
+  void _setPreferenciaCitas(ProfileFormController ctrl, String v) { setState(() => _preferenciaCitas = v); ctrl.setPreferenciaCitas(v); }
+  void _setGenero(ProfileFormController ctrl, String v) { setState(() => _genero = v); ctrl.setGenero(v); }
 
   @override
   Widget build(BuildContext context) {
-    const double espacioBarraLogo = 35;
-    const double alturaLogo = 50;
-    const double espacioLogoScroll = 15;
-    const double margenInferiorPantalla = 80;
-
     final state = ref.watch(profileFormProvider);
     final ctrl = ref.read(profileFormProvider.notifier);
 
-    final List<String> paises = const [
-      'Colombia',
-      'México',
-      'Argentina',
-      'Chile',
-      'Perú',
-      'España',
-    ];
+    final List<String> paises = const ['Colombia', 'México', 'Argentina', 'Chile', 'Perú', 'España'];
+    final Map<String, List<String>> ciudadesPorPais = const {'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena'], 'México': ['Ciudad de México', 'Guadalajara', 'Monterrey'], 'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario'], 'Chile': ['Santiago', 'Valparaíso', 'Concepción'], 'Perú': ['Lima', 'Cusco', 'Arequipa'], 'España': ['Madrid', 'Barcelona', 'Valencia']};
+    final List<String> ciudades = state.paisSeleccionado != null ? (ciudadesPorPais[state.paisSeleccionado!] ?? []) : [];
+    final String? paisSafe = paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
+    final String? ciudadSafe = ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
 
-    final Map<String, List<String>> ciudadesPorPais = const {
-      'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena'],
-      'México': ['Ciudad de México', 'Guadalajara', 'Monterrey'],
-      'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario'],
-      'Chile': ['Santiago', 'Valparaíso', 'Concepción'],
-      'Perú': ['Lima', 'Cusco', 'Arequipa'],
-      'España': ['Madrid', 'Barcelona', 'Valencia'],
-    };
-
-    final List<String> ciudades = state.paisSeleccionado != null
-        ? (ciudadesPorPais[state.paisSeleccionado!] ?? [])
-        : [];
-
-    final String? paisSafe =
-    paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
-    final String? ciudadSafe =
-    ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
-
-    // ✅ OJO: removimos género de "Sobre mí" para que NO duplique ni confunda.
-    const List<List<String>> sobreMiOpciones = [
-      ['💬 Soltero', '❤️ En una relación'],
-      ['👶 Con hijo', '🙅‍♂️ Sin hijo'],
-      ['🚬 Fumo', '🚭 No fumo'],
-      ['🍷 Tomo', '🚫 No tomo'],
-      ['🐶 Perros', '🐱 Gatos'],
-    ];
-
-    const List<String> buscoOpciones = [
-      '💞 Relación estable',
-      '🎉 Citas divertidas',
-      '💬 Conversación',
-      '👫 Amistad',
-      '🌍 Conocer gente nueva',
-      '🔥 Aventura',
-      '💍 Pareja a largo plazo',
-      '👀 Algo casual',
-      '🎶 Compartir gustos',
-      '✈️ Viajar juntos',
-    ];
-
-    const List<String> interesesOpciones = [
-      '🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio',
-      '🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina',
-      '🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender',
-      '💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol',
-      '🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología',
-      '🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','🛶 Kayak','💌 Escritura','📷 Selfies',
-      '🌙 Noche','☀️ Amaneceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar',
-      '📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina',
-      '🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming',
-    ];
-
-    final textTheme = Theme.of(context).textTheme;
+    const List<List<String>> sobreMiOpciones = [['💬 Soltero', '❤️ En una relación'], ['👶 Con hijo', '🙅‍♂️ Sin hijo'], ['🚬 Fumo', '🚭 No fumo'], ['🍷 Tomo', '🚫 No tomo'], ['🐶 Perros', '🐱 Gatos']];
+    const List<String> buscoOpciones = ['💞 Relación estable', '🎉 Citas divertidas', '💬 Conversación', '👫 Amistad', '🌍 Conocer gente nueva', '🔥 Aventura', '💍 Pareja a largo plazo', '👀 Algo casual', '🎶 Compartir gustos', '✈️ Viajar juntos'];
+    const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','🛶 Kayak','💌 Escritura','📷 Selfies','🌙 Noche','☀️ Amaneceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
 
     final bool puedeContinuar = ctrl.puedeGuardar && ctrl.isDirty;
     final bool showErrors = _mostrarErrores;
-
     final bool showGeneroError = showErrors && !_generoOk();
+
+    if (_isLoadingCloudData) {
+      return Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))));
+    }
 
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
-          const MatchyBackButton(top: 10, left: 16),
+          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+
           Column(
             children: [
-              const SizedBox(height: espacioBarraLogo),
-              Image.asset('assets/images/logomatchyplano.png', height: alturaLogo),
-              const SizedBox(height: espacioLogoScroll),
+              const SizedBox(height: 35),
+              Image.asset('assets/images/logomatchyplano.png', height: 50),
+              const SizedBox(height: 15),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    left: 24,
-                    right: 24,
-                    bottom: margenInferiorPantalla,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  physics: const BouncingScrollPhysics(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Text(
-                        'EDITA TU PERFIL',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
-
-                      if (state.error != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          state.error!,
-                          style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-
+                      const Text('EDITA TU PERFIL', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+                      if (state.error != null) ...[const SizedBox(height: 10), Text(state.error!, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))],
                       const SizedBox(height: 24),
 
-                      _buildTextField(
-                        label: 'Nombre *',
-                        controller: _nombreCtrl,
-                        showError: showErrors && !_nombreOk(state),
-                        errorText: 'Campo obligatorio',
-                      ),
+                      _buildTextField(label: 'Nombre *', controller: _nombreCtrl, showError: showErrors && !_nombreOk(state), errorText: 'Campo obligatorio'),
                       const SizedBox(height: 14),
-
-                      _buildTextField(
-                        label: 'Edad * (18-99)',
-                        controller: _edadCtrl,
-                        keyboardType: TextInputType.number,
-                        showError: showErrors && !_edadOk(state),
-                        errorText: 'Edad inválida (18 a 99)',
-                      ),
+                      _buildTextField(label: 'Edad * (18-99)', controller: _edadCtrl, keyboardType: TextInputType.number, showError: showErrors && !_edadOk(state), errorText: 'Edad inválida'),
                       const SizedBox(height: 14),
-
                       _buildTextField(label: 'Profesión', controller: _profesionCtrl),
                       const SizedBox(height: 14),
-
-                      _buildTextField(
-                        label: 'Biografía',
-                        controller: _biografiaCtrl,
-                        maxLines: 4,
-                      ),
+                      _buildTextField(label: 'Biografía', controller: _biografiaCtrl, maxLines: 4),
                       const SizedBox(height: 14),
-
-                      _buildTextField(
-                        label: 'Un detalle que me enamora',
-                        controller: _detalleCtrl,
-                        maxLines: 3,
-                      ),
+                      _buildTextField(label: 'Un detalle que me enamora', controller: _detalleCtrl, maxLines: 3),
                       const SizedBox(height: 14),
-
-                      GestureDetector(
-                        onTap: () => _seleccionarEstatura(context),
-                        child: AbsorbPointer(
-                          child: _buildTextField(
-                            label: 'Estatura (selección)',
-                            controller: _estaturaCtrl,
-                            suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-                          ),
-                        ),
-                      ),
-
+                      GestureDetector(onTap: () => _seleccionarEstatura(context), child: AbsorbPointer(child: _buildTextField(label: 'Estatura (selección)', controller: _estaturaCtrl, suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white)))),
                       const SizedBox(height: 20),
 
                       _buildPaisCiudadSection(
@@ -788,115 +524,40 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         onPaisChanged: (value) => ctrl.setPais(value),
                         onCiudadChanged: (value) => ctrl.setCiudad(value),
                       ),
+                      const SizedBox(height: 25),
 
-                      // =========================================================
-                      // ✅ NUEVO: Género obligatorio (SECCIÓN REAL)
-                      // =========================================================
-                      const SizedBox(height: 18),
-
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Género *',
-                          style: textTheme.titleMedium?.copyWith(
-                            color: showGeneroError ? Colors.redAccent : Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
+                      Align(alignment: Alignment.centerLeft, child: Text('GÉNERO *', style: TextStyle(color: showGeneroError ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: _DatosScreenState.kChincheTituloSeccion, letterSpacing: 1.0))),
                       const SizedBox(height: 10),
+                      _GeneroSelector(value: _genero, showError: showGeneroError, onChanged: _saving ? null : (v) => _setGenero(ctrl, v)),
 
-                      _GeneroSelector(
-                        value: _genero,
-                        showError: showGeneroError,
-                        onChanged: _saving ? null : (v) => _setGenero(ctrl, v),
-                      ),
-
-                      if (showGeneroError) ...[
-                        const SizedBox(height: 6),
-                        const Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Selecciona tu género para continuar.',
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.bold,
-                              decoration: TextDecoration.none,
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      // =========================================================
-                      // ✅ Preferencia de citas (global)
-                      // =========================================================
-                      const SizedBox(height: 14),
-
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '¿Prefieres tener citas con?',
-                          style: textTheme.titleMedium?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                            decoration: TextDecoration.none,
-                          ),
-                        ),
-                      ),
+                      const SizedBox(height: 25),
+                      Align(alignment: Alignment.centerLeft, child: Text('PREFERENCIA DE CITAS', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: _DatosScreenState.kChincheTituloSeccion, letterSpacing: 1.0))),
                       const SizedBox(height: 10),
+                      _PreferenciaCitasSelector(value: _preferenciaCitas, onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v)),
 
-                      _PreferenciaCitasSelector(
-                        value: _preferenciaCitas,
-                        onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v),
-                      ),
+                      const SizedBox(height: 30),
+                      Text('TUS FOTOS (MÁX 5) *', style: TextStyle(color: showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white, fontSize: _DatosScreenState.kChincheTituloSeccion, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 15),
 
-                      const SizedBox(height: 24),
-
-                      Text(
-                        'Agrega tus fotos (mínimo 1, máximo 5) *',
-                        style: TextStyle(
-                          color: showErrors && !_fotosOk(state) ? Colors.redAccent : Colors.white,
-                          fontSize: 16,
-                          decoration: TextDecoration.none,
-                          fontWeight: showErrors && !_fotosOk(state)
-                              ? FontWeight.bold
-                              : FontWeight.normal,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      SizedBox(
-                        width: MediaQuery.of(context).size.width * 0.6,
-                        height: 45,
-                        child: ElevatedButton(
-                          onPressed: _saving ? null : () => _mostrarPicker(context, ctrl, state),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFB3D9FF),
-                            shape: const StadiumBorder(),
+                      GestureDetector(
+                        onTap: _saving ? null : () => _mostrarPicker(context, ctrl, state),
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.6,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]),
+                            borderRadius: BorderRadius.circular(25),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
                           ),
-                          child: const Text(
-                            'CARGAR FOTO',
-                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                          ),
+                          alignment: Alignment.center,
+                          child: const Text('CARGAR FOTO', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14)),
                         ),
                       ),
 
                       _buildFotoReorderArea(context: context, state: state, ctrl: ctrl),
 
                       const SizedBox(height: 24),
-
-                      Text(
-                        'Sobre mí',
-                        style: textTheme.titleMedium?.copyWith(
-                          color: const Color(0xFFB3D9FF),
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.none,
-                        ),
-                      ),
+                      Text('SOBRE MÍ', style: TextStyle(color: Color(0xFFBEB3FF), fontSize: _DatosScreenState.kChincheTituloSeccion, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
                       const SizedBox(height: 10),
 
                       Column(
@@ -906,7 +567,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                             child: Row(
                               children: grupo.map((opcion) {
                                 final seleccionado = state.sobreMiSeleccion.contains(opcion);
-
                                 return Expanded(
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -915,21 +575,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                                         decoration: BoxDecoration(
-                                          color: seleccionado
-                                              ? const Color(0xFFB3D9FF)
-                                              : const Color(0x33FFFFFF),
-                                          borderRadius: BorderRadius.circular(50),
+                                            color: seleccionado ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(color: seleccionado ? Colors.transparent : Colors.white12)
                                         ),
                                         child: Center(
-                                          child: Text(
-                                            opcion,
-                                            textAlign: TextAlign.center,
-                                            softWrap: true,
-                                            style: TextStyle(
-                                              color: seleccionado ? Colors.black : Colors.white,
-                                              fontSize: 13,
-                                            ),
-                                          ),
+                                            child: Text(opcion, textAlign: TextAlign.center, style: TextStyle(color: seleccionado ? Colors.black : Colors.white, fontSize: 13, fontWeight: FontWeight.w600))
                                         ),
                                       ),
                                     ),
@@ -941,496 +592,158 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                         }).toList(),
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 45),
+                      _SeccionBotonesChipsSimetricos(titulo: 'BUSCO...', opciones: buscoOpciones, seleccionActual: state.buscoSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleBusco(op)),
 
-                      _SeccionBotonesChipsRiverpod(
-                        titulo: 'Busco...',
-                        opciones: buscoOpciones,
-                        seleccionActual: state.buscoSeleccion,
-                        onToggle: (op) => _saving ? null : ctrl.toggleBusco(op),
-                      ),
+                      const SizedBox(height: 45),
+                      _SeccionBotonesChipsSimetricos(titulo: 'INTERESES Y HOBBIES', opciones: interesesOpciones, seleccionActual: state.interesesSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleInteres(op)),
 
-                      _SeccionBotonesChipsRiverpod(
-                        titulo: 'Intereses y Hobbies',
-                        opciones: interesesOpciones,
-                        seleccionActual: state.interesesSeleccion,
-                        onToggle: (op) => _saving ? null : ctrl.toggleInteres(op),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      SizedBox(
-                        width: MediaQuery.of(context).size.width * 0.6,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: (_saving)
-                              ? null
-                              : (puedeContinuar
-                              ? () async {
-                            setState(() => _saving = true);
-
-                            try {
-                              // 1) Sync Firestore (+ Storage) y obtenemos photoUrls
-                              final urls = await _syncProfileToFirestore(
-                                ref.read(profileFormProvider),
-                              );
-
-                              // 2) Reescribe el draft local a URLs (NO paths muertos)
-                              if (urls.isNotEmpty) {
-                                ctrl.setFotos(urls);
-                              }
-
-                              await ctrl.saveDraft();
-                              await ctrl.publishProfile();
-                              await ctrl.setOnboardingCompleted(true);
-
-                              if (!mounted) return;
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(builder: (_) => const PanelScreen()),
-                                    (route) => false,
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('❌ Error guardando perfil: $e')),
-                              );
-                            } finally {
-                              if (mounted) setState(() => _saving = false);
-                            }
+                      const SizedBox(height: 40),
+                      GestureDetector(
+                        onTap: (_saving) ? null : (puedeContinuar ? () async {
+                          setState(() => _saving = true);
+                          try {
+                            final urls = await _syncProfileToFirestore(ref.read(profileFormProvider));
+                            if (urls.isNotEmpty) ctrl.setFotos(urls);
+                            await ctrl.saveDraft();
+                            await ctrl.publishProfile();
+                            await ctrl.setOnboardingCompleted(true);
+                            if (!mounted) return;
+                            Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error: $e')));
+                          } finally {
+                            if (mounted) setState(() => _saving = false);
                           }
-                              : () => setState(() => _mostrarErrores = true)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                            puedeContinuar ? const Color(0xFFB3D9FF) : const Color(0x66B3D9FF),
-                            shape: const StadiumBorder(),
+                        } : () => setState(() => _mostrarErrores = true)),
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          height: 55,
+                          decoration: BoxDecoration(
+                            gradient: puedeContinuar
+                                ? const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)])
+                                : const LinearGradient(colors: [Colors.grey, Colors.blueGrey]),
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))],
                           ),
+                          alignment: Alignment.center,
                           child: _saving
-                              ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                              : Text(
-                            'GUARDAR',
-                            style: TextStyle(
-                              color: puedeContinuar ? Colors.black : Colors.black54,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                              ? const CircularProgressIndicator(color: Colors.black)
+                              : const Text('GUARDAR PERFIL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1.0)),
                         ),
                       ),
-
-                      const SizedBox(height: 60),
+                      const SizedBox(height: 120),
                     ],
                   ),
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
 
-  // ===================== HELPERS UI =====================
-
-  Widget _buildTextField({
-    required String label,
-    required TextEditingController controller,
-    int maxLines = 1,
-    TextInputType? keyboardType,
-    bool showError = false,
-    String? errorText,
-    Widget? suffixIcon,
-  }) {
-    return TextField(
-      controller: controller,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(
-          color: showError ? Colors.redAccent : Colors.white70,
-          fontWeight: showError ? FontWeight.bold : FontWeight.normal,
-        ),
-        errorText: showError ? (errorText ?? 'Campo obligatorio') : null,
-        errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-        suffixIcon: suffixIcon,
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: showError ? Colors.redAccent : Colors.white),
-        ),
-        focusedBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: Color(0xFFB3D9FF)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPaisCiudadSection({
-    required String? paisSeleccionado,
-    required String? ciudadSeleccionada,
-    required List<String> paises,
-    required List<String> ciudades,
-    required ValueChanged<String?> onPaisChanged,
-    required ValueChanged<String?> onCiudadChanged,
-    required bool showPaisError,
-    required bool showCiudadError,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'País *',
-          style: TextStyle(
-            color: showPaisError ? Colors.redAccent : Colors.white,
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
-          ),
-        ),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          value: paisSeleccionado,
-          dropdownColor: Colors.black87,
-          decoration: InputDecoration(
-            enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: showPaisError ? Colors.redAccent : Colors.white),
-            ),
-            focusedBorder: const OutlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFFB3D9FF)),
-            ),
-            errorText: showPaisError ? 'Campo obligatorio' : null,
-            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-          ),
-          iconEnabledColor: Colors.white,
-          style: const TextStyle(color: Colors.white),
-          items: paises.map((p) => DropdownMenuItem<String>(value: p, child: Text(p))).toList(),
-          onChanged: onPaisChanged,
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Ciudad *',
-          style: TextStyle(
-            color: showCiudadError ? Colors.redAccent : Colors.white,
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
-          ),
-        ),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          value: ciudadSeleccionada,
-          dropdownColor: Colors.black87,
-          decoration: InputDecoration(
-            enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(color: showCiudadError ? Colors.redAccent : Colors.white),
-            ),
-            focusedBorder: const OutlineInputBorder(
-              borderSide: BorderSide(color: Color(0xFFB3D9FF)),
-            ),
-            errorText: showCiudadError ? 'Campo obligatorio' : null,
-            errorStyle: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-          ),
-          iconEnabledColor: Colors.white,
-          style: const TextStyle(color: Colors.white),
-          items: ciudades.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))).toList(),
-          onChanged: ciudades.isEmpty ? null : onCiudadChanged,
-        ),
-      ],
-    );
-  }
-}
-
-// =====================================================
-// ✅ NUEVO: Selector “Género” obligatorio (misma estética de pills)
-// =====================================================
-class _GeneroSelector extends StatelessWidget {
-  final String value;
-  final ValueChanged<String>? onChanged;
-  final bool showError;
-
-  const _GeneroSelector({
-    required this.value,
-    required this.onChanged,
-    required this.showError,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final opciones = <Map<String, String>>[
-      {'label': 'Hombre', 'value': kGeneroHombre},
-      {'label': 'Mujer', 'value': kGeneroMujer},
-      {'label': 'Otro género', 'value': kGeneroOtro},
-      {'label': 'Prefiero no decirlo', 'value': kGeneroNoDecir},
-    ];
-
-    return Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      alignment: WrapAlignment.center,
-      children: opciones.map((op) {
-        final bool selected = op['value'] == value;
-
-        return GestureDetector(
-          onTap: onChanged == null ? null : () => onChanged!(op['value']!),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
-              borderRadius: BorderRadius.circular(50),
-              border: showError && !selected && value.trim().isEmpty
-                  ? Border.all(color: Colors.redAccent, width: 1.2)
-                  : null,
-            ),
-            child: Text(
-              op['label']!,
-              style: TextStyle(
-                color: selected ? Colors.black : Colors.white,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-// =====================================================
-// ✅ Selector “Preferencia de citas”
-// =====================================================
-class _PreferenciaCitasSelector extends StatelessWidget {
-  final String value;
-  final ValueChanged<String>? onChanged;
-
-  const _PreferenciaCitasSelector({
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const opciones = ['Hombres', 'Mujeres', 'Ambos'];
-
-    return Wrap(
-      spacing: 10,
-      runSpacing: 8,
-      alignment: WrapAlignment.center,
-      children: opciones.map((op) {
-        final bool selected = op == value;
-
-        return GestureDetector(
-          onTap: onChanged == null ? null : () => onChanged!(op),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: selected ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
-              borderRadius: BorderRadius.circular(50),
-            ),
-            child: Text(
-              op,
-              style: TextStyle(
-                color: selected ? Colors.black : Colors.white,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                decoration: TextDecoration.none,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-// =====================================================
-// ✅ Thumbnail fotos (assets o file o URL) + ❌ X delete + badge PERFIL
-// =====================================================
-class _FotoThumb extends StatelessWidget {
-  final String pathOrAsset;
-  final double size;
-  final bool esPerfil;
-  final bool isGhost;
-  final VoidCallback onRemove;
-
-  const _FotoThumb({
-    required this.pathOrAsset,
-    required this.size,
-    required this.esPerfil,
-    required this.isGhost,
-    required this.onRemove,
-  });
-
-  bool _isAssetPath(String v) => v.startsWith('assets/');
-  bool _isNetworkUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
-
-  bool _fileExists(String path) {
-    try {
-      return File(path).existsSync();
-    } catch (_) {
-      return false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final v = pathOrAsset.trim();
-
-    Widget img;
-    if (v.isEmpty) {
-      img = const Icon(Icons.broken_image, color: Colors.white70);
-    } else if (_isAssetPath(v)) {
-      img = Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter);
-    } else if (_isNetworkUrl(v)) {
-      img = Image.network(
-        v,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white70),
-      );
-    } else {
-      if (!_fileExists(v)) {
-        img = const Icon(Icons.broken_image, color: Colors.white70);
-      } else {
-        img = Image.file(
-          File(v),
-          fit: BoxFit.cover,
-          alignment: Alignment.topCenter,
-          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white70),
-        );
-      }
-    }
-
-    return Opacity(
-      opacity: isGhost ? 0.35 : 1.0,
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: Container(
-              width: size,
-              height: size,
-              color: Colors.white24,
-              child: Center(child: img),
-            ),
-          ),
           Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: onRemove,
+            bottom: 0, left: 0, right: 0, height: 100,
+            child: IgnorePointer(
               child: Container(
-                width: 20,
-                height: 20,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.close, size: 14, color: Colors.white),
-              ),
-            ),
-          ),
-          if (esPerfil)
-            Positioned(
-              left: 6,
-              top: 6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFBEB3FF),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: const Text(
-                  'PERFIL',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 11,
-                    letterSpacing: 0.4,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.9)],
+                    stops: const [0.0, 1.0],
                   ),
                 ),
               ),
             ),
+          ),
+
+          const MatchyBackButton(top: 10, left: 16),
         ],
       ),
     );
   }
-}
 
-// =====================================================
-// ✅ Sección chips conectada a Riverpod (sin setState)
-// =====================================================
-class _SeccionBotonesChipsRiverpod extends StatelessWidget {
-  final String titulo;
-  final List<String> opciones;
-  final List<String> seleccionActual;
-  final ValueChanged<String> onToggle;
-
-  const _SeccionBotonesChipsRiverpod({
-    required this.titulo,
-    required this.opciones,
-    required this.seleccionActual,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          titulo,
-          style: textTheme.titleMedium?.copyWith(
-            color: const Color(0xFFB3D9FF),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
-          ),
+  // HELPERS UI Y WIDGETS INTERNOS
+  Widget _buildTextField({required String label, required TextEditingController controller, int maxLines = 1, TextInputType? keyboardType, bool showError = false, String? errorText, Widget? suffixIcon}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: showError ? Colors.redAccent : Colors.white12),
+      ),
+      child: TextField(
+        controller: controller, maxLines: maxLines, keyboardType: keyboardType,
+        style: const TextStyle(color: Colors.white, fontSize: _DatosScreenState.kChincheTextoInput),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: showError ? Colors.redAccent : Colors.white60, fontSize: _DatosScreenState.kChincheLabelInput),
+          errorText: showError ? (errorText ?? 'Campo obligatorio') : null,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          border: InputBorder.none,
+          suffixIcon: suffixIcon,
         ),
-        const SizedBox(height: 8),
-        Column(
-          children: _chunk(opciones, 2).map((fila) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: fila.map((opcion) {
-                  final seleccionado = seleccionActual.contains(opcion);
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: GestureDetector(
-                        onTap: () => onToggle(opcion),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: seleccionado ? const Color(0xFFB3D9FF) : const Color(0x33FFFFFF),
-                            borderRadius: BorderRadius.circular(50),
-                          ),
-                          child: Center(
-                            child: Text(
-                              opcion,
-                              textAlign: TextAlign.center,
-                              softWrap: true,
-                              style: TextStyle(
-                                color: seleccionado ? Colors.black : Colors.white,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 20),
-      ],
+      ),
     );
   }
+
+  Widget _buildPaisCiudadSection({required String? paisSeleccionado, required String? ciudadSeleccionada, required List<String> paises, required List<String> ciudades, required ValueChanged<String?> onPaisChanged, required ValueChanged<String?> onCiudadChanged, required bool showPaisError, required bool showCiudadError}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('PAÍS *', style: TextStyle(color: showPaisError ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheLabelInput, letterSpacing: 1.0)),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(15), border: Border.all(color: showPaisError ? Colors.redAccent : Colors.white12)),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+              value: paisSeleccionado, dropdownColor: const Color(0xFF222222), iconEnabledColor: Colors.white, isExpanded: true, style: const TextStyle(color: Colors.white, fontSize: kChincheTextoInput),
+              items: paises.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: onPaisChanged
+          ),
+        ),
+      ),
+      const SizedBox(height: 20),
+      Text('CIUDAD *', style: TextStyle(color: showCiudadError ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheLabelInput, letterSpacing: 1.0)),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(15), border: Border.all(color: showCiudadError ? Colors.redAccent : Colors.white12)),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+              value: ciudadSeleccionada, dropdownColor: const Color(0xFF222222), iconEnabledColor: Colors.white, isExpanded: true, style: const TextStyle(color: Colors.white, fontSize: kChincheTextoInput),
+              items: ciudades.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: ciudades.isEmpty ? null : onCiudadChanged
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
+// Widgets Auxiliares (Género, Preferencia, Chips...)
+class _GeneroSelector extends StatelessWidget {
+  final String value; final ValueChanged<String>? onChanged; final bool showError;
+  const _GeneroSelector({required this.value, required this.onChanged, required this.showError});
+  @override Widget build(BuildContext context) {
+    final opciones = [{'label': 'Hombre', 'value': kGeneroHombre}, {'label': 'Mujer', 'value': kGeneroMujer}, {'label': 'Otro género', 'value': kGeneroOtro}, {'label': 'Prefiero no decirlo', 'value': kGeneroNoDecir}];
+    return Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: opciones.map((op) {
+      final bool selected = op['value'] == value;
+      return GestureDetector(onTap: onChanged == null ? null : () => onChanged!(op['value']!), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), decoration: BoxDecoration(color: selected ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(50), border: showError && !selected && value.isEmpty ? Border.all(color: Colors.redAccent) : null), child: Text(op['label']!, style: TextStyle(color: selected ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 13))));
+    }).toList());
+  }
+}
+
+class _PreferenciaCitasSelector extends StatelessWidget {
+  final String value; final ValueChanged<String>? onChanged;
+  const _PreferenciaCitasSelector({required this.value, required this.onChanged});
+  @override Widget build(BuildContext context) {
+    const opciones = ['Hombres', 'Mujeres', 'Ambos'];
+    return Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: opciones.map((op) {
+      final bool selected = op == value;
+      return GestureDetector(onTap: onChanged == null ? null : () => onChanged!(op), child: Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), decoration: BoxDecoration(color: selected ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(50)), child: Text(op, style: TextStyle(color: selected ? Colors.black : Colors.white, fontWeight: FontWeight.bold, fontSize: 13))));
+    }).toList());
+  }
+}
+
+class _SeccionBotonesChipsSimetricos extends StatelessWidget {
+  final String titulo; final List<String> opciones; final List<String> seleccionActual; final ValueChanged<String> onToggle;
+  const _SeccionBotonesChipsSimetricos({required this.titulo, required this.opciones, required this.seleccionActual, required this.onToggle});
 
   List<List<String>> _chunk(List<String> list, int size) {
     final List<List<String>> chunks = [];
@@ -1438,5 +751,165 @@ class _SeccionBotonesChipsRiverpod extends StatelessWidget {
       chunks.add(list.sublist(i, i + size > list.length ? list.length : i + size));
     }
     return chunks;
+  }
+
+  @override Widget build(BuildContext context) {
+    final chunks = _chunk(opciones, 2);
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(titulo, style: TextStyle(color: const Color(0xFFBEB3FF), fontSize: _DatosScreenState.kChincheTituloSeccion, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+      const SizedBox(height: 12),
+      Column(
+        children: chunks.map((fila) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: fila.map((opcion) {
+                final seleccionado = seleccionActual.contains(opcion);
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: GestureDetector(
+                      onTap: () => onToggle(opcion),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                        decoration: BoxDecoration(
+                            color: seleccionado ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: seleccionado ? Colors.transparent : Colors.white12)
+                        ),
+                        child: Center(
+                            child: Text(opcion, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: seleccionado ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.w600))
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        }).toList(),
+      )
+    ]);
+  }
+}
+
+// =============================================================================
+// 🔥 WIDGET FOTO THUMB (CON PHOTO_VIEW INTEGRADO) 🔥
+// =============================================================================
+// Este widget ahora usa 'PhotoView' cuando 'isInteractive' es true,
+// permitiendo pan y zoom fluido para ajustar el encuadre dentro del marco.
+class _FotoThumb extends StatelessWidget {
+  final String pathOrAsset;
+  final double size;
+  final bool esPerfil;
+  final bool isGhost;
+  final VoidCallback onRemove;
+  final bool isInteractive; // 🔥 Nueva propiedad
+
+  const _FotoThumb({
+    required this.pathOrAsset,
+    required this.size,
+    required this.esPerfil,
+    required this.isGhost,
+    required this.onRemove,
+    this.isInteractive = false, // Por defecto false (para las fotos pequeñas)
+  });
+
+  bool _isAssetPath(String v) => v.startsWith('assets/');
+  bool _isNetworkUrl(String v) => v.startsWith('http');
+
+  @override
+  Widget build(BuildContext context) {
+    final v = pathOrAsset.trim();
+    ImageProvider imageProvider;
+
+    // 1. Determinar el proveedor de imagen correcto
+    if (v.isEmpty) {
+      // Placeholder si no hay imagen
+      return _buildPlaceholder();
+    } else if (_isAssetPath(v)) {
+      imageProvider = AssetImage(v);
+    } else if (_isNetworkUrl(v)) {
+      imageProvider = NetworkImage(v);
+    } else {
+      imageProvider = FileImage(File(v));
+    }
+
+    Widget content;
+
+    // 2. 🔥 Si es interactiva (Perfil), usar PhotoView para pan/zoom
+    if (isInteractive) {
+      content = PhotoView(
+        imageProvider: imageProvider,
+        // 'covered' asegura que la imagen llene el cuadro inicialmente sin bordes negros
+        initialScale: PhotoViewComputedScale.covered,
+        minScale: PhotoViewComputedScale.covered,
+        // Permite hacer zoom hasta 2.5 veces el tamaño inicial
+        maxScale: PhotoViewComputedScale.covered * 2.5,
+        backgroundDecoration: const BoxDecoration(color: Colors.transparent),
+        // Ocultar el indicador de carga nativo de PhotoView, ya que lo manejamos externamente si es necesario
+        loadingBuilder: (_, __) => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)),
+        errorBuilder: (_, __, ___) => const Icon(Icons.error, color: Colors.redAccent),
+      );
+    } else {
+      // 3. Si no es interactiva (las pequeñas), usar Image estándar con cover
+      content = Image(image: imageProvider, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Icon(Icons.error, color: Colors.white70));
+    }
+
+    // 4. Estructura final del thumb (Marco, Botón eliminar, Etiqueta perfil)
+    return Opacity(
+      opacity: isGhost ? 0.4 : 1.0,
+      child: Stack(
+        children: [
+          // Marco redondeado con la imagen (o PhotoView) dentro
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: size,
+              height: size,
+              color: Colors.grey[900], // Fondo oscuro mientras carga
+              child: content,
+            ),
+          ),
+          // Botón eliminar (X)
+          Positioned(
+            top: 5, right: 5,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                child: const Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+          // Etiqueta "PERFIL"
+          if (esPerfil)
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFBEB3FF).withOpacity(0.9),
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                ),
+                child: const Text('PERFIL', textAlign: TextAlign.center, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)),
+              ),
+            )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlaceholder() {
+    return Opacity(
+      opacity: isGhost ? 0.4 : 1.0,
+      child: Container(
+        width: size, height: size,
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
+        child: const Icon(Icons.broken_image, color: Colors.white24),
+      ),
+    );
   }
 }

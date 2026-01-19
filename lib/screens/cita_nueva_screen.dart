@@ -1,38 +1,32 @@
 // 📂 lib/screens/cita_nueva_screen.dart
-// ✅ Pantalla "CITA NUEVA" (basada en CrearCitaPanelScreen) + HEADER NUEVO
-// ✅ FIX: Foto de perfil SIEMPRE desde Riverpod (Foto #1 del usuario)
-// - Foto usuario (izquierda) + Foto match (derecha)
-// - "HOLA {USUARIO} Y {MATCH}"
-// - "¿A DÓNDE QUIEREN IR?"
-// - Grid 2x2 + Lugares populares completos
+// ✅ PANTALLA CITA NUEVA (FINAL - ESTRUCTURA CORRECTA)
+// 🔥 FIX: 'Lugares Populares' usa la lógica original (LugarCard + Firebase 'popular').
+// 🔥 LOGIC: Acepta 'matchyUidInvitado' y lo pasa a las categorías y lugares.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // 🔴 CHINCHE CITA RIVERPOD 1
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:proyectos_matchy/state/profile_form_provider.dart';
+import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/widgets/lugar_card.dart'; // 🔥 USAMOS EL WIDGET OFICIAL
 
-// ✅ Provider perfil (REAL)
-import 'package:proyectos_matchy/state/profile_form_provider.dart'; // 🔴 CHINCHE CITA RIVERPOD 2
-
-// 🔴 CHINCHE CITA A — pantallas destino
+// PANTALLAS DESTINO
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
-
-// 🔴 CHINCHE CITA BACK — botón global de regreso
-import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
+import 'package:proyectos_matchy/screens/zona_de_descuentos_screen.dart';
+import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 class CitaNuevaScreen extends ConsumerWidget {
-  static const String routeName = 'cita_nueva';
-
-  // ✅ NOMBRES DE PARÁMETROS (IMPORTANTE)
-  // OJO: nombreUsuario/fotoUsuario quedan como FALLBACK para no romper llamadas viejas.
   final String nombreUsuario;
   final String nombreMatch;
-
-  // Puede ser asset / file path / url
-  final String fotoUsuario; // 🔴 CHINCHE CITA FIX 0 — ahora es fallback
+  final String fotoUsuario;
   final String fotoMatch;
+
+  // 🟢 EL PAQUETE SECRETO (Dato Fantasma)
+  final String? matchyUidInvitado;
 
   const CitaNuevaScreen({
     super.key,
@@ -40,98 +34,129 @@ class CitaNuevaScreen extends ConsumerWidget {
     required this.nombreMatch,
     required this.fotoUsuario,
     required this.fotoMatch,
+    this.matchyUidInvitado,
   });
 
-  // 🔴 CHINCHE CITA NAME SAFE 1 — normaliza nombre como ya haces en Panel
   String _nombreSeguro(String raw) {
     final clean = raw.trim();
-    if (clean.isEmpty) return 'SIN NOMBRE';
-
-    final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
-    if (parts.isEmpty) return 'SIN NOMBRE';
-
-    final first = parts.first;
-    final two = parts.length >= 2 ? '${parts[0]} ${parts[1]}' : first;
-
-    const int largoTotal = 12;
-    const int primerCorto = 5;
-
-    if (clean.length <= largoTotal && parts.length <= 2) {
-      return clean.toUpperCase();
-    }
-
-    if (first.length <= primerCorto && parts.length >= 2) {
-      if (two.length > largoTotal) return first.toUpperCase();
-      return two.toUpperCase();
-    }
-
-    return first.toUpperCase();
+    if (clean.isEmpty) return 'TU';
+    final parts = clean.split(RegExp(r'\s+'));
+    return parts.isNotEmpty ? parts.first.toUpperCase() : 'TU';
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final textTheme = Theme.of(context).textTheme;
-
-    // 🔴 CHINCHE CITA LAYOUT
-    const double espacioBarraLogo = 35; // 🔴 35
-    const double alturaLogo = 50; // 🔴 50
-    const double espacioLogoScroll = 15; // 🔴 15
-    const double margenInferiorPantalla = 80; // 🔴 80
-
-    // =========================================================
-    // ✅ FOTO PERFIL REAL (Riverpod) = Foto #1
-    // =========================================================
     final profile = ref.watch(profileFormProvider);
 
-    // 🔴 CHINCHE CITA FIX 1 — foto del usuario SIEMPRE desde provider si existe
-    final String? fotoUsuarioProvider = profile.fotosCargadas.isNotEmpty
-        ? profile.fotosCargadas.first
-        : null;
+    final String? fotoProvider = profile.fotosCargadas.isNotEmpty ? profile.fotosCargadas.first : null;
+    final String fotoUserFinal = fotoProvider ?? (fotoUsuario.isNotEmpty ? fotoUsuario : 'assets/images/perfil1.jpg');
 
-    // 🔴 CHINCHE CITA FIX 2 — fallbacks robustos (provider > param > default asset)
-    final String fotoUsuarioFinal = (fotoUsuarioProvider != null && fotoUsuarioProvider.trim().isNotEmpty)
-        ? fotoUsuarioProvider
-        : (fotoUsuario.trim().isNotEmpty ? fotoUsuario : 'assets/images/perfil1.jpg');
-
-    // 🔴 CHINCHE CITA FIX 3 — nombre del usuario preferido desde provider (si ya lo tienes)
-    final String nombreUsuarioFinal = profile.nombre.trim().isNotEmpty
-        ? _nombreSeguro(profile.nombre)
-        : _nombreSeguro(nombreUsuario);
+    final String nombreUserFinal = profile.nombre.isNotEmpty ? _nombreSeguro(profile.nombre) : _nombreSeguro(nombreUsuario);
+    final String nombreMatchFinal = _nombreSeguro(nombreMatch);
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/fondo.jpg',
-              fit: BoxFit.cover,
-            ),
-          ),
-          const MatchyBackButton(
-            top: 10, // 🔴 10
-            left: 16, // 🔴 16
-          ),
+          // 1. Fondo
+          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+
+          // 2. Contenido
           Column(
             children: [
-              const SizedBox(height: espacioBarraLogo),
-              Image.asset(
-                'assets/images/logomatchyplano.png',
-                height: alturaLogo,
-              ),
-              const SizedBox(height: espacioLogoScroll),
+              const SizedBox(height: 35),
+              Image.asset('assets/images/logomatchyplano.png', height: 45),
+              const SizedBox(height: 23),
+
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: margenInferiorPantalla),
-                  child: _CitaNuevaContent(
-                    textTheme: textTheme,
-                    nombreUsuario: nombreUsuarioFinal,
-                    nombreMatch: nombreMatch,
-                    fotoUsuario: fotoUsuarioFinal,
-                    fotoMatch: fotoMatch,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 120),
+                  child: Column(
+                    children: [
+                      // Header Fotos
+                      _HeaderFotos(
+                        fotoUser: fotoUserFinal,
+                        nombreUser: nombreUserFinal,
+                        fotoMatch: fotoMatch,
+                        nombreMatch: nombreMatchFinal,
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Texto "¿A Dónde?"
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            children: [
+                              const TextSpan(
+                                text: "¿A DÓNDE QUIERES TU CITA CON\n",
+                                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Poppins', height: 1.2),
+                              ),
+                              TextSpan(
+                                text: nombreMatch.toUpperCase(),
+                                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0, height: 1.2),
+                              ),
+                              const TextSpan(text: "?", style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 25),
+
+                      // Botón Descuentos
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: _BotonDescuentosAnimado(),
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      // Grid Categorías (Pasa el dato)
+                      _GridCategorias(matchyUidInvitado: matchyUidInvitado),
+
+                      const SizedBox(height: 30),
+
+                      // Lugares Populares (CONECTADO A FIREBASE CORRECTAMENTE)
+                      _LugaresPopularesList(matchyUidInvitado: matchyUidInvitado),
+                    ],
                   ),
                 ),
               ),
             ],
+          ),
+
+          // Degradado Inferior
+          Positioned(
+            bottom: 0, left: 0, right: 0, height: 90,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Botón Atrás
+          Positioned(
+            top: 50, left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle, border: Border.all(color: Colors.white24, width: 1)),
+                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+              ),
+            ),
           ),
         ],
       ),
@@ -140,530 +165,236 @@ class CitaNuevaScreen extends ConsumerWidget {
 }
 
 // ===============================================================
-// 🔹 MODELO: Lugar popular
+// 🔹 HEADER FOTOS
 // ===============================================================
-class _LugarPopular {
-  final String nombre;
-  final String direccion;
-  final String imageAsset;
-
-  // 🔴 CHINCHE CITA POP 1 — categoría MVP
-  final String categoria; // 'restaurante' | 'bar' | 'cafe' | 'actividad'
-  final bool clickable;
-
-  const _LugarPopular({
-    required this.nombre,
-    required this.direccion,
-    required this.imageAsset,
-    required this.categoria,
-    required this.clickable,
-  });
-}
-
-// ===============================================================
-// 🔹 CONTENIDO PRINCIPAL
-// ===============================================================
-class _CitaNuevaContent extends StatelessWidget {
-  final TextTheme textTheme;
-  final String nombreUsuario;
-  final String nombreMatch;
-  final String fotoUsuario;
-  final String fotoMatch;
-
-  const _CitaNuevaContent({
-    required this.textTheme,
-    required this.nombreUsuario,
-    required this.nombreMatch,
-    required this.fotoUsuario,
-    required this.fotoMatch,
-  });
+class _HeaderFotos extends StatelessWidget {
+  final String fotoUser, nombreUser, fotoMatch, nombreMatch;
+  const _HeaderFotos({required this.fotoUser, required this.nombreUser, required this.fotoMatch, required this.nombreMatch});
 
   @override
   Widget build(BuildContext context) {
-    // 🔴 CHINCHE CITA GRID
-    const double alturaCategoria = 112; // 🔴 112
-    const double radioCategoria = 12; // 🔴 12
-    const double alturaLugarPopular = 150; // 🔴 150
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildCapsula(fotoUser, nombreUser),
+        const SizedBox(width: 20),
+        _buildCapsula(fotoMatch, nombreMatch),
+      ],
+    );
+  }
 
-    // 🔴 CHINCHE CITA POP LIST — lugares populares (los mismos que tú diste)
-    const List<_LugarPopular> lugaresPopulares = [
-      _LugarPopular(
-        nombre: 'EL FARO PIZZERIA',
-        direccion: 'Carrera 66 #5-152',
-        imageAsset: 'assets/images/faro1.jpg',
-        categoria: 'restaurante',
-        clickable: true,
+  Widget _buildCapsula(String path, String nombre) {
+    return Container(
+      width: 110, height: 150,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24, width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
       ),
-      _LugarPopular(
-        nombre: 'BAR LA NOCHE',
-        direccion: 'Calle 5 #10-23',
-        imageAsset: 'assets/images/barlanoche.jpg',
-        categoria: 'bar',
-        clickable: true,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(borderRadius: BorderRadius.circular(20), child: _SafeImage(path: path)),
+          Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))),
+          Positioned(bottom: 15, left: 0, right: 0, child: Text(nombre, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Poppins'))),
+        ],
       ),
-      _LugarPopular(
-        nombre: 'CAFÉ CENTRAL',
-        direccion: 'Av. 4N #12-50',
-        imageAsset: 'assets/images/cafe1.jpg',
-        categoria: 'cafe',
-        clickable: true,
+    );
+  }
+}
+
+// ===============================================================
+// 🔹 BOTÓN DESCUENTOS
+// ===============================================================
+class _BotonDescuentosAnimado extends StatefulWidget {
+  const _BotonDescuentosAnimado();
+  @override
+  State<_BotonDescuentosAnimado> createState() => _BotonDescuentosAnimadoState();
+}
+
+class _BotonDescuentosAnimadoState extends State<_BotonDescuentosAnimado> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 800), lowerBound: 0.96, upperBound: 1.04)..repeat(reverse: true);
+    _scaleAnimation = _controller;
+  }
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Container(
+        width: double.infinity, height: 55,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: const LinearGradient(colors: [Color(0xFFFFD700), Color(0xFFFF8C00)], begin: Alignment.topLeft, end: Alignment.bottomRight), boxShadow: [BoxShadow(color: const Color(0xFFFFC107).withOpacity(0.6), blurRadius: 15, spreadRadius: 2, offset: const Offset(0, 0))]),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ZonaDeDescuentosScreen())),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: const [Icon(Icons.stars_rounded, color: Colors.black, size: 28), SizedBox(width: 10), Text("ZONA DE DESCUENTOS", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Poppins')), SizedBox(width: 10), Icon(Icons.stars_rounded, color: Colors.black, size: 28)]),
+          ),
+        ),
       ),
-      _LugarPopular(
-        nombre: 'RESTAURANTE ANDES',
-        direccion: 'Cra 34 #7-89',
-        imageAsset: 'assets/images/restaurante1.jpg',
-        categoria: 'restaurante',
-        clickable: true,
+    );
+  }
+}
+
+// ===============================================================
+// 🔹 GRID CATEGORÍAS
+// ===============================================================
+class _GridCategorias extends StatelessWidget {
+  final String? matchyUidInvitado;
+  const _GridCategorias({this.matchyUidInvitado});
+
+  @override
+  Widget build(BuildContext context) {
+    const double cardHeight = 110;
+    const double gap = 12;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          Row(children: [
+            Expanded(child: _CatCard("RESTAURANTES", "assets/images/iconorestaurante.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => RestaurantesScreen(matchyUidInvitado: matchyUidInvitado))))),
+            const SizedBox(width: gap),
+            Expanded(child: _CatCard("BARES", "assets/images/iconobares.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => BaresScreen(matchyUidInvitado: matchyUidInvitado))))),
+          ]),
+          const SizedBox(height: gap),
+          Row(children: [
+            Expanded(child: _CatCard("CAFÉS", "assets/images/iconocafeteria.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => CafesScreen(matchyUidInvitado: matchyUidInvitado))))),
+            const SizedBox(width: gap),
+            Expanded(child: _CatCard("ACTIVIDADES", "assets/images/iconoactividades.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => ActividadesScreen(matchyUidInvitado: matchyUidInvitado))))),
+          ]),
+        ],
       ),
-      _LugarPopular(
-        nombre: 'BODEGA 66',
-        direccion: 'Calle 9 #66-10',
-        imageAsset: 'assets/images/bar1.jpg',
-        categoria: 'bar',
-        clickable: true,
+    );
+  }
+
+  Widget _CatCard(String title, String asset, double h, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack( // 🔥 TÍTULO ENCIMA DE LA FOTO
+        alignment: Alignment.bottomCenter,
+        children: [
+          Container(
+            height: h,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
+              image: DecorationImage(image: AssetImage(asset), fit: BoxFit.cover),
+            ),
+          ),
+          // Sombra para legibilidad
+          Container(
+            height: h,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)], stops: const [0.6, 1.0]),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+          ),
+        ],
       ),
-      _LugarPopular(
-        nombre: 'CAFÉ AMOR',
-        direccion: 'Calle 10 #15-60',
-        imageAsset: 'assets/images/cafe2.jpg',
-        categoria: 'cafe',
-        clickable: true,
-      ),
-    ];
+    );
+  }
+}
+
+// ===============================================================
+// 🔥 LUGARES POPULARES (LÓGICA ORIGINAL RESTAURADA)
+// ===============================================================
+class _LugaresPopularesList extends StatelessWidget {
+  final String? matchyUidInvitado;
+  const _LugaresPopularesList({this.matchyUidInvitado});
+
+  @override
+  Widget build(BuildContext context) {
+    const double alturaLugarPopular = 150;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // =========================================================
-        // 🔥 HEADER NUEVO
-        // =========================================================
-        _CitaHeaderMatch(
-          textTheme: textTheme,
-          nombreUsuario: nombreUsuario,
-          nombreMatch: nombreMatch,
-          fotoUsuario: fotoUsuario,
-          fotoMatch: fotoMatch,
+        const Text(
+            "LUGARES MÁS POPULARES",
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)
         ),
+        const SizedBox(height: 14),
 
-        const SizedBox(height: 16), // 🔴 CHINCHE CITA HEADER SPACE 16
-
-        // =========================================================
-        // GRID 2x2
-        // =========================================================
+        // 🔥 STREAM BUILDER ORIGINAL (CORRECTO)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20), // 🔴 20
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'RESTAURANTES',
-                      imageAsset: 'assets/images/iconorestaurante.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RestaurantesScreen()),
-                      ),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('lugares')
+                .where('popular', isGreaterThan: 0) // 🔥 Filtro original
+                .orderBy('popular')                 // 🔥 Orden original
+                .snapshots(),
+            builder: (context, snap) {
+              if (snap.hasError) {
+                return const Text("Error cargando populares", style: TextStyle(color: Colors.white54));
+              }
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator(color: Colors.white));
+              }
+
+              final docs = snap.data!.docs;
+              if (docs.isEmpty) {
+                return const Text("No hay lugares populares activos.", style: TextStyle(color: Colors.white54));
+              }
+
+              return Column(
+                children: List.generate(docs.length, (index) {
+                  final lugar = LugarData.fromMap(
+                    id: docs[index].id,
+                    data: docs[index].data(),
+                  );
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    // 🔥 USAMOS EL WIDGET LugarCard ORIGINAL
+                    child: LugarCard(
+                      lugar: lugar,
+                      altoTarjeta: alturaLugarPopular,
+                      onTap: () {
+                        // 🔥 PASAMOS EL DATO AL CLICK
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LugarPlantillaScreen(
+                              lugar: lugar,
+                              matchyUidInvitado: matchyUidInvitado,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ),
-                  const SizedBox(width: 12), // 🔴 12
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'BARES',
-                      imageAsset: 'assets/images/iconobares.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const BaresScreen()),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14), // 🔴 14
-              Row(
-                children: [
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'CAFÉS',
-                      imageAsset: 'assets/images/iconocafeteria.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CafesScreen()),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'ACTIVIDADES',
-                      imageAsset: 'assets/images/iconoactividades.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ActividadesScreen()),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  );
+                }),
+              );
+            },
           ),
         ),
-
-        const SizedBox(height: 22),
-
-        // =========================================================
-        // LUGARES POPULARES
-        // =========================================================
-        Text(
-          'LUGARES MÁS POPULARES',
-          style: textTheme.titleMedium?.copyWith(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              for (int i = 0; i < lugaresPopulares.length; i++) ...[
-                _LugarPopularCard(
-                  lugar: lugaresPopulares[i],
-                  textTheme: textTheme,
-                  altura: alturaLugarPopular,
-                  onTap: () {
-                    final cat = lugaresPopulares[i].categoria;
-
-                    if (cat == 'restaurante') {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RestaurantesScreen()));
-                      return;
-                    }
-                    if (cat == 'bar') {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BaresScreen()));
-                      return;
-                    }
-                    if (cat == 'cafe') {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CafesScreen()));
-                      return;
-                    }
-                    if (cat == 'actividad') {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ActividadesScreen()));
-                      return;
-                    }
-                  },
-                ),
-                if (i != lugaresPopulares.length - 1) const SizedBox(height: 16),
-              ],
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
       ],
     );
   }
 }
 
 // ===============================================================
-// 🔥 HEADER: fotos + nombres + frase
+// 🔹 UTILIDAD IMAGEN
 // ===============================================================
-class _CitaHeaderMatch extends StatelessWidget {
-  final TextTheme textTheme;
-  final String nombreUsuario;
-  final String nombreMatch;
-  final String fotoUsuario;
-  final String fotoMatch;
-
-  const _CitaHeaderMatch({
-    required this.textTheme,
-    required this.nombreUsuario,
-    required this.nombreMatch,
-    required this.fotoUsuario,
-    required this.fotoMatch,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // 🔴 CHINCHE HEADER MEDIDAS
-    const double fotoSize = 58; // 🔴 58
-    const double radioFoto = 12; // 🔴 12
-    const double espacioFotos = 10; // 🔴 10
-    const double espacioTexto = 10; // 🔴 10
-    const double paddingHorizontal = 16; // 🔴 16
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
-      child: Row(
-        children: [
-          _SafeProfileImage(
-            path: fotoUsuario,
-            size: fotoSize,
-            radius: radioFoto,
-            // 🔴 CHINCHE CITA FALLBACK IMG 1
-            fallbackAsset: 'assets/images/perfil1.jpg',
-          ),
-          const SizedBox(width: espacioFotos),
-
-          Expanded(
-            child: Column(
-              children: [
-                Text(
-                  'HOLA ${nombreUsuario.toUpperCase()} Y ${nombreMatch.toUpperCase()}',
-                  style: textTheme.titleLarge?.copyWith(
-                    color: Colors.white,
-                    fontSize: 20, // 🔴 20
-                    fontWeight: FontWeight.bold,
-                    decoration: TextDecoration.none,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: espacioTexto),
-                Text(
-                  '¿A DÓNDE QUIEREN IR?',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: Colors.white70,
-                    fontSize: 13, // 🔴 13
-                    decoration: TextDecoration.none,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: espacioFotos),
-          _SafeProfileImage(
-            path: fotoMatch,
-            size: fotoSize,
-            radius: radioFoto,
-            // 🔴 CHINCHE CITA FALLBACK IMG 2
-            fallbackAsset: 'assets/images/perfil2.jpg',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===============================================================
-// ✅ Imagen segura: no crashea si falta asset o falla url/file
-// ===============================================================
-class _SafeProfileImage extends StatelessWidget {
+class _SafeImage extends StatelessWidget {
   final String path;
-  final double size;
-  final double radius;
-  final String fallbackAsset;
-
-  const _SafeProfileImage({
-    required this.path,
-    required this.size,
-    required this.radius,
-    required this.fallbackAsset,
-  });
-
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
-  bool _isAsset(String v) => v.startsWith('assets/');
-  bool _isFilePath(String v) => v.startsWith('/') || v.contains(r':\');
-
+  const _SafeImage({required this.path});
   @override
   Widget build(BuildContext context) {
-    Widget img;
-
     final p = path.trim();
-
-    if (p.isEmpty) {
-      img = Image.asset(fallbackAsset, width: size, height: size, fit: BoxFit.cover);
-    } else if (_isNetwork(p)) {
-      img = Image.network(
-        p,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(
-          fallbackAsset,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-        ),
-      );
-    } else if (_isFilePath(p) && !_isAsset(p)) {
-      img = Image.file(
-        File(p),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(
-          fallbackAsset,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-        ),
-      );
-    } else {
-      img = Image.asset(
-        p,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(
-          fallbackAsset,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-        ),
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: img,
-    );
-  }
-}
-
-// ===============================================================
-// 🔹 TARJETA CATEGORÍA
-// ===============================================================
-class _CategoriaCard extends StatelessWidget {
-  final String titulo;
-  final String imageAsset;
-  final double altura;
-  final double radio;
-  final VoidCallback onTap;
-
-  const _CategoriaCard({
-    required this.titulo,
-    required this.imageAsset,
-    required this.altura,
-    required this.radio,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            height: altura,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radio),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-              image: DecorationImage(
-                image: AssetImage(imageAsset),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              decoration: TextDecoration.none,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===============================================================
-// 🔹 TARJETA LUGAR POPULAR
-// ===============================================================
-class _LugarPopularCard extends StatelessWidget {
-  final _LugarPopular lugar;
-  final TextTheme textTheme;
-  final double altura;
-  final VoidCallback onTap;
-
-  const _LugarPopularCard({
-    required this.lugar,
-    required this.textTheme,
-    required this.altura,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bool clickable = lugar.clickable;
-
-    return GestureDetector(
-      onTap: clickable ? onTap : null,
-      child: Container(
-        height: altura,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.45),
-              blurRadius: 10,
-              offset: const Offset(0, 6),
-            ),
-          ],
-          image: DecorationImage(
-            image: AssetImage(lugar.imageAsset),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                Colors.black.withOpacity(0.75),
-              ],
-            ),
-          ),
-          padding: const EdgeInsets.all(10),
-          alignment: Alignment.bottomLeft,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                lugar.nombre,
-                style: textTheme.titleSmall?.copyWith(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                lugar.direccion,
-                style: textTheme.bodySmall?.copyWith(
-                  color: Colors.white,
-                  fontSize: 13,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (p.startsWith('http')) return Image.network(p, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
+    if (File(p).existsSync()) return Image.file(File(p), fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
+    return Image.asset(p.isNotEmpty ? p : 'assets/images/perfil1.jpg', fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
   }
 }

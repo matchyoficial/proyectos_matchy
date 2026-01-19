@@ -11,7 +11,9 @@ import 'firebase_options.dart';
 // ✅ LOCALIZACIONES (FIX del error rojo)
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'package:proyectos_matchy/screens/splash_screen.dart';
+// 🛑 CAMBIO ÚNICO: Usamos el Portero (AuthGuard)
+import 'package:proyectos_matchy/widgets/auth_guard.dart';
+// import 'package:proyectos_matchy/screens/splash_screen.dart'; // Ya no se usa directo
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,8 +55,8 @@ class MyApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // ✅ Ruta inicial correcta
-      home: const SplashScreen(),
+      // ✅ Ruta inicial: El Portero que valida Firebase antes de dejar pasar
+      home: const AuthGuard(),
     );
   }
 }

@@ -1,62 +1,52 @@
 // 📂 lib/screens/crear_cita_panel_screen.dart
-// ✅ Pantalla "CREAR UNA CITA" con:
-//    - Fondo y logo Matchy
-//    - Grid 2x2 (Restaurantes / Bares / Cafés / Actividades)
-//    - Lista de lugares populares
-//    - Botón global de regreso (pantalla secundaria)
+// ✅ PANEL CREAR CITA (DISEÑO PREMIUM)
+// 🔥 UI: Degradado inferior Fade Out.
+// 🔥 UI: Botones y textos con sombras y gradientes.
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-// 🔴 CHINCHE CREA A — imports de las 4 pantallas destino
+import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/widgets/lugar_card.dart';
+import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
+
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 
-// 🔴 CHINCHE CREA BACK 0 — botón global de regreso para pantallas secundarias
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 
 class CrearCitaPanelScreen extends StatelessWidget {
-  // 🔴 CHINCHE CREA C — nombre de ruta
   static const String routeName = 'crear_cita_panel';
 
-  // 🔴 CHINCHE CREA D — nombre dinámico del usuario (NO hardcode)
-  // Valor recomendado: pásalo desde Panel (ej: nombre seguro ya calculado).
   final String nombreUsuario;
 
   const CrearCitaPanelScreen({
     super.key,
-    this.nombreUsuario = 'AMIGO', // 🔴 CHINCHE CREA D1 — fallback si no llega nada
+    this.nombreUsuario = 'AMIGO',
   });
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-
-    // mismos parámetros que usamos en las demás pantallas
-    const double espacioBarraLogo = 35; // 🔴 CHINCHE CREA LAYOUT 1
-    const double alturaLogo = 50; // 🔴 CHINCHE CREA LAYOUT 2
-    const double espacioLogoScroll = 15; // 🔴 CHINCHE CREA LAYOUT 3
-    const double margenInferiorPantalla = 80; // 🔴 CHINCHE CREA LAYOUT 4 — respiro final scroll
+    const double espacioBarraLogo = 35;
+    const double alturaLogo = 50;
+    const double espacioLogoScroll = 15;
+    const double margenInferiorPantalla = 120; // Aumentado para el fade out
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 🔹 Fondo global
+          // 1. Fondo
           Positioned.fill(
-            child: Image.asset(
-              'assets/images/fondo.jpg',
-              fit: BoxFit.cover,
-            ),
+            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
 
-          // 🔹 BOTÓN GLOBAL DE REGRESO (esta pantalla es secundaria)
-          const MatchyBackButton(
-            top: 10, // 🔴 CHINCHE CREA BACK A — sube/baja el botón
-            left: 16, // 🔴 CHINCHE CREA BACK B — mueve horizontal
-          ),
+          // 2. Botón Atrás
+          const MatchyBackButton(top: 10, left: 16),
 
-          // 🔹 Logo + contenido scrolleable
+          // 3. Contenido
           Column(
             children: [
               const SizedBox(height: espacioBarraLogo),
@@ -67,16 +57,29 @@ class CrearCitaPanelScreen extends StatelessWidget {
               const SizedBox(height: espacioLogoScroll),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    bottom: margenInferiorPantalla,
-                  ),
-                  child: _CrearCitaContent(
-                    textTheme: textTheme,
-                    nombreUsuario: nombreUsuario, // 🔴 CHINCHE CREA D2 — inyección del nombre
-                  ),
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: margenInferiorPantalla),
+                  child: _CrearCitaContent(nombreUsuario: nombreUsuario),
                 ),
               ),
             ],
+          ),
+
+          // 4. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          Positioned(
+            bottom: 0, left: 0, right: 0, height: 90,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -85,277 +88,119 @@ class CrearCitaPanelScreen extends StatelessWidget {
 }
 
 // ===============================================================
-// 🔹 MODELO: Lugar popular (equivalente a data class Lugar)
-// ===============================================================
-class _LugarPopular {
-  final String nombre;
-  final String direccion;
-  final String imageAsset;
-
-  // 🔴 CHINCHE CREA POP 1 — categoría del lugar popular
-  // Valor: usa 4 strings simples para MVP.
-  final String categoria; // 'restaurante' | 'bar' | 'cafe' | 'actividad'
-
-  final bool clickable;
-
-  const _LugarPopular({
-    required this.nombre,
-    required this.direccion,
-    required this.imageAsset,
-    required this.categoria, // 🔴 CHINCHE CREA POP 1A
-    required this.clickable,
-  });
-}
-
-// ===============================================================
-// 🔹 CONTENIDO PRINCIPAL DE LA PANTALLA
+// CONTENIDO
 // ===============================================================
 class _CrearCitaContent extends StatelessWidget {
-  final TextTheme textTheme;
-
-  // 🔴 CHINCHE CREA D3 — nombre recibido desde arriba
   final String nombreUsuario;
 
-  const _CrearCitaContent({
-    required this.textTheme,
-    required this.nombreUsuario,
-  });
+  const _CrearCitaContent({required this.nombreUsuario});
+
+  // Estilos de texto premium
+  static const TextStyle kTitleStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 28,
+    fontWeight: FontWeight.w900,
+    fontFamily: 'Poppins',
+    shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))],
+  );
+
+  static const TextStyle kSubtitleStyle = TextStyle(
+    color: Colors.white70,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    fontFamily: 'Poppins',
+    shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+  );
 
   @override
   Widget build(BuildContext context) {
-    // 🔴 CHINCHE CREA E — alto del grid de categorías
     const double alturaCategoria = 112;
-
-    // 🔴 CHINCHE CREA F — radio de esquinas de cada foto del grid
-    const double radioCategoria = 12;
-
-    // 🔴 CHINCHE CREA G — alto de cada tarjeta de "lugar popular"
+    const double radioCategoria = 18; // Más redondeado
     const double alturaLugarPopular = 150;
 
-    // 🔴 CHINCHE CREA H — lista de lugares populares
-    const List<_LugarPopular> lugaresPopulares = [
-      _LugarPopular(
-        nombre: 'EL FARO PIZZERIA',
-        direccion: 'Carrera 66 #5-152',
-        imageAsset: 'assets/images/faro1.jpg',
-        categoria: 'restaurante', // 🔴 CHINCHE CREA POP 2
-        clickable: true,
-      ),
-      _LugarPopular(
-        nombre: 'BAR LA NOCHE',
-        direccion: 'Calle 5 #10-23',
-        imageAsset: 'assets/images/barlanoche.jpg',
-        categoria: 'bar', // 🔴 CHINCHE CREA POP 3
-        clickable: true, // 🔴 CHINCHE CREA POP 3A — si quieres que también navegue
-      ),
-      _LugarPopular(
-        nombre: 'CAFÉ CENTRAL',
-        direccion: 'Av. 4N #12-50',
-        imageAsset: 'assets/images/cafe1.jpg',
-        categoria: 'cafe', // 🔴 CHINCHE CREA POP 4
-        clickable: true,
-      ),
-      _LugarPopular(
-        nombre: 'RESTAURANTE ANDES',
-        direccion: 'Cra 34 #7-89',
-        imageAsset: 'assets/images/restaurante1.jpg',
-        categoria: 'restaurante', // 🔴 CHINCHE CREA POP 5
-        clickable: true,
-      ),
-      _LugarPopular(
-        nombre: 'BODEGA 66',
-        direccion: 'Calle 9 #66-10',
-        imageAsset: 'assets/images/bar1.jpg',
-        categoria: 'bar', // 🔴 CHINCHE CREA POP 6
-        clickable: true,
-      ),
-      _LugarPopular(
-        nombre: 'CAFÉ AMOR',
-        direccion: 'Calle 10 #15-60',
-        imageAsset: 'assets/images/cafe2.jpg',
-        categoria: 'cafe', // 🔴 CHINCHE CREA POP 7
-        clickable: true,
-      ),
-    ];
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // ---------------------------------------------------------
-        // TÍTULOS
-        // ---------------------------------------------------------
-        Text(
-          'HOLA ${nombreUsuario.toUpperCase()}', // 🔴 CHINCHE CREA D4 — normalización
-          style: textTheme.titleLarge?.copyWith(
-            color: Colors.white,
-            fontSize: 28, // 🔴 CHINCHE CREA I — tamaño texto principal
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
+        // SALUDO
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: FittedBox(
+            child: Text('HOLA ${nombreUsuario.toUpperCase()}', style: kTitleStyle),
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          '¿A DÓNDE QUIERES IR CON TU CITA?',
-          style: textTheme.bodyMedium?.copyWith(
-            color: Colors.white,
-            fontSize: 16, // 🔴 CHINCHE CREA J — tamaño subtítulo
-            decoration: TextDecoration.none,
-          ),
-        ),
-        const SizedBox(height: 12),
+        const Text('¿A DÓNDE QUIERES IR CON TU CITA?', style: kSubtitleStyle),
+        const SizedBox(height: 17),
 
-        // ---------------------------------------------------------
-        // GRID 2x2 — RESTAURANTES / BARES / CAFÉS / ACTIVIDADES
-        // ---------------------------------------------------------
+        // GRID CATEGORÍAS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'RESTAURANTES',
-                      imageAsset: 'assets/images/iconorestaurante.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () {
-                        // 🔴 CHINCHE CREA K — navegación a RestaurantesScreen
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const RestaurantesScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  Expanded(child: _CategoriaCard(titulo: 'RESTAURANTES', imageAsset: 'assets/images/iconorestaurante.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RestaurantesScreen())))),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'BARES',
-                      imageAsset: 'assets/images/iconobares.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () {
-                        // 🔴 CHINCHE CREA L — navegación a BaresScreen
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const BaresScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  Expanded(child: _CategoriaCard(titulo: 'BARES', imageAsset: 'assets/images/iconobares.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BaresScreen())))),
                 ],
               ),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'CAFÉS',
-                      imageAsset: 'assets/images/iconocafeteria.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () {
-                        // 🔴 CHINCHE CREA M — navegación a CafesScreen
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const CafesScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  Expanded(child: _CategoriaCard(titulo: 'CAFÉS', imageAsset: 'assets/images/iconocafeteria.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CafesScreen())))),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _CategoriaCard(
-                      titulo: 'ACTIVIDADES',
-                      imageAsset: 'assets/images/iconoactividades.png',
-                      altura: alturaCategoria,
-                      radio: radioCategoria,
-                      onTap: () {
-                        // 🔴 CHINCHE CREA N — navegación a ActividadesScreen
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const ActividadesScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
+                  Expanded(child: _CategoriaCard(titulo: 'ACTIVIDADES', imageAsset: 'assets/images/iconoactividades.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActividadesScreen())))),
                 ],
               ),
             ],
           ),
         ),
 
-        const SizedBox(height: 22),
+        const SizedBox(height: 30),
 
-        // ---------------------------------------------------------
-        // TÍTULO "LUGARES MÁS POPULARES"
-        // ---------------------------------------------------------
-        Text(
-          'LUGARES MÁS POPULARES',
-          style: textTheme.titleMedium?.copyWith(
+        // TÍTULO SECCIÓN POPULARES
+        const Text(
+          "LUGARES MÁS POPULARES",
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 22, // 🔴 CHINCHE CREA O
-            fontWeight: FontWeight.bold,
-            decoration: TextDecoration.none,
+            fontSize: 25,
+            fontWeight: FontWeight.w900,
+            fontFamily: 'Poppins',
+            shadows: [Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 3))],
           ),
         ),
-        const SizedBox(height: 8),
 
-        // ---------------------------------------------------------
-        // LISTA DE LUGARES POPULARES (VERTICAL)
-        // ---------------------------------------------------------
+        const SizedBox(height: 15),
+
+        // LISTA POPULARES (STREAM)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            children: [
-              for (int i = 0; i < lugaresPopulares.length; i++) ...[
-                _LugarPopularCard(
-                  lugar: lugaresPopulares[i],
-                  textTheme: textTheme,
-                  altura: alturaLugarPopular,
-                  onTap: () {
-                    // 🔴 CHINCHE CREA P — navegación real por categoría (MVP)
-                    final cat = lugaresPopulares[i].categoria;
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('lugares')
+                .where('popular', isGreaterThan: 0)
+                .orderBy('popular')
+                .snapshots(),
+            builder: (context, snap) {
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
-                    if (cat == 'restaurante') {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RestaurantesScreen()),
-                      );
-                      return;
-                    }
-                    if (cat == 'bar') {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const BaresScreen()),
-                      );
-                      return;
-                    }
-                    if (cat == 'cafe') {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CafesScreen()),
-                      );
-                      return;
-                    }
-                    if (cat == 'actividad') {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const ActividadesScreen()),
-                      );
-                      return;
-                    }
-                  },
-                ),
-                if (i != lugaresPopulares.length - 1) const SizedBox(height: 16),
-              ],
-            ],
+              final docs = snap.data!.docs;
+              if (docs.isEmpty) return const Text("No hay lugares populares aún.", style: TextStyle(color: Colors.white54));
+
+              return Column(
+                children: List.generate(docs.length, (index) {
+                  final lugar = LugarData.fromMap(id: docs[index].id, data: docs[index].data());
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: LugarCard(
+                      lugar: lugar,
+                      altoTarjeta: alturaLugarPopular,
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaScreen(lugar: lugar))),
+                    ),
+                  );
+                }),
+              );
+            },
           ),
-        ),
-
-        const SizedBox(
-          height: 16, // 🔴 CHINCHE CREA Q — espacio final del scroll
         ),
       ],
     );
@@ -363,7 +208,7 @@ class _CrearCitaContent extends StatelessWidget {
 }
 
 // ===============================================================
-// 🔹 TARJETA DEL GRID (RESTAURANTES / BARES / CAFÉS / ACTIVIDADES)
+// CATEGORÍA CARD (MEJORADO - TÍTULO ENCIMA + SOMBRA)
 // ===============================================================
 class _CategoriaCard extends StatelessWidget {
   final String titulo;
@@ -383,121 +228,53 @@ class _CategoriaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap, // 🔴 CHINCHE CREA R — acción al pulsar categoría
-      child: Column(
+      onTap: onTap,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
         children: [
+          // Imagen de fondo
           Container(
             height: altura,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radio),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 10,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
               image: DecorationImage(
                 image: AssetImage(imageAsset),
                 fit: BoxFit.cover,
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            titulo,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              decoration: TextDecoration.none,
+
+          // Gradiente inferior para legibilidad
+          Container(
+            height: altura,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radio),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                stops: const [0.5, 1.0],
+              ),
+            ),
+          ),
+
+          // Título encima
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              titulo,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'Poppins',
+                letterSpacing: 0.5,
+                shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+              ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ===============================================================
-// 🔹 TARJETA INDIVIDUAL DE "LUGAR POPULAR"
-// ===============================================================
-class _LugarPopularCard extends StatelessWidget {
-  final _LugarPopular lugar;
-  final TextTheme textTheme;
-  final double altura;
-  final VoidCallback onTap;
-
-  const _LugarPopularCard({
-    required this.lugar,
-    required this.textTheme,
-    required this.altura,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bool clickable = lugar.clickable;
-
-    return GestureDetector(
-      // 🔴 CHINCHE CREA CLICK 1 — si no es clickable, NO captura taps
-      onTap: clickable ? onTap : null,
-      child: Container(
-        height: altura,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.45),
-              blurRadius: 10,
-              offset: const Offset(0, 6),
-            ),
-          ],
-          image: DecorationImage(
-            image: AssetImage(lugar.imageAsset),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                Colors.black.withOpacity(0.75),
-              ],
-            ),
-          ),
-          padding: const EdgeInsets.all(10),
-          alignment: Alignment.bottomLeft,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                lugar.nombre,
-                style: textTheme.titleSmall?.copyWith(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                lugar.direccion,
-                style: textTheme.bodySmall?.copyWith(
-                  color: Colors.white,
-                  fontSize: 13,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

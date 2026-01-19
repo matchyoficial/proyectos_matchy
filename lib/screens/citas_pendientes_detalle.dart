@@ -1,225 +1,50 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ Conectado a Firestore REAL: citas/{citaDocId} + citas/{citaDocId}/candidatos
-// ✅ FIX CLAVE: la flecha SIEMPRE vuelve a CitasPendientesScreen
-// ✅ NUEVO: botón “VOLVER AL PANEL” (regresa al Panel)
-// ✅ Mantiene diseño Matchy + reloj + grid + botón “HACER MATCHY”
+// ✅ DETALLE CITA PENDIENTE (DISEÑO PREMIUM + CHINCHES MAESTROS)
+// 🔥 UI: Botones Premium (Gradiente + Sombra).
+// 🔥 UI: Textos con sombra, centrados y sin icono de ubicación.
+// 🔥 UI: Degradado negro inferior (Fade Out).
+// 🔥 CHINCHES: Control total del Logo y Estilos.
+// ✅ LOGIC: Flujo Matchy Intacto.
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
-import 'package:proyectos_matchy/screens/match_screen.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
+import 'package:proyectos_matchy/screens/match_screen.dart';
+import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 
-// ================================================================
-// 🔴 CHINCHE FIRESTORE 1 — colección citas
-// ================================================================
+// ============================================================
+// FIRESTORE KEYS
+// ============================================================
 const String kCitasCollection = 'citas';
-
-// 🔴 CHINCHE FIRESTORE 3 — subcolección candidatos
 const String kCandidatosSubcol = 'candidatos';
+const String kMatchysCollection = 'matchys';
+const String kHistorialSubcol = 'historial';
 
-// 🔴 CHINCHE FIRESTORE 4 — fields candidatos
 const String kCandUid = 'uid';
 const String kCandNombre = 'nombre';
 const String kCandEdad = 'edad';
 const String kCandFoto = 'foto';
 const String kCandCreatedAt = 'createdAt';
 
-// 🔴 CHINCHE FIRESTORE 10 — fields cita
 const String kFechaField = 'fecha';
 const String kHoraField = 'hora';
 const String kPreferenciaField = 'preferencia';
 const String kIntencionField = 'intencion';
+
 const String kLugarField = 'lugar';
 const String kLugarNombreField = 'nombre';
 const String kLugarDireccionField = 'direccion';
 const String kLugarFotoPortadaField = 'fotoPortada';
 
-// ================================================================
-// 🔹 PERFIL PREVIEW SEGURO DEL CANDIDATO
-// ================================================================
-class CandidatoPerfilPreviewScreen extends StatelessWidget {
-  final String nombre;
-  final int edad;
-  final String foto;
+const String kUsersCollection = 'users';
 
-  const CandidatoPerfilPreviewScreen({
-    super.key,
-    required this.nombre,
-    required this.edad,
-    required this.foto,
-  });
-
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
-
-  @override
-  Widget build(BuildContext context) {
-    // 🔴 CHINCHE PREVIEW 1 — alto foto (más grande = sube número)
-    const double altoFoto = 320;
-
-    Widget fotoWidget;
-    if (foto.trim().isEmpty) {
-      fotoWidget = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
-    } else if (_isNetwork(foto.trim())) {
-      fotoWidget = Image.network(
-        foto.trim(),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    } else {
-      fotoWidget = Image.asset(
-        foto.trim(),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
-          Positioned(
-            top: 12,
-            left: 12,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-          Column(
-            children: [
-              const SizedBox(height: 60),
-              SizedBox(
-                height: 50,
-                child: Image.asset('assets/images/logomatchyplano.png'),
-              ),
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Stack(
-                    children: [
-                      SizedBox(
-                        height: altoFoto,
-                        width: double.infinity,
-                        child: fotoWidget,
-                      ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 130,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withOpacity(0.75),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 16,
-                        child: Text(
-                          edad > 0 ? '$nombre, $edad' : nombre,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0x33FFFFFF),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Text(
-                  'Perfil de candidato (preview).\n\nMás adelante lo conectamos al perfil real completo.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    height: 1.3,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ================================================================
-// 🔹 MODELO CANDIDATO (FIRESTORE)
-// ================================================================
-class _CandidatoFS {
-  final String uid;
-  final String nombre;
-  final int edad;
-  final String foto;
-
-  const _CandidatoFS({
-    required this.uid,
-    required this.nombre,
-    required this.edad,
-    required this.foto,
-  });
-
-  static _CandidatoFS fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
-    final uid = (data[kCandUid] ?? doc.id).toString().trim();
-    final nombre = (data[kCandNombre] ?? 'Candidato').toString().trim();
-
-    int edad = 0;
-    final e = data[kCandEdad];
-    if (e is int) edad = e;
-    if (e is String) edad = int.tryParse(e) ?? 0;
-
-    final foto = (data[kCandFoto] ?? '').toString().trim();
-
-    return _CandidatoFS(
-      uid: uid.isEmpty ? doc.id : uid,
-      nombre: nombre,
-      edad: edad,
-      foto: foto,
-    );
-  }
-}
-
-// ================================================================
-// 🔹 MODELO CITA (desde Firestore)
-// ================================================================
+// ============================================================
+// MODELOS
+// ============================================================
 class _CitaFS {
   final String docId;
   final String nombreLugar;
@@ -242,14 +67,41 @@ class _CitaFS {
   });
 }
 
-class CitasPendientesDetalleScreen extends ConsumerStatefulWidget {
-  // ✅ Ahora SI debe llegar docId real (desde Firestore)
-  final String citaId;
+class _CandidatoFS {
+  final String uid;
+  final String nombre;
+  final int edad;
+  final String foto;
 
-  const CitasPendientesDetalleScreen({
-    super.key,
-    required this.citaId,
+  const _CandidatoFS({
+    required this.uid,
+    required this.nombre,
+    required this.edad,
+    required this.foto,
   });
+
+  static _CandidatoFS fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    int edad = 0;
+    final e = data[kCandEdad];
+    if (e is int) edad = e;
+    if (e is String) edad = int.tryParse(e) ?? 0;
+
+    return _CandidatoFS(
+      uid: (data[kCandUid] ?? doc.id).toString().trim(),
+      nombre: (data[kCandNombre] ?? '').toString().trim(),
+      edad: edad,
+      foto: (data[kCandFoto] ?? '').toString().trim(),
+    );
+  }
+}
+
+// ============================================================
+// SCREEN
+// ============================================================
+class CitasPendientesDetalleScreen extends ConsumerStatefulWidget {
+  final String citaId;
+  const CitasPendientesDetalleScreen({super.key, required this.citaId});
 
   @override
   ConsumerState<CitasPendientesDetalleScreen> createState() =>
@@ -259,34 +111,45 @@ class CitasPendientesDetalleScreen extends ConsumerStatefulWidget {
 class _CitasPendientesDetalleScreenState
     extends ConsumerState<CitasPendientesDetalleScreen> {
   Timer? _timer;
-
-  // 🔴 CHINCHE RELOJ 1 — actualiza cada 1 segundo
-  static const Duration _tick = Duration(seconds: 1);
-
-  // 🔴 CHINCHE RELOJ 2 — alerta 1 sola vez cuando falte 1 hora o menos
-  bool _alerta1hMostrada = false;
-
-  // 🔴 CHINCHE RELOJ 3 — tiempo restante cacheado
   Duration _restante = Duration.zero;
-
-  // 🔴 CHINCHE LOADING 1 — bloqueo taps cuando se procesa matchy
+  bool _alerta1hMostrada = false;
   bool _busy = false;
 
   _CitaFS? _cita;
 
+  // ===========================================================================
+  // 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
+  // ===========================================================================
+
+  // 1. LOGO
+  static const double kLogoHeight = 45.0;      // Tamaño del logo
+  static const double kLogoTopSpace = 35.0;    // Espacio desde el borde superior
+
+  // 2. BOTONES
+  static const List<Color> kButtonGradientBack = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
+  static const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)];
+  static const double kButtonRadius = 18.0;
+  static const List<BoxShadow> kButtonShadow = [
+    BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))
+  ];
+
+  // 3. TEXTOS
+  static const List<Shadow> kTextShadow = [
+    Shadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 4)
+  ];
+
+  // ===========================================================================
+
   @override
   void initState() {
     super.initState();
-
-    _timer = Timer.periodic(_tick, (_) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      _recalcularContadorYAlertar();
+      _actualizarReloj();
     });
-
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
       await _cargarCita();
-      _recalcularContadorYAlertar();
+      _actualizarReloj();
     });
   }
 
@@ -296,222 +159,127 @@ class _CitasPendientesDetalleScreenState
     super.dispose();
   }
 
-  // ================================================================
-  // 🔙 FIX: la flecha SIEMPRE vuelve a CitasPendientesScreen
-  // ================================================================
-  void _goBackToPendientes() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const CitasPendientesScreen()),
-          (route) => false,
-    );
-  }
-
-  // ================================================================
-  // 🔙 NUEVO: botón “VOLVER AL PANEL”
-  // ================================================================
   void _goBackToPanel() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const PanelScreen()),
-          (route) => false,
+          (r) => false,
     );
   }
 
-  // ================================================================
-  // ✅ Cargar cita desde Firestore por docId
-  // ================================================================
+  String _s(dynamic v) => v is String ? v : (v?.toString() ?? '');
+  int _i(dynamic v) {
+    if (v is int) return v;
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  // ============================================================
+  // CARGAR CITA
+  // ============================================================
   Future<void> _cargarCita() async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection(kCitasCollection)
-          .doc(widget.citaId.trim())
+          .doc(widget.citaId)
           .get();
 
       if (!doc.exists) {
         setState(() => _cita = null);
         return;
       }
-
       final data = doc.data() ?? {};
-      final lugar = (data[kLugarField] is Map)
-          ? Map<String, dynamic>.from(data[kLugarField])
+
+      final nombreRoot = _s(data['lugarNombre']).trim();
+      final dirRoot = _s(data['lugarDireccion']).trim();
+      final fotoRoot = _s(data['lugarFotoPortada']).trim();
+
+      final lugarMap = (data[kLugarField] is Map)
+          ? Map<String, dynamic>.from(data[kLugarField] as Map)
           : <String, dynamic>{};
+      final nombreViejo = _s(lugarMap[kLugarNombreField]).trim();
+      final dirViejo = _s(lugarMap[kLugarDireccionField]).trim();
+      final fotoVieja = _s(lugarMap[kLugarFotoPortadaField]).trim();
 
-      String s(dynamic v) => v is String ? v : (v?.toString() ?? '');
+      final nombreFinal = nombreRoot.isNotEmpty ? nombreRoot : nombreViejo;
+      final dirFinal = dirRoot.isNotEmpty ? dirRoot : dirViejo;
+      final fotoFinal = fotoRoot.isNotEmpty
+          ? fotoRoot
+          : fotoVieja.isNotEmpty
+          ? fotoVieja
+          : 'assets/images/perfil1.jpg';
 
-      final cita = _CitaFS(
-        docId: doc.id,
-        nombreLugar: s(lugar[kLugarNombreField]).isEmpty ? 'Lugar' : s(lugar[kLugarNombreField]),
-        direccionLugar: s(lugar[kLugarDireccionField]),
-        fotoLugar: s(lugar[kLugarFotoPortadaField]),
-        fecha: s(data[kFechaField]),
-        hora: s(data[kHoraField]),
-        preferencia: s(data[kPreferenciaField]),
-        intencion: s(data[kIntencionField]),
-      );
-
-      setState(() => _cita = cita);
+      setState(() {
+        _cita = _CitaFS(
+          docId: doc.id,
+          nombreLugar: nombreFinal,
+          direccionLugar: dirFinal,
+          fotoLugar: fotoFinal,
+          fecha: _s(data[kFechaField]).trim(),
+          hora: _s(data[kHoraField]).trim(),
+          preferencia: _s(data[kPreferenciaField]).trim(),
+          intencion: _s(data[kIntencionField]).trim(),
+        );
+      });
     } catch (_) {
       setState(() => _cita = null);
     }
   }
 
-  // ================================================================
-  // 🔥 STREAM CANDIDATOS: citas/{citaDocId}/candidatos
-  // ================================================================
-  Stream<QuerySnapshot<Map<String, dynamic>>> _candidatosStream(String citaDocId) {
+  // ============================================================
+  // CANCELACIÓN AUTOMÁTICA
+  // ============================================================
+  Future<void> _cancelarAuto() async {
+    await FirebaseFirestore.instance
+        .collection(kCitasCollection)
+        .doc(widget.citaId)
+        .set({
+      'status': 'cancelled',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (!mounted) return;
+    _goBackToPanel();
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _candidatosStream(String citaId) {
     return FirebaseFirestore.instance
         .collection(kCitasCollection)
-        .doc(citaDocId)
+        .doc(citaId)
         .collection(kCandidatosSubcol)
-    // 🔴 CHINCHE CANDS 1 — orden
         .orderBy(kCandCreatedAt, descending: true)
-    // 🔴 CHINCHE CANDS 2 — límite
         .limit(40)
         .snapshots();
   }
 
-  void _recalcularContadorYAlertar() {
-    final cita = _cita;
-    if (cita == null) return;
+  Future<_CandidatoFS> _hydrateCandidateFromUsers(_CandidatoFS c) async {
+    final hasName = c.nombre.trim().isNotEmpty;
+    final hasAge = c.edad > 0;
+    final hasPhoto = c.foto.trim().isNotEmpty;
+    if (hasName && hasAge && hasPhoto) return c;
 
-    final DateTime? citaDateTime = _parseCitaDateTime(cita.fecha, cita.hora);
-    if (citaDateTime == null) {
-      setState(() => _restante = Duration.zero);
-      return;
-    }
-
-    // ✅ deadline = 12 horas antes
-    final DateTime deadline = citaDateTime.subtract(const Duration(hours: 12));
-    final now = DateTime.now();
-
-    final Duration restante = deadline.difference(now);
-    final Duration clamped = restante.isNegative ? Duration.zero : restante;
-
-    if (!_alerta1hMostrada &&
-        restante <= const Duration(hours: 1) &&
-        restante > Duration.zero) {
-      _alerta1hMostrada = true;
-
-      final textoCita = '${cita.nombreLugar} • ${cita.fecha} • ${cita.hora}';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Te queda 1 hora para escoger a tu matchy en la cita del $textoCita'),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-    }
-
-    setState(() => _restante = clamped);
-  }
-
-  DateTime? _parseCitaDateTime(String fecha, String hora) {
     try {
-      final f = fecha.trim();
-      final h = hora.trim();
+      final snap = await FirebaseFirestore.instance.collection(kUsersCollection).doc(c.uid).get();
+      if (!snap.exists) return c;
+      final data = snap.data() ?? {};
 
-      final parts = f.split('/');
-      if (parts.length != 3) return null;
+      String nombre = _s(data['nombre']).trim();
+      if (nombre.isEmpty) nombre = _s(data['displayName']).trim();
 
-      final day = int.parse(parts[0]);
-      final month = int.parse(parts[1]);
-      final year = int.parse(parts[2]);
+      final int edad = _i(data['edad']);
 
-      int hour24 = 0;
-      int minute = 0;
+      String foto = _s(data['profilePhotoUrl']).trim();
+      if (foto.isEmpty) foto = _s(data['foto']).trim();
+      if (foto.isEmpty) foto = _s(data['fotoPerfil']).trim();
 
-      final upper = h.toUpperCase();
-
-      if (upper.contains('AM') || upper.contains('PM')) {
-        final isPM = upper.contains('PM');
-        final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim();
-        final hm = clean.split(':');
-        if (hm.length != 2) return null;
-
-        var hh = int.parse(hm[0].trim());
-        minute = int.parse(hm[1].trim());
-
-        if (isPM) {
-          if (hh != 12) hh += 12;
-        } else {
-          if (hh == 12) hh = 0;
-        }
-        hour24 = hh;
-      } else {
-        final hm = upper.split(':');
-        if (hm.length != 2) return null;
-        hour24 = int.parse(hm[0].trim());
-        minute = int.parse(hm[1].trim());
-      }
-
-      return DateTime(year, month, day, hour24, minute);
+      return _CandidatoFS(
+        uid: c.uid,
+        nombre: hasName ? c.nombre : nombre,
+        edad: hasAge ? c.edad : edad,
+        foto: hasPhoto ? c.foto : foto,
+      );
     } catch (_) {
-      return null;
+      return c;
     }
-  }
-
-  String _formatHHMMSS(Duration d) {
-    final total = d.inSeconds;
-    final hh = (total ~/ 3600).toString().padLeft(2, '0');
-    final mm = ((total % 3600) ~/ 60).toString().padLeft(2, '0');
-    final ss = (total % 60).toString().padLeft(2, '0');
-    return '$hh:$mm:$ss';
-  }
-
-  // ================================================================
-  // ✅ CÓDIGO determinístico
-  // ================================================================
-  String _buildMiCodigoCita({
-    required String citaId,
-    required String candidatoUid,
-  }) {
-    final seed = '$citaId-$candidatoUid';
-    final hash = seed.codeUnits.fold<int>(0, (p, c) => (p + c) % 999999);
-    final code = hash.toString().padLeft(6, '0');
-    return 'MX$code';
-  }
-
-  // ================================================================
-  // ✅ GUARDA EN FIRESTORE (de momento deja tu lógica intacta)
-  // ================================================================
-  Future<String?> _guardarCitaEnFirestore({
-    required _CandidatoFS c,
-    required _CitaFS cita,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
-
-    final citaDateTime = _parseCitaDateTime(cita.fecha, cita.hora);
-    if (citaDateTime == null) return null;
-
-    final String miCodigo = _buildMiCodigoCita(
-      citaId: cita.docId,
-      candidatoUid: c.uid,
-    );
-
-    // 🔴 CHINCHE DOCID 1 — esto NO debería escribirse en "citas" (mezcla).
-    // Lo dejamos tal cual para no romperte flujo hoy.
-    final docId = '${user.uid}_${cita.docId}_${c.uid}';
-    final docRef = FirebaseFirestore.instance.collection(kCitasCollection).doc(docId);
-
-    await docRef.set({
-      'ownerUid': user.uid,
-      'status': 'proxima',
-      'fechaHora': Timestamp.fromDate(citaDateTime),
-      'matchUid': c.uid,
-      'matchNombre': c.nombre,
-      'matchEdad': c.edad,
-      'matchFoto': c.foto,
-      'lugarNombre': cita.nombreLugar,
-      'lugarDireccion': cita.direccionLugar,
-      'preferencia': cita.preferencia,
-      'intencion': cita.intencion,
-      'miCodigoCita': miCodigo,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    return miCodigo;
   }
 
   Future<void> _hacerMatchyFlow({
@@ -521,524 +289,397 @@ class _CitasPendientesDetalleScreenState
     if (_busy) return;
     setState(() => _busy = true);
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final db = FirebaseFirestore.instance;
+    final citaRef = db.collection(kCitasCollection).doc(cita.docId);
+
+    final matchyId = '${user.uid}__${c.uid}';
+    final matchyRef = db.collection(kMatchysCollection).doc(matchyId);
+    final historialRef = matchyRef.collection(kHistorialSubcol).doc();
+
+    final myMatchyRef = db.collection('users').doc(user.uid).collection('my_matchys').doc(c.uid);
+    final otherMatchyRef = db.collection('users').doc(c.uid).collection('my_matchys').doc(user.uid);
+
     try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Debes iniciar sesión para hacer matchy.')),
-        );
-        return;
-      }
+      final cFull = await _hydrateCandidateFromUsers(c);
+
+      final myUserSnap = await db.collection('users').doc(user.uid).get();
+      final myData = myUserSnap.data() ?? {};
+      final myName = _s(myData['nombre']);
+      final myAge = _i(myData['edad']);
+      final myPhoto = _s(myData['profilePhotoUrl']);
+
+      await db.runTransaction((tx) async {
+        final citaSnap = await tx.get(citaRef);
+        if (!citaSnap.exists) throw Exception('La cita no existe');
+
+        final status = (citaSnap.data()?['status'] ?? '').toString();
+        if (status != 'online') throw Exception('La cita ya fue cerrada');
+
+        // 1️⃣ Cerrar Cita
+        tx.update(citaRef, {
+          'status': 'matched',
+          'matchyUid': cFull.uid,
+          'matchyNombre': cFull.nombre,
+          'matchyEdad': cFull.edad,
+          'matchyFoto': cFull.foto,
+          'matchySelectedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // 2️⃣ Guardar en colección raíz
+        tx.set(matchyRef, {
+          'ownerUid': user.uid,
+          'candidatoUid': cFull.uid,
+          'lastCitaAt': FieldValue.serverTimestamp(),
+          'citasCount': FieldValue.increment(1),
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // 3️⃣ Guardar en historial
+        tx.set(historialRef, {
+          'citaId': cita.docId,
+          'fechaHora': '${cita.fecha} ${cita.hora}',
+          'lugarNombre': cita.nombreLugar,
+          'lugarDireccion': cita.direccionLugar,
+          'lugarFotoPortada': cita.fotoLugar,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        // 4️⃣ 🔥 GUARDAR EN MI LISTA
+        tx.set(myMatchyRef, {
+          'nombre': cFull.nombre,
+          'edad': cFull.edad,
+          'fotoUrl': cFull.foto,
+          'matchId': matchyId,
+          'lastInteraction': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // 5️⃣ 🔥 GUARDAR EN SU LISTA
+        tx.set(otherMatchyRef, {
+          'nombre': myName,
+          'edad': myAge,
+          'fotoUrl': myPhoto,
+          'matchId': matchyId,
+          'lastInteraction': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+      });
 
       if (!mounted) return;
 
-      Navigator.of(context).push(
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => MatchScreen(
-            candidatoId: c.uid,
-            candidatoNombre: c.nombre,
-            candidatoEdad: c.edad,
-            candidatoFotoAsset: c.foto.isEmpty ? 'assets/images/perfil1.jpg' : c.foto,
-            onMatchAnimationFinished: () async {
-              final miCodigo = await _guardarCitaEnFirestore(c: c, cita: cita);
-              if (!mounted) return;
-
-              if (miCodigo == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('❌ No se pudo crear la cita.')),
-                );
-              }
-            },
+            candidatoId: cFull.uid,
+            candidatoNombre: cFull.nombre,
+            candidatoEdad: cFull.edad,
+            candidatoFotoAsset: cFull.foto.isEmpty ? 'assets/images/perfil1.jpg' : cFull.foto,
+            citaId: cita.docId,
+            lugarNombre: cita.nombreLugar,
+            lugarFoto: cita.fotoLugar,
           ),
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Error haciendo matchy: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error cerrando la cita: $e')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
+  // ============================================================
+  // HELPERS FECHA/RELOJ
+  // ============================================================
+  DateTime? _parse(String fecha, String hora) {
+    try {
+      final f = fecha.split('/');
+      if (f.length != 3) return null;
+      final day = int.parse(f[0]);
+      final month = int.parse(f[1]);
+      final year = int.parse(f[2]);
+      final upper = hora.toUpperCase();
+      final isPM = upper.contains('PM');
+      final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim();
+      final hm = clean.split(':');
+      int h = int.parse(hm[0]);
+      int m = int.parse(hm[1]);
+      if (isPM) { if (h != 12) h += 12; } else { if (h == 12) h = 0; }
+      return DateTime(year, month, day, h, m);
+    } catch (_) { return null; }
+  }
 
+  void _actualizarReloj() {
+    final c = _cita;
+    if (c == null) return;
+    final dt = _parse(c.fecha, c.hora);
+    if (dt == null) return;
+    final limite = dt.subtract(const Duration(hours: 12));
+    final now = DateTime.now();
+    final diff = limite.difference(now);
+
+    if (!_alerta1hMostrada && diff <= const Duration(hours: 1) && diff > Duration.zero) {
+      _alerta1hMostrada = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Te queda 1 hora para escoger tu matchy en la cita del ${c.nombreLugar}")));
+    }
+    if (diff.isNegative || diff == Duration.zero) {
+      _cancelarAuto();
+    }
+    setState(() {
+      _restante = diff.isNegative ? Duration.zero : diff;
+    });
+  }
+
+  String _fmt(Duration d) {
+    final s = d.inSeconds;
+    final h = (s ~/ 3600).toString().padLeft(2, '0');
+    final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0');
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$h:$m:$ss';
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
   @override
   Widget build(BuildContext context) {
-    const double espacioBarraLogo = 35;
-    const double alturaLogo = 50;
-    const double espacioLogoTitulo = 12;
-    const double paddingBottom = 90;
-
     final cita = _cita;
-
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
-
-          // ✅ Flecha “blindada”
-          Positioned(
-            top: 12,
-            left: 12,
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: _goBackToPendientes, // ✅ FIX
-            ),
-          ),
+          // 1. FONDO
+          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
 
           Column(
             children: [
-              const SizedBox(height: espacioBarraLogo),
-              SizedBox(
-                height: alturaLogo,
-                child: Image.asset('assets/images/logomatchyplano.png'),
-              ),
-              const SizedBox(height: espacioLogoTitulo),
+              SizedBox(height: kLogoTopSpace),
+              SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png')),
+              const SizedBox(height: 14),
+              Expanded(child: cita == null ? _buildError() : _buildDetalle(cita)),
+            ],
+          ),
 
-              Expanded(
-                child: (cita == null)
-                    ? SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: paddingBottom,
-                  ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 18),
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: const Color(0x33FFFFFF),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Text(
-                          '❌ No pude cargar la cita.\n\n'
-                              'DocId recibido: "${widget.citaId}"\n\n'
-                              '🔴 Solución: esta pantalla debe recibir el docId real de Firestore.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            height: 1.25,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ✅ Botón a Panel
-                      SizedBox(
-                        width: MediaQuery.of(context).size.width * 0.82,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _goBackToPanel,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6A5ACD),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          child: const Text(
-                            'VOLVER AL PANEL',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                    : SingleChildScrollView(
-                  padding: const EdgeInsets.only(
-                    left: 16,
-                    right: 16,
-                    bottom: paddingBottom,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // FOTO LUGAR
-                      Container(
-                        height: 190,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.45),
-                              blurRadius: 10,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: _buildFotoLugar(cita.fotoLugar),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // INFO
-                      Text(
-                        cita.nombreLugar,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '📍 ${cita.direccionLugar}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '📅 ${cita.fecha}   🕒 ${cita.hora}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '🎯 ${cita.intencion} • 👥 ${cita.preferencia}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      Center(
-                        child: Text(
-                          _formatHHMMSS(_restante),
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Color(0xFFFF5252),
-                            fontSize: 22,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Center(
-                        child: Text(
-                          'TIEMPO PARA ELEGIR TU MATCHY',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFFFF5252),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 14),
-                      const Text(
-                        '¿CON QUIÉN QUIERES IR A TU CITA?',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-
-                      // GRID CANDIDATOS
-                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: _candidatosStream(cita.docId),
-                        builder: (context, snap) {
-                          if (snap.hasError) {
-                            return _boxText('❌ Error cargando candidatos: ${snap.error}');
-                          }
-                          if (!snap.hasData) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 18),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-
-                          final docs = snap.data!.docs;
-                          if (docs.isEmpty) {
-                            return _boxText(
-                              'Aún no hay candidatos.\nCuando alguien haga swipe a la derecha, aparecerá aquí.',
-                              soft: true,
-                            );
-                          }
-
-                          final candidatos = docs.map(_CandidatoFS.fromDoc).toList();
-
-                          return GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: candidatos.length,
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              // 🔴 CHINCHE GRID 1 — espacios (más juntos = baja números)
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              // 🔴 CHINCHE GRID 2 — proporción (más alto = baja número)
-                              childAspectRatio: 0.86,
-                            ),
-                            itemBuilder: (_, i) {
-                              final c = candidatos[i];
-
-                              return _CandidatoCard(
-                                candidato: c,
-                                busy: _busy,
-                                onTapFoto: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => CandidatoPerfilPreviewScreen(
-                                        nombre: c.nombre.isEmpty ? 'Candidato' : c.nombre,
-                                        edad: c.edad,
-                                        foto: c.foto,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                onMatchy: () async {
-                                  await _hacerMatchyFlow(c: c, cita: cita);
-                                },
-                              );
-                            },
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ✅ Botón extra para regresar al Panel
-                      SizedBox(
-                        width: MediaQuery.of(context).size.width * 0.82,
-                        height: 48,
-                        child: ElevatedButton(
-                          onPressed: _goBackToPanel,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6A5ACD),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                          child: const Text(
-                            'VOLVER AL PANEL',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-                    ],
+          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          Positioned(
+            bottom: 0, left: 0, right: 0, height: 90,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                    stops: const [0.0, 1.0],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _boxText(String t, {bool soft = false}) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0x33FFFFFF),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Text(
-        t,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: soft ? Colors.white70 : Colors.white,
-          fontFamily: 'Poppins',
-          fontWeight: FontWeight.w700,
-          height: 1.25,
-        ),
+  Widget _buildError() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 90),
+      child: Column(
+        children: [
+          const SizedBox(height: 18),
+          _box('❌ No pude cargar la cita.'),
+          const SizedBox(height: 16),
+          // Botón Premium Error
+          _PremiumButton(
+            text: 'VOLVER AL PANEL',
+            gradient: kButtonGradientBack,
+            onTap: _goBackToPanel,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildFotoLugar(String pathOrUrl) {
-    final v = pathOrUrl.trim();
-    if (v.isEmpty) {
-      return Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
-    }
-    if (_isNetwork(v)) {
-      return Image.network(
-        v,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    }
-    return Image.asset(
-      v,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) =>
-          Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
+  Widget _buildDetalle(_CitaFS cita) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 90),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _fotoLugar(cita.fotoLugar),
+          const SizedBox(height: 14),
+
+          // 🔥 TITULO CENTRADO CON SOMBRA
+          Text(
+            cita.nombreLugar,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Poppins',
+              shadows: kTextShadow,
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          // 🔥 DIRECCIÓN CENTRADA SIN ICONO
+          Text(
+            cita.direccionLugar,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontFamily: 'Poppins',
+              shadows: kTextShadow,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+          Row(children: [Expanded(child: _infoChip(icon: '📅', text: cita.fecha)), const SizedBox(width: 10), Expanded(child: _infoChip(icon: '🕒', text: cita.hora))]),
+          const SizedBox(height: 10),
+          Row(children: [Expanded(child: _infoChip(icon: '🎯', text: cita.intencion)), const SizedBox(width: 10), Expanded(child: _infoChip(icon: '👥', text: cita.preferencia))]),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), gradient: const LinearGradient(colors: [Color(0x55FF4081), Color(0x55FF5252)], begin: Alignment.topLeft, end: Alignment.bottomRight)),
+            child: Column(children: [Text(_fmt(_restante), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Poppins')), const SizedBox(height: 4), const Text('TIEMPO PARA ELEGIR TU MATCHY', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Poppins'))]),
+          ),
+          const SizedBox(height: 28),
+
+          // 🔥 TEXTO CON SOMBRA
+          const Text(
+            '¿CON QUIÉN QUIERES IR A TU CITA?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Poppins',
+              shadows: kTextShadow,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _candidatosStream(cita.docId),
+            builder: (_, snap) {
+              if (snap.hasError) return _box('❌ Error cargando candidatos.');
+              if (!snap.hasData) return const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator()));
+              final docs = snap.data!.docs;
+              if (docs.isEmpty) return _box('Aún no hay candidatos.\nCuando alguien haga swipe a la derecha, aparecerá aquí.', soft: true);
+              final candidatos = docs.map(_CandidatoFS.fromDoc).toList();
+              return GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: candidatos.length, gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.86), itemBuilder: (_, i) {
+                return FutureBuilder<_CandidatoFS>(future: _hydrateCandidateFromUsers(candidatos[i]), builder: (_, snapC) {
+                  final cand = snapC.data ?? candidatos[i];
+                  final hideLoading = snapC.connectionState != ConnectionState.done;
+                  return _CandidatoCard(candidato: cand, hideAssetWhileLoading: hideLoading, busy: _busy, onTapFoto: () => _openPerfil(cand.uid), onMatchy: () async => await _hacerMatchyFlow(c: cand, cita: _cita!));
+                });
+              });
+            },
+          ),
+
+          const SizedBox(height: 22),
+
+          // 🔥 BOTÓN VOLVER PREMIUM
+          _PremiumButton(
+            text: 'VOLVER AL PANEL',
+            gradient: kButtonGradientBack,
+            onTap: _goBackToPanel,
+          ),
+
+          const SizedBox(height: 12),
+
+          // 🔥 BOTÓN CANCELAR PREMIUM
+          _PremiumButton(
+            text: 'CANCELAR CITA',
+            gradient: kButtonGradientCancel,
+            onTap: () async {
+              await FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.docId).set({'status': 'cancelled', 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+              if (!mounted) return;
+              _goBackToPanel();
+            },
+          ),
+
+          const SizedBox(height: 40), // Espacio para Fade Out
+        ],
+      ),
+    );
+  }
+
+  void _openPerfil(String uid) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: uid)));
+  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
+  Widget _fotoLugar(String v) {
+    final src = v.trim();
+    Widget w = (src.isEmpty) ? Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover) : (_isNetwork(src) ? Image.network(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)) : Image.asset(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)));
+    return Container(height: 190, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(22)), child: w);
+  }
+  Widget _box(String t, {bool soft = false}) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18)), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: soft ? Colors.white70 : Colors.white, fontFamily: 'Poppins', fontWeight: FontWeight.w700)));
+  Widget _infoChip({required String icon, required String text}) {
+    final t = text.trim().isEmpty ? '—' : text.trim();
+    return Container(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(14)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text(icon, style: const TextStyle(fontSize: 16)), const SizedBox(width: 8), Flexible(child: Text(t, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Poppins')))]));
+  }
+}
+
+// 🔥 WIDGET REUTILIZABLE: BOTÓN PREMIUM
+class _PremiumButton extends StatelessWidget {
+  final String text;
+  final List<Color> gradient;
+  final VoidCallback onTap;
+
+  const _PremiumButton({required this.text, required this.gradient, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 48,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient),
+          borderRadius: BorderRadius.circular(_CitasPendientesDetalleScreenState.kButtonRadius),
+          boxShadow: _CitasPendientesDetalleScreenState.kButtonShadow,
+          border: Border.all(color: Colors.white24, width: 1),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+            text,
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)
+        ),
+      ),
     );
   }
 }
 
 class _CandidatoCard extends StatelessWidget {
   final _CandidatoFS candidato;
-  final VoidCallback onTapFoto;
   final Future<void> Function() onMatchy;
+  final VoidCallback onTapFoto;
   final bool busy;
-
-  const _CandidatoCard({
-    required this.candidato,
-    required this.onTapFoto,
-    required this.onMatchy,
-    required this.busy,
-  });
-
+  final bool hideAssetWhileLoading;
+  const _CandidatoCard({required this.candidato, required this.onMatchy, required this.onTapFoto, required this.busy, required this.hideAssetWhileLoading});
   bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
-
+  Widget _loading() => Container(color: const Color(0x22000000), alignment: Alignment.center, child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
+  Widget _noPhoto() => Container(color: const Color(0x22000000), alignment: Alignment.center, child: const Icon(Icons.person, color: Colors.white54, size: 44));
+  Widget _buildImage() {
+    final v = candidato.foto.trim();
+    if (hideAssetWhileLoading && v.isEmpty) return _loading();
+    if (v.isEmpty) return _noPhoto();
+    if (_isNetwork(v)) return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true, loadingBuilder: (_, child, progress) => progress == null ? child : _loading(), errorBuilder: (_,__,___) => _noPhoto());
+    return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _noPhoto());
+  }
   @override
   Widget build(BuildContext context) {
     const double radio = 18;
-
-    // 🔴 CHINCHE BTN 1 — alto botón (más grande = sube número)
     const double altoBoton = 36;
-
-    Widget fotoWidget;
-    if (candidato.foto.trim().isEmpty) {
-      fotoWidget = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
-    } else if (_isNetwork(candidato.foto.trim())) {
-      fotoWidget = Image.network(
-        candidato.foto.trim(),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    } else {
-      fotoWidget = Image.asset(
-        candidato.foto.trim(),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    }
-
-    final nombre = candidato.nombre.isEmpty ? 'Candidato' : candidato.nombre;
+    final nombre = candidato.nombre.trim().isNotEmpty ? candidato.nombre : 'Sin nombre';
     final edadTxt = candidato.edad > 0 ? ', ${candidato.edad}' : '';
-
-    return Column(
-      children: [
-        Expanded(
-          child: Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(radio),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(radio),
-              onTap: onTapFoto,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(radio),
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: fotoWidget),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 70,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.65),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 10,
-                      right: 10,
-                      bottom: 10,
-                      child: Center(
-                        child: Text(
-                          '$nombre$edadTxt',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          height: altoBoton,
-          child: ElevatedButton(
-            onPressed: busy ? null : () async => await onMatchy(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFFFC107),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: busy
-                ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-                : const Text(
-              'HACER MATCHY',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    return Column(children: [Expanded(child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(radio), child: InkWell(borderRadius: BorderRadius.circular(radio), onTap: onTapFoto, child: ClipRRect(borderRadius: BorderRadius.circular(radio), child: Stack(children: [Positioned.fill(child: _buildImage()), Positioned(bottom: 0, left: 0, right: 0, height: 70, child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black.withOpacity(0.7)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))), Positioned(bottom: 10, left: 10, right: 10, child: Text('$nombre$edadTxt', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins')))]))))), const SizedBox(height: 8), SizedBox(width: double.infinity, height: altoBoton, child: ElevatedButton(onPressed: busy ? null : () async => await onMatchy(), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('HACER MATCHY', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))))]);
   }
 }

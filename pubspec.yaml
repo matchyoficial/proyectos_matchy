@@ -1,65 +1,65 @@
-# 📂 pubspec.yaml
-
 name: proyectos_matchy
 
-# 🔴 CHINCHE YAML A — nombre del paquete
 description: Aplicación Matchy en Flutter
 publish_to: "none"
 
-version: 1.0.0+10                    # 🔴 CHINCHE YAML B — versión app
+version: 1.0.0+10
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"             # 🔴 CHINCHE YAML C — compatibilidad de Dart/Flutter
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # 🔥 FIREBASE CORE — BASE OBLIGATORIA
-  firebase_core: ^3.15.2              # 🔴 CHINCHE FIREBASE CORE 1
+  # FIREBASE CORE
+  firebase_core: ^3.15.2
 
-  # 🔥 AUTH — LOGIN (Google + Email)
-  firebase_auth: ^5.1.2               # 🔴 CHINCHE AUTH 1 — (si te da conflicto, me avisas y lo ajusto)
-  google_sign_in: ^6.2.1              # 🔴 CHINCHE AUTH 2 — Google Sign-In
+  # AUTH
+  firebase_auth: ^5.1.2
+  google_sign_in: ^6.2.1
 
-  # 🔥 FIRESTORE — BASE DE DATOS
-  cloud_firestore: ^5.6.12            # 🔴 CHINCHE FIRESTORE 1
+  # FIRESTORE
+  cloud_firestore: ^5.6.12
 
-  # 🔴 CHINCHE MAPS DEP 1 — abrir Google Maps (Android/iOS)
+  # STORAGE (fotos reales desde Firebase Storage)
+  firebase_storage: ^12.4.10
+
+  # Abrir enlaces externos
   url_launcher: ^6.3.0
 
-  # 🌍 NECESARIO para DatePicker en español
+  # Localización ES
   flutter_localizations:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8           # 🔴 CHINCHE YAML D
-  google_fonts: ^6.2.1              # 🔴 CHINCHE YAML E
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
 
-  # ✅ LOGICA SEGURA (cross-platform)
-  flutter_riverpod: ^2.6.1          # 🔴 CHINCHE LOGICA A — estado robusto y escalable
+  # Estado global Matchy
+  flutter_riverpod: ^2.6.1
 
-  # ✅ PERSISTENCIA LOCAL BASICA
-  shared_preferences: ^2.3.2        # 🔴 CHINCHE LOGICA B — guardar datos simples
+  # Persistencia local
+  shared_preferences: ^2.3.2
 
-  # ✅ PASO FOTOS REAL — galería/cámara
-  image_picker: ^1.0.7              # 🔴 CHINCHE FOTO 1
-  firebase_storage: ^12.4.10
+  # Cámara y galería
+  image_picker: ^1.0.7
+
+  # 🔥 NUEVO: Visor de fotos (Zoom y Pan)
+  photo_view: ^0.14.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^4.0.0             # 🔴 CHINCHE YAML G
-  flutter_launcher_icons: ^0.13.1   # 🔴 CHINCHE ICONOS
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
 
-  # 🔴 CHINCHE YAML H — REGISTRO DE ASSETS
   assets:
     - assets/images/
 
-# 🔴 CHINCHE ICONOS B — CONFIGURACIÓN LAUNCHER ICON
 flutter_launcher_icons:
   android: true
   ios: true

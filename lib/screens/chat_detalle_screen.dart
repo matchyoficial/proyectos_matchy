@@ -1,19 +1,16 @@
 // 📂 lib/screens/chat_detalle_screen.dart
-// ✅ Chat detalle (mensajes) usando SOLO constantes desde chat_actions.dart
-// ✅ Guarda mensajes en: chat_threads/{threadId}/messages
-// ✅ Actualiza lastText/lastAt en el thread (para la lista)
-// ✅ Diseño Matchy: fondo + logo + header + burbujas
+// ✅ CHAT DETALLE (NAVEGACIÓN FORZADA A CHAT)
+// 🔥 FIX: Tanto el botón atrás como el gesto del sistema SIEMPRE llevan a ChatScreen (Index 4).
 
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'package:proyectos_matchy/services/chat_actions.dart';
+import 'package:proyectos_matchy/screens/home_shell.dart'; // 👈 Necesario para navegar
 
 class ChatDetalleScreen extends StatefulWidget {
-  final String id; // threadId
+  final String id; // Thread ID
+  final String otherUid; // Requerido para seguridad
   final String nombre;
   final String edad;
   final String foto;
@@ -21,6 +18,7 @@ class ChatDetalleScreen extends StatefulWidget {
   const ChatDetalleScreen({
     super.key,
     required this.id,
+    required this.otherUid,
     required this.nombre,
     required this.edad,
     required this.foto,
@@ -32,312 +30,300 @@ class ChatDetalleScreen extends StatefulWidget {
 
 class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
   final TextEditingController _ctrl = TextEditingController();
+  final ScrollController _scroll = ScrollController();
   bool _sending = false;
 
-  bool _isUrl(String v) => v.startsWith('http://') || v.startsWith('https://');
-  bool _isAsset(String v) => v.startsWith('assets/');
-  bool _looksLikeFilePath(String v) =>
-      v.startsWith('/') || v.contains(r':\') || v.startsWith('file:');
+  // ===========================================================================
+  // 🔴🔴 CHINCHES MAESTROS (DISEÑO CHAT PRO) 🔴🔴
+  // ===========================================================================
 
-  Widget _safeAvatar(String value) {
-    final v = value.trim();
-    const fallback = 'assets/images/perfil1.jpg';
+  // Header
+  static const double kHeaderHeight = 85.0;
+  static const double kHeaderPaddingH = 16.0;
+  static const double kHeaderPaddingV = 10.0;
+  static const double kAvatarSize = 59.0;
+  static const double kHeaderRadius = 24.0;
+  static const List<Color> kHeaderGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
 
-    if (v.isEmpty) return Image.asset(fallback, fit: BoxFit.cover);
+  // Burbujas
+  static final Color kBubbleMe = const Color(0xFF7E79B6).withOpacity(0.9); // Morado (Mío)
+  static final Color kBubbleOther = const Color(0xFF333333).withOpacity(0.85); // Gris (Matchy)
+  static const double kBubbleRadius = 18.0;
 
-    if (_isUrl(v)) {
-      return Image.network(
-        v,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            color: Colors.black26,
-            alignment: Alignment.center,
-            child: const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
-      );
-    }
+  // Input Area
+  static const Color kInputBg = Color(0xFF1A1A1A);
+  static const Color kSendButtonColor = Color(0xFFFFC107); // Amarillo
+  static const double kInputBottomMargin = 20.0; // 🔥 Separación del bottom
 
-    if (_isAsset(v)) {
-      return Image.asset(
-        v,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
-      );
-    }
-
-    if (_looksLikeFilePath(v)) {
-      return Image.file(
-        File(v.replaceFirst('file://', '')),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Image.asset(fallback, fit: BoxFit.cover),
-      );
-    }
-
-    return Image.asset(fallback, fit: BoxFit.cover);
-  }
-
-  Stream<QuerySnapshot<Map<String, dynamic>>> _messagesStream() {
-    return FirebaseFirestore.instance
-        .collection(kChatThreadsCollection)
-        .doc(widget.id)
-        .collection(kChatMessagesSubcollection)
-        .orderBy(kMsgSentAt, descending: false)
-        .snapshots();
-  }
+  // ===========================================================================
 
   Future<void> _send() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ No hay sesión iniciada')),
-      );
-      return;
-    }
-
+    if (user == null) return;
     final text = _ctrl.text.trim();
     if (text.isEmpty) return;
 
     setState(() => _sending = true);
-
     try {
-      final threadRef =
-      FirebaseFirestore.instance.collection(kChatThreadsCollection).doc(widget.id);
+      final threadRef = FirebaseFirestore.instance.collection('chat_threads').doc(widget.id);
+      final now = FieldValue.serverTimestamp();
 
-      final msgRef = threadRef.collection(kChatMessagesSubcollection).doc();
-
-      await msgRef.set({
-        kMsgText: text,
-        kMsgSenderUid: user.uid,
-        kMsgSentAt: FieldValue.serverTimestamp(),
+      // 1. Enviar Mensaje
+      await threadRef.collection('messages').add({
+        'text': text,
+        'senderUid': user.uid,
+        'sentAt': now,
       });
 
-      // ✅ actualiza preview en lista
+      // 2. Actualizar Hilo (y asegurar permisos)
       await threadRef.set({
-        kThreadLastText: text,
-        kThreadLastAt: FieldValue.serverTimestamp(),
-        kThreadUpdatedAt: FieldValue.serverTimestamp(),
+        'lastText': text,
+        'lastAt': now,
+        'participantUids': FieldValue.arrayUnion([user.uid, widget.otherUid]),
       }, SetOptions(merge: true));
 
       _ctrl.clear();
+      if (_scroll.hasClients) {
+        _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ No se pudo enviar: $e')),
-      );
+      debugPrint("Error enviando: $e");
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
+  // Helpers de imagen
+  bool _isUrl(String v) => v.startsWith('http');
+  bool _isAsset(String v) => v.startsWith('assets/');
+
+  Widget _safeAvatar(String value) {
+    final v = value.trim();
+    const fallback = 'assets/images/perfil1.jpg';
+    if (v.isEmpty) return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
+    if (_isUrl(v)) return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
+    if (_isAsset(v)) return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
+    if (v.contains(r':\') || v.startsWith('/')) return Image.file(File(v), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
+    return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
+  }
+
+  // 🔥 FUNCIÓN QUE EJECUTA LA SALIDA OBLIGATORIA AL CHAT
+  void _irAChatSiempre() {
+    // Index 4 = ChatScreen (Listado de chats)
+    HomeShell.go(context, index: 4);
   }
 
   @override
   Widget build(BuildContext context) {
-    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      ),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: SizedBox(
-                          width: 42,
-                          height: 42,
-                          child: _safeAvatar(widget.foto),
+    // 🔥 PopScope: Bloquea el botón físico y fuerza nuestra función
+    return PopScope(
+      canPop: false, // Bloqueamos la salida normal
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _irAChatSiempre(); // Ejecutamos la salida forzada al CHAT
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // 1. Fondo
+            Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+
+            SafeArea(
+              child: Column(
+                children: [
+                  // 2. LOGO SUPERIOR
+                  const SizedBox(height: 10),
+                  Image.asset('assets/images/logomatchyplano.png', height: 45),
+                  const SizedBox(height: 15),
+
+                  // 3. HEADER TIPO CARD (Foto + Nombre)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: kHeaderPaddingH),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                            colors: kHeaderGradient,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight
                         ),
+                        borderRadius: BorderRadius.circular(kHeaderRadius),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
+                        ],
+                        border: Border.all(color: Colors.white10, width: 1),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${widget.nombre}, ${widget.edad}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'Poppins',
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        height: 26,
-                        child: Image.asset('assets/images/logomatchyplano.png'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Mensajes
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _messagesStream(),
-                    builder: (context, snap) {
-                      if (snap.hasError) {
-                        return Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            child: Text(
-                              '❌ Error cargando mensajes: ${snap.error}',
-                              style: const TextStyle(color: Colors.white),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        );
-                      }
-
-                      if (snap.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      }
-
-                      final docs = snap.data?.docs ?? [];
-                      if (docs.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'Aún no hay mensajes 🙂',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-                        itemCount: docs.length,
-                        itemBuilder: (context, i) {
-                          final data = docs[i].data();
-                          final text = (data[kMsgText] ?? '').toString();
-                          final senderUid = (data[kMsgSenderUid] ?? '').toString();
-
-                          final isMe = senderUid == myUid;
-
-                          return Align(
-                            alignment:
-                            isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          // 🟢 BOTÓN ATRÁS (Forzado a CHAT_SCREEN)
+                          GestureDetector(
+                            onTap: _irAChatSiempre, // 🔥 Llama a la función directa
                             child: Container(
-                              margin: const EdgeInsets.symmetric(vertical: 6),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
-                              constraints: const BoxConstraints(maxWidth: 290),
-                              decoration: BoxDecoration(
-                                color: isMe
-                                    ? const Color(0xFF7E79B6).withOpacity(0.85)
-                                    : Colors.black.withOpacity(0.40),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.10),
-                                ),
-                              ),
-                              child: Text(
-                                text,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontFamily: 'Poppins',
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  height: 1.2,
-                                ),
-                              ),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.white10, shape: BoxShape.circle),
+                              child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
                             ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
+                          ),
 
-                // Input
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.35),
+                          const SizedBox(width: 12),
+
+                          // Foto (Cápsula redondeada)
+                          ClipRRect(
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.10),
+                            child: SizedBox(
+                              width: kAvatarSize,
+                              height: kAvatarSize,
+                              child: _safeAvatar(widget.foto),
                             ),
                           ),
-                          child: TextField(
-                            controller: _ctrl,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w600,
+
+                          const SizedBox(width: 15),
+
+                          // Nombre y Edad
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  widget.nombre.toUpperCase(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      fontFamily: 'Poppins',
+                                      letterSpacing: 0.5
+                                  ),
+                                ),
+                                if (widget.edad.isNotEmpty && widget.edad != '—')
+                                  Text(
+                                    '${widget.edad} años',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins'),
+                                  ),
+                              ],
                             ),
-                            cursorColor: Colors.white,
-                            decoration: const InputDecoration(
-                              hintText: 'Escribe un mensaje…',
-                              hintStyle: TextStyle(color: Colors.white54),
-                              border: InputBorder.none,
-                              contentPadding:
-                              EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            ),
-                            onSubmitted: (_) => _send(),
                           ),
-                        ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 46,
-                        width: 46,
-                        child: ElevatedButton(
-                          onPressed: _sending ? null : _send,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFC107),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            padding: EdgeInsets.zero,
-                          ),
-                          child: _sending
-                              ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                              : const Icon(Icons.send, color: Colors.black),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ],
+
+                  const SizedBox(height: 10),
+
+                  // 4. LISTA DE MENSAJES
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('chat_threads')
+                          .doc(widget.id)
+                          .collection('messages')
+                          .orderBy('sentAt', descending: true)
+                          .snapshots(),
+                      builder: (context, snap) {
+                        if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+                        final docs = snap.data!.docs;
+
+                        return ListView.builder(
+                          controller: _scroll,
+                          reverse: true, // Chat empieza abajo
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                          itemCount: docs.length,
+                          itemBuilder: (ctx, i) {
+                            final data = docs[i].data() as Map<String, dynamic>;
+                            final isMe = data['senderUid'] == myUid;
+
+                            return Align(
+                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                constraints: const BoxConstraints(maxWidth: 280),
+                                decoration: BoxDecoration(
+                                    color: isMe ? kBubbleMe : kBubbleOther,
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(kBubbleRadius),
+                                      topRight: const Radius.circular(kBubbleRadius),
+                                      bottomLeft: isMe ? const Radius.circular(kBubbleRadius) : Radius.zero,
+                                      bottomRight: isMe ? Radius.zero : const Radius.circular(kBubbleRadius),
+                                    ),
+                                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                                    boxShadow: [
+                                      BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))
+                                    ]
+                                ),
+                                child: Text(
+                                    data['text'] ?? '',
+                                    style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4, fontFamily: 'Poppins')
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+
+                  // 5. INPUT AREA (Flotante)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 5, 16, kInputBottomMargin),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: kInputBg.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: Colors.white24),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))
+                                ]
+                            ),
+                            child: TextField(
+                              controller: _ctrl,
+                              style: const TextStyle(color: Colors.white, fontFamily: 'Poppins'),
+                              cursorColor: kSendButtonColor,
+                              decoration: const InputDecoration(
+                                  hintText: "Escribe un mensaje...",
+                                  hintStyle: TextStyle(color: Colors.white38),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)
+                              ),
+                              onSubmitted: (_) => _send(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // Botón Enviar Circular
+                        Container(
+                          height: 50, width: 50,
+                          decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: kSendButtonColor,
+                              boxShadow: [
+                                BoxShadow(color: kSendButtonColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))
+                              ]
+                          ),
+                          child: IconButton(
+                            onPressed: _sending ? null : _send,
+                            icon: _sending
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                : const Icon(Icons.send_rounded, color: Colors.black, size: 24),
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }

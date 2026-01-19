@@ -1,19 +1,16 @@
 // 📂 lib/screens/registro_screen.dart
-// ✅ Misma UI Matchy
-// ✅ Botón REGISTRARSE ACTIVADO (email/password)
-// ✅ Botones Google + Registro CENTRADOS en la mitad de la pantalla
-// ✅ 🔴 CHINCHES de edición claros (posición, tamaño, espacios)
-// ✅ Flujo intacto: Google / Email -> Datos o HomeShell
+// ✅ PANTALLA DE ACCESO (PORTERO NUCLEAR - PRUEBA DE ESCRITURA)
+// 🔥 FIX EXTREMO: El "Portero" ahora intenta ESCRIBIR en la BD (Update Timestamp).
+//    La escritura requiere permisos estrictos. Si la escritura pasa, el token es válido.
+//    Si falla, reintenta infinitamente recargando credenciales.
+// 🔥 SEGURIDAD: Jamás navega si la escritura falla.
 
-import 'dart:convert';
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
@@ -30,115 +27,116 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   bool _loading = false;
+  String _statusMessage = "Continuar con Google";
 
   // ==========================================================
-  // 🔴 CHINCHE UI 1 — tamaño del logo
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN UI) 🔴🔴
   // ==========================================================
-  static const double logoHeight = 70;
+  static const double kLogoHeight = 70.0;
+  static const double kLogoTopSpace = 120.0;
+  static const double kButtonVerticalPosition = 0.5;
+  static const double kButtonHeight = 55.0;
+  static const double kButtonWidthPercent = 0.85;
+  // ==========================================================
 
-  // ==========================================================
-  // 🔴 CHINCHE UI 2 — espacio superior antes del logo
-  // ==========================================================
-  static const double topSpaceBeforeLogo = 60;
-
-  // ==========================================================
-  // 🔴 CHINCHE UI 3 — posición vertical del bloque de botones
-  // 0.50 = centro exacto
-  // 0.45 = un poco más arriba
-  // 0.55 = un poco más abajo
-  // ==========================================================
-  static const double botonesVerticalFactor = 0.50;
-
-  // ==========================================================
-  // 🔴 CHINCHE UI 4 — altura de botones
-  // ==========================================================
-  static const double botonHeight = 52;
-
-  // ==========================================================
-  // 🔴 CHINCHE UI 5 — separación entre botones
-  // ==========================================================
-  static const double espacioEntreBotones = 16;
-
-  static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
-
-  // ==========================================================
-  // 🔹 NAVEGACIÓN
-  // ==========================================================
   void _irADatos(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const DatosScreen()),
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const DatosScreen()),
+            (route) => false
     );
   }
 
   void _irHomeShellPanel(BuildContext context) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
+            (route) => false
     );
   }
 
-  // ==========================================================
-  // 🔹 USER DOC
-  // ==========================================================
-  Future<void> _ensureUserDoc(User user, String provider) async {
-    final ref = _db.collection('users').doc(user.uid);
-    final snap = await ref.get();
+  // 🔹 PORTERO NUCLEAR: Bucle de Autenticación + Escritura
+  // Retorna 'true' si el usuario ya existía y está completo.
+  // Retorna 'false' si es usuario nuevo (se creó el esqueleto).
+  Future<bool> _autenticarYValidarContraFuego(User user) async {
+    int intento = 0;
 
-    final data = <String, dynamic>{
-      'uid': user.uid,
-      'email': user.email,
-      'provider': provider,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'lastLoginAt': FieldValue.serverTimestamp(),
-    };
+    // Bucle infinito hasta éxito o cancelación manual del usuario (cerrando app)
+    while (true) {
+      intento++;
+      try {
+        if (intento > 1) {
+          if (mounted) setState(() => _statusMessage = "Asegurando conexión... ($intento)");
 
-    if (!snap.exists) {
-      data['createdAt'] = FieldValue.serverTimestamp();
-      data['onboarding_completed'] = false;
+          // Si falló, castigamos con espera y recarga agresiva
+          await Future.delayed(const Duration(seconds: 2));
+          await user.reload(); // Recarga usuario desde servidor
+          await user.getIdToken(true); // Fuerza token nuevo
+        }
+
+        // 1. Intentamos leer el documento (Directo del servidor, sin caché)
+        final docSnapshot = await _db.collection('users').doc(user.uid).get(const GetOptions(source: Source.server));
+
+        if (docSnapshot.exists) {
+          // CASO A: Usuario Existe
+          // PRUEBA DE FUEGO: Intentamos ESCRIBIR. Si esto pasa, tenemos permisos full.
+          await _db.collection('users').doc(user.uid).update({
+            'lastLoginAt': FieldValue.serverTimestamp(),
+          });
+
+          // Verificamos si completó el onboarding
+          final data = docSnapshot.data();
+          return data?['onboarding_completed'] == true;
+
+        } else {
+          // CASO B: Usuario Nuevo (No existe documento)
+          // PRUEBA DE FUEGO: Intentamos CREAR.
+          await _db.collection('users').doc(user.uid).set({
+            'uid': user.uid,
+            'email': user.email,
+            'nombre': user.displayName ?? '',
+            'profilePhotoUrl': user.photoURL ?? '',
+            'provider': 'google',
+            'createdAt': FieldValue.serverTimestamp(),
+            'onboarding_completed': false,
+            'lastLoginAt': FieldValue.serverTimestamp(),
+          });
+          return false; // Es nuevo
+        }
+
+      } catch (e) {
+        debugPrint("⚠️ Intento $intento fallido. Error: $e");
+        // Si el error es de permisos o red, el bucle 'while(true)' lo atrapará y reintentará.
+        // No salimos del bucle hasta tener éxito.
+
+        if (intento > 10) {
+          // Si falla demasiado, damos un respiro al UI pero seguimos intentando
+          await Future.delayed(const Duration(seconds: 3));
+        }
+      }
     }
-
-    await ref.set(data, SetOptions(merge: true));
   }
 
-  // ==========================================================
-  // 🔹 PERFIL MÍNIMO
-  // ==========================================================
-  Future<bool> _perfilMinimoValidoLocal() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kProfileDraftKey);
-      if (raw == null || raw.isEmpty) return false;
-
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-
-      final String nombre = (map['nombre'] ?? '').toString().trim();
-      final int? edad = int.tryParse((map['edad'] ?? '').toString());
-      final String pais = (map['paisSeleccionado'] ?? '').toString().trim();
-      final String ciudad = (map['ciudadSeleccionada'] ?? '').toString().trim();
-      final List fotos = (map['fotosCargadas'] ?? []) as List;
-
-      return nombre.isNotEmpty &&
-          edad != null &&
-          edad >= 18 &&
-          pais.isNotEmpty &&
-          ciudad.isNotEmpty &&
-          fotos.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // ==========================================================
   // 🔹 GOOGLE SIGN IN
-  // ==========================================================
   Future<void> _signInWithGoogle(BuildContext context) async {
     if (_loading) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _statusMessage = "Cargando...";
+    });
 
     try {
+      // 1. Google Auth Nativo
       final googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return;
+      if (googleUser == null) {
+        setState(() {
+          _loading = false;
+          _statusMessage = "Continuar con Google";
+        });
+        return;
+      }
 
       final auth = await googleUser.authentication;
       final cred = GoogleAuthProvider.credential(
@@ -146,140 +144,108 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
         idToken: auth.idToken,
       );
 
+      // 2. Firebase Auth Login
       final userCred = await _auth.signInWithCredential(cred);
       final user = userCred.user;
-      if (user == null) throw Exception('Usuario nulo');
+      if (user == null) throw Exception('Error crítico de autenticación.');
 
-      await _ensureUserDoc(user, 'google');
+      // 3. 🛑 EL PORTERO NUCLEAR
+      // Aquí la app se detiene hasta que la función retorne.
+      // La función NO retorna hasta que haya escrito exitosamente en Firestore.
+      if (mounted) setState(() => _statusMessage = "Verificando cuenta...");
 
-      final ok = await _perfilMinimoValidoLocal();
-      if (!mounted) return;
+      // Forzamos primer refresco de token antes de entrar al ring
+      await user.getIdToken(true);
 
-      ok ? _irHomeShellPanel(context) : _irADatos(context);
+      final esUsuarioCompleto = await _autenticarYValidarContraFuego(user);
+
+      // 4. DECISIÓN (Solo llegamos aquí si la conexión es 100% exitosa y probada)
+      if (esUsuarioCompleto) {
+        _irHomeShellPanel(context);
+      } else {
+        _irADatos(context);
+      }
+
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('❌ Error Google: $e')));
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      setState(() {
+        _loading = false;
+        _statusMessage = "Reintentar";
+      });
     }
   }
 
-  // ==========================================================
-  // 🔹 REGISTRO EMAIL/PASSWORD (ACTIVO)
-  // ==========================================================
-  Future<void> _signUpWithEmail(BuildContext context) async {
-    if (_loading) return;
-    setState(() => _loading = true);
-
-    try {
-      // 🔴 CHINCHE AUTH 1 — credenciales DEMO (puedes cambiarlas luego)
-      final email = 'valentina@test.com';
-      final password = '123456';
-
-      final cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = cred.user;
-      if (user == null) throw Exception('Usuario nulo');
-
-      await _ensureUserDoc(user, 'email');
-
-      if (!mounted) return;
-      _irADatos(context);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('❌ Error registro: $e')));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  // ==========================================================
-  // 🔹 UI
-  // ==========================================================
   @override
   Widget build(BuildContext context) {
-    final h = MediaQuery.of(context).size.height;
+    final size = MediaQuery.of(context).size;
+    final double buttonWidth = size.width * kButtonWidthPercent;
 
     return Scaffold(
       body: Stack(
         children: [
+          // 1. FONDO
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
-          Column(
-            children: [
-              SizedBox(height: topSpaceBeforeLogo),
-              Image.asset(
-                'assets/images/logo_matchy2.png',
-                height: logoHeight,
-              ),
 
-              // 🔴 CHINCHE UI 6 — cálculo para centrar botones en pantalla
-              SizedBox(height: h * botonesVerticalFactor - 120),
+          // 2. LOGO
+          Positioned(
+            top: kLogoTopSpace,
+            left: 0, right: 0,
+            child: Center(
+              child: Image.asset('assets/images/logo_matchy2.png', height: kLogoHeight),
+            ),
+          ),
 
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: botonHeight,
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed:
-                        _loading ? null : () => _signInWithGoogle(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          shape: const StadiumBorder(),
-                        ),
-                        child: _loading
-                            ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child:
-                          CircularProgressIndicator(strokeWidth: 2),
-                        )
-                            : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset(
-                              'assets/images/ic_google.png',
-                              height: 24,
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Sign up with Google',
-                              style: TextStyle(color: Colors.black),
-                            ),
-                          ],
-                        ),
-                      ),
+          // 3. BOTÓN
+          Positioned(
+            top: (size.height * kButtonVerticalPosition) - (kButtonHeight / 2),
+            left: (size.width - buttonWidth) / 2,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: buttonWidth,
+                  height: kButtonHeight,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : () => _signInWithGoogle(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                      elevation: 5,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                     ),
-                    const SizedBox(height: espacioEntreBotones),
-                    SizedBox(
-                      height: botonHeight,
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed:
-                        _loading ? null : () => _signUpWithEmail(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6A5ACD),
-                          shape: const StadiumBorder(),
+                    child: _loading
+                        ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purple)),
+                        const SizedBox(width: 15),
+                        Text(_statusMessage, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      ],
+                    )
+                        : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset('assets/images/ic_google.png', height: 24, errorBuilder: (_,__,___) => const Icon(Icons.login, color: Colors.grey)),
+                        const SizedBox(width: 12),
+                        const Text(
+                          'Continuar con Google',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                         ),
-                        child: const Text(
-                          'Registrarse',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 15),
+                Text(
+                  "Al continuar aceptas nuestros Términos y Condiciones",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                ),
+              ],
+            ),
           ),
         ],
       ),

@@ -1,44 +1,69 @@
 // 📂 lib/screens/home_shell.dart
-// ✅ Shell principal con IndexedStack (mantiene estado por tab)
-// ✅ BottomNav ÚNICO para toda la app
-// ✅ FIX: la barra NO desaparece al volver al Panel
-// ✅ NUEVO: controlador interno para cambiar tabs desde cualquier pantalla
-// ✅ NUEVO: HomeShell.go(...) para volver al shell si te sales por error (pushReplacement a Panel, etc.)
+// ✅ Shell principal (FINAL - NAVEGACIÓN ROBUSTA)
+// 🔥 FIX: Usa 'PopScope' para garantizar que el botón Atrás no saque de la app
+// salvo que estés en el Panel.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:proyectos_matchy/screens/perfil_screen.dart';
 import 'package:proyectos_matchy/screens/citas_screen.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
+import 'package:proyectos_matchy/screens/match_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  // 0 Perfil, 1 Citas, 2 Panel, 3 Matchy, 4 Chat
   final int initialIndex;
 
   const HomeShell({
     super.key,
-    this.initialIndex = 2, // 🔴 CHINCHE SHELL 1 — tab inicial por defecto (Panel)
+    this.initialIndex = 2,
   });
 
-  /// ✅ Obtener controlador del shell desde cualquier widget debajo del HomeShell
-  static _HomeShellController of(BuildContext context) {
-    final scope = context.dependOnInheritedWidgetOfExactType<_HomeShellScope>();
-    if (scope == null) {
-      throw FlutterError(
-        'HomeShell.of(context) llamado fuera del árbol de HomeShell.\n'
-            'Usa HomeShell.go(context, index: X) si estás fuera del shell.',
-      );
-    }
-    return scope.controller;
+  // ================================================================
+  // 🔹 EVENTO GLOBAL ACTIVO (MATCHY)
+  // ================================================================
+  static final ValueNotifier<Widget?> activeEventOverlay =
+  ValueNotifier<Widget?>(null);
+
+  static DocumentReference<Map<String, dynamic>>? _activeEventRef;
+
+  static void showMatchy(
+      MatchScreen screen,
+      DocumentReference<Map<String, dynamic>> eventRef,
+      ) {
+    _activeEventRef = eventRef;
+    activeEventOverlay.value = screen;
   }
 
-  /// ✅ Teletransporte seguro al shell (cuando te saliste por pushReplacement a PanelScreen, etc.)
+  /// 🔥 Consumir evento (SOLO llamado desde MatchScreen)
+  static Future<void> consumeEvent() async {
+    try {
+      final ref = _activeEventRef;
+      if (ref != null) {
+        await ref.update({
+          'seen': true,
+          'seenAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (_) {
+      // Silencioso: no bloquea UX
+    } finally {
+      _activeEventRef = null;
+      activeEventOverlay.value = null;
+    }
+  }
+
   static void go(BuildContext context, {int index = 2}) {
     final safeIndex = index.clamp(0, 4);
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => HomeShell(initialIndex: safeIndex)),
+      MaterialPageRoute(
+        builder: (_) => HomeShell(initialIndex: safeIndex),
+      ),
           (route) => false,
     );
   }
@@ -49,89 +74,148 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   late int _index;
+  late final List<Widget> _screens;
 
-  late final _HomeShellController _controller = _HomeShellController(
-    getIndex: () => _index,
-    setIndex: (i) {
-      final next = i.clamp(0, 4);
-      if (next == _index) return;
-      setState(() => _index = next);
-    },
-  );
+  StreamSubscription<User?>? _authSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _eventSub;
+
+  bool _overlayActivo = false;
+  String? _listeningUid;
+
+  static const String kUsersCollection = 'users';
+  static const String kEventsSubcollection = 'events';
 
   @override
   void initState() {
     super.initState();
+
     _index = widget.initialIndex.clamp(0, 4);
+
+    _screens = const [
+      PerfilScreen(showBottomNav: false),
+      CitasScreen(showBottomNav: false),
+      PanelScreen(showBottomNav: false),
+      MatchysScreen(showBottomNav: false),
+      ChatScreen(showBottomNav: false),
+    ];
+
+    // 🔥 Cuando el overlay se limpia, liberamos el lock interno
+    HomeShell.activeEventOverlay.addListener(() {
+      if (HomeShell.activeEventOverlay.value == null) {
+        _overlayActivo = false;
+      }
+    });
+
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (!mounted || user == null) return;
+      if (_listeningUid == user.uid) return;
+
+      _listeningUid = user.uid;
+      _eventSub?.cancel();
+      _attachEvents(user.uid);
+    });
+  }
+
+  void _attachEvents(String myUid) {
+    final col = FirebaseFirestore.instance
+        .collection(kUsersCollection)
+        .doc(myUid)
+        .collection(kEventsSubcollection);
+
+    _eventSub = col
+        .where('type', isEqualTo: 'matchy')
+        .where('seen', isEqualTo: false)
+        .limit(1)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      if (_overlayActivo) return;
+      if (snap.docs.isEmpty) return;
+
+      final doc = snap.docs.first;
+      final data = doc.data();
+
+      final peerUid = data['ownerUid'] == myUid
+          ? (data['candidatoUid'] ?? '').toString()
+          : (data['ownerUid'] ?? '').toString();
+
+      if (peerUid.isEmpty) return;
+
+      _overlayActivo = true;
+
+      // 🟢 Lectura robusta de datos del evento
+      final String nombreLugar = (data['lugarNombre'] ?? '').toString();
+      final String fotoLugar = (data['lugarFoto'] ?? '').toString();
+      final String citaId = (data['citaId'] ?? '').toString();
+
+      HomeShell.showMatchy(
+        MatchScreen(
+          candidatoId: peerUid,
+          candidatoNombre: (data['ownerNombre'] ?? 'Matchy').toString(),
+          candidatoEdad:
+          int.tryParse((data['ownerEdad'] ?? '0').toString()) ?? 0,
+          candidatoFotoAsset:
+          (data['ownerFoto'] ?? 'assets/images/perfil1.jpg').toString(),
+
+          // 🔥 PASAMOS LOS DATOS DEL LUGAR AL MATCHSCREEN
+          lugarNombre: nombreLugar,
+          lugarFoto: fotoLugar,
+          citaId: citaId,
+        ),
+        doc.reference,
+      );
+    });
   }
 
   @override
-  void didUpdateWidget(covariant HomeShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 🔴 CHINCHE SHELL 2 — si alguien recrea HomeShell con otro initialIndex, lo respetamos
-    final next = widget.initialIndex.clamp(0, 4);
-    if (next != _index) {
-      setState(() => _index = next);
-    }
+  void dispose() {
+    _authSub?.cancel();
+    _eventSub?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return _HomeShellScope(
-      controller: _controller,
-      child: Scaffold(
-        body: IndexedStack(
-          index: _index,
-          children: const [
-            // 🔴 IMPORTANTE: estas pantallas deben venir SIN bottom nav interno
-            PerfilScreen(showBottomNav: false),
-            CitasScreen(showBottomNav: false),
-            PanelScreen(showBottomNav: false),
-            MatchysScreen(showBottomNav: false),
-            ChatScreen(showBottomNav: false),
-          ],
-        ),
-        bottomNavigationBar: _MatchyBottomNav(
-          currentIndex: _index,
-          onTap: (i) => _controller.setIndex(i),
-        ),
+    // 🔥 PopScope: La forma moderna de interceptar el botón Atrás
+    return PopScope(
+      canPop: _index == 2, // Solo permite salir si estamos en PANEL (2)
+      onPopInvoked: (didPop) {
+        if (didPop) {
+          // Si didPop es true, Android ya gestionó la salida (estábamos en el Panel)
+          return;
+        }
+        // Si estamos aquí, canPop fue false (estábamos en otra pestaña).
+        // Así que forzamos el cambio al Panel.
+        setState(() => _index = 2);
+      },
+      child: ValueListenableBuilder<Widget?>(
+        valueListenable: HomeShell.activeEventOverlay,
+        builder: (_, overlay, __) {
+          return Scaffold(
+            body: Stack(
+              children: [
+                IndexedStack(
+                  index: _index,
+                  children: _screens,
+                ),
+                if (overlay != null) Positioned.fill(child: overlay),
+              ],
+            ),
+            bottomNavigationBar: overlay == null
+                ? _MatchyBottomNav(
+              currentIndex: _index,
+              onTap: (i) {
+                if (i == _index) return;
+                setState(() => _index = i);
+              },
+            )
+                : null,
+          );
+        },
       ),
     );
   }
 }
-
-// ================================================================
-// 🔹 CONTROLLER + SCOPE (SIN Riverpod, SIN archivos extra)
-// ================================================================
-
-class _HomeShellController {
-  final int Function() getIndex;
-  final void Function(int) setIndex;
-
-  _HomeShellController({
-    required this.getIndex,
-    required this.setIndex,
-  });
-}
-
-class _HomeShellScope extends InheritedWidget {
-  final _HomeShellController controller;
-
-  const _HomeShellScope({
-    required this.controller,
-    required super.child,
-  });
-
-  @override
-  bool updateShouldNotify(covariant _HomeShellScope oldWidget) {
-    // El controller es el mismo objeto, no necesitamos notificar por cambios.
-    return false;
-  }
-}
-
-// ================================================================
-// 🔹 BOTTOM NAV
-// ================================================================
 
 class _MatchyBottomNav extends StatelessWidget {
   final int currentIndex;
@@ -144,57 +228,23 @@ class _MatchyBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color navBackground = Color(0xFF000000);
-    const Color selectedColor = Color(0xFFE0D4FF);
-    final Color unselectedColor = Colors.white54;
-
     return BottomNavigationBar(
-      backgroundColor: navBackground,
+      backgroundColor: Colors.black,
       type: BottomNavigationBarType.fixed,
       currentIndex: currentIndex,
-      selectedItemColor: selectedColor,
-      unselectedItemColor: unselectedColor,
+      selectedItemColor: const Color(0xFFE0D4FF),
+      unselectedItemColor: Colors.white54,
       selectedFontSize: 10,
       unselectedFontSize: 10,
       showUnselectedLabels: true,
-      items: [
-        _navItem('assets/images/profile.png', 'PERFIL', currentIndex == 0),
-        _navItem('assets/images/citas.png', 'CITAS', currentIndex == 1),
-        _navItem('assets/images/panel.png', 'PANEL', currentIndex == 2),
-        _navItem('assets/images/matchy.png', 'MATCHY', currentIndex == 3),
-        _navItem('assets/images/chat.png', 'CHAT', currentIndex == 4),
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'PERFIL'),
+        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'CITAS'),
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'PANEL'),
+        BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'MATCHY'),
+        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'CHAT'),
       ],
-      onTap: (i) {
-        if (i == currentIndex) return;
-        onTap(i);
-      },
+      onTap: onTap,
     );
-  }
-
-  static BottomNavigationBarItem _navItem(String asset, String label, bool sel) {
-    const double unselectedSize = 20;
-    const double selectedSize = 24;
-
-    final Widget icon = sel
-        ? SizedBox(
-      height: selectedSize,
-      child: Center(
-        child: ColorFiltered(
-          colorFilter: const ColorFilter.mode(
-            Color(0xFFE0D4FF),
-            BlendMode.srcIn,
-          ),
-          child: Image.asset(asset, width: selectedSize, height: selectedSize),
-        ),
-      ),
-    )
-        : SizedBox(
-      height: selectedSize,
-      child: Center(
-        child: Image.asset(asset, width: unselectedSize, height: unselectedSize),
-      ),
-    );
-
-    return BottomNavigationBarItem(icon: icon, label: label);
   }
 }

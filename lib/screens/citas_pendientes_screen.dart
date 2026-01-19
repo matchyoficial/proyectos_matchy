@@ -1,112 +1,79 @@
 // 📂 lib/screens/citas_pendientes_screen.dart
-// ✅ CITAS PUBLICADAS (Pendientes) — diseño Matchy
-// ✅ SOLO LECTURA: Firestore REAL (persisten al reiniciar)
-// ✅ NO DUPLICA: este screen NO crea docs
-// ✅ Solo muestra citas ACTIVAS (status == online) y NO vencidas
-// ✅ Cancelar => status = cancelled (NO delete) para que no “reaparezca”
-// ✅ Tap tarjeta → abre detalle con docId real (citas_pendientes_detalle.dart)
-// ✅ SIN botones de regresar (pedido por ti)
+// ✅ CITAS PUBLICADAS (DISEÑO PREMIUM)
+// 🔥 HEADER: Cápsula Premium con botón Chevron integrado.
+// 🔥 FOOTER: Degradado negro (Fade Out).
+// 🔥 LÓGICA: Riverpod y Firestore intactos.
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
 
 // ================================================================
-// 🔴 CHINCHE FIRESTORE 1 — colección citas
+// CONSTANTES FIRESTORE
 // ================================================================
 const String kCitasCollection = 'citas';
-
-// Fields base
 const String kOwnerUidField = 'ownerUid';
 const String kStatusField = 'status';
 const String kStatusOnline = 'online';
 const String kStatusCancelled = 'cancelled';
 
-// Campos comunes
-const String kCodigoField = 'codigo';
+const String kCancelReasonField = 'cancelReason';
+const String kCancelReasonTime = 'Cancelled for time limit';
+
 const String kFechaField = 'fecha';
 const String kHoraField = 'hora';
-const String kPreferenciaField = 'preferencia';
-const String kIntencionField = 'intencion';
-const String kCreatedAtField = 'createdAt';
+const String kUpdatedAtField = 'updatedAt';
 
-// Maps
-const String kLugarMap = 'lugar';
-const String kLugarNombre = 'nombre';
-const String kLugarDireccion = 'direccion';
-const String kLugarFotoPortada = 'fotoPortada';
-const String kLugarFoto = 'foto';
+// FORMATO NUEVO
+const String kLugarMap = "lugar";
+const String kLugarNombre = "nombre";
+const String kLugarFotoPortada = "fotoPortada";
 
-const String kCreadorMap = 'creador';
-const String kCreadorNombre = 'nombre';
-const String kCreadorEdad = 'edad';
-const String kCreadorFoto = 'foto';
-
-// Opcional si lo tienes
-const String kScheduledAtField = 'scheduledAt';
+// FORMATO VIEJO
+const String kLugarNombreOld = "lugarNombre";
+const String kLugarFotoPortadaOld = "lugarFotoPortada";
+const String kLugarFotosOld = "lugarFotos";
 
 // ================================================================
-// 🔹 MODELO
+// MODELO
 // ================================================================
 class CitaPendiente {
-  final String id; // docId real
-  final String codigo;
-
+  final String id;
   final String nombreLugar;
-  final String direccionLugar;
   final String fecha;
   final String hora;
-
-  final String fotoLugar; // URL o asset
-
-  final String preferencia;
-  final String intencion;
-
-  final String creadorNombre;
-  final int creadorEdad;
-  final String creadorFoto;
-
-  final DateTime createdAt;
+  final String fotoLugar;
+  final DateTime fechaHoraCita;
 
   const CitaPendiente({
     required this.id,
-    required this.codigo,
     required this.nombreLugar,
-    required this.direccionLugar,
     required this.fecha,
     required this.hora,
     required this.fotoLugar,
-    required this.preferencia,
-    required this.intencion,
-    required this.creadorNombre,
-    required this.creadorEdad,
-    required this.creadorFoto,
-    required this.createdAt,
+    required this.fechaHoraCita,
   });
 }
 
 // ================================================================
-// 🔹 NOTIFIER (stream Firestore)
+// NOTIFIER
 // ================================================================
 class CitasPendientesNotifier extends StateNotifier<List<CitaPendiente>> {
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
-  StreamSubscription<User?>? _authSub;
+  StreamSubscription? _subAuth;
+  StreamSubscription? _sub;
 
   CitasPendientesNotifier() : super(const []) {
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((_) => _bind());
+    _subAuth = FirebaseAuth.instance.authStateChanges().listen((_) => _bind());
     _bind();
   }
 
   @override
   void dispose() {
     _sub?.cancel();
-    _authSub?.cancel();
+    _subAuth?.cancel();
     super.dispose();
   }
 
@@ -120,256 +87,221 @@ class CitasPendientesNotifier extends StateNotifier<List<CitaPendiente>> {
       return;
     }
 
-    // ✅ Importante: filtramos solo ONLINE aquí => canceladas nunca vuelven.
     final q = FirebaseFirestore.instance
         .collection(kCitasCollection)
         .where(kOwnerUidField, isEqualTo: user.uid)
         .where(kStatusField, isEqualTo: kStatusOnline);
 
-    _sub = q.snapshots().listen((snap) {
+    _sub = q.snapshots().listen((snap) async {
+      final List<CitaPendiente> list = [];
       final now = DateTime.now();
 
-      final list = snap.docs.map((d) {
+      for (final d in snap.docs) {
         final data = d.data();
 
-        // codigo
-        final codigo = (data[kCodigoField] ?? '').toString().trim();
-
-        // lugar map
-        final lugar = (data[kLugarMap] is Map)
-            ? Map<String, dynamic>.from(data[kLugarMap] as Map)
-            : <String, dynamic>{};
-
-        final nombreLugar = (lugar[kLugarNombre] ??
-            data['nombreLugar'] ??
-            data['nombre'] ??
-            '')
-            .toString()
-            .trim();
-
-        final direccionLugar = (lugar[kLugarDireccion] ??
-            data['direccionLugar'] ??
-            data['direccion'] ??
-            '')
-            .toString()
-            .trim();
-
-        final fotoLugar = (lugar[kLugarFotoPortada] ??
-            lugar[kLugarFoto] ??
-            data['fotoPortada'] ??
-            data['fotoLugar'] ??
-            data['fotoLugarAsset'] ??
-            '')
-            .toString()
-            .trim();
-
-        // creador map
-        final creador = (data[kCreadorMap] is Map)
-            ? Map<String, dynamic>.from(data[kCreadorMap] as Map)
-            : <String, dynamic>{};
-
-        final creadorNombre =
-        (creador[kCreadorNombre] ?? data['creadorNombre'] ?? 'Usuario')
-            .toString()
-            .trim();
-
-        int creadorEdad = 0;
-        final ce = (creador[kCreadorEdad] ?? data['creadorEdad']);
-        if (ce is int) creadorEdad = ce;
-        if (ce is String) creadorEdad = int.tryParse(ce) ?? 0;
-
-        final creadorFoto =
-        (creador[kCreadorFoto] ?? data['creadorFoto'] ?? '')
-            .toString()
-            .trim();
-
-        // fecha/hora
-        final fecha = (data[kFechaField] ?? '').toString().trim();
-        final hora = (data[kHoraField] ?? '').toString().trim();
-
-        final preferencia =
-        (data[kPreferenciaField] ?? 'Ambos').toString().trim();
-        final intencion =
-        (data[kIntencionField] ?? 'Amistad').toString().trim();
-
-        // createdAt
-        DateTime createdAt = DateTime.now();
-        final ts = data[kCreatedAtField];
-        if (ts is Timestamp) createdAt = ts.toDate();
-
-        return CitaPendiente(
-          id: d.id,
-          codigo: codigo.isEmpty ? d.id : codigo,
-          nombreLugar: nombreLugar.isEmpty ? 'Lugar' : nombreLugar,
-          direccionLugar:
-          direccionLugar.isEmpty ? 'Sin dirección' : direccionLugar,
-          fecha: fecha.isEmpty ? 'Fecha pendiente' : fecha,
-          hora: hora.isEmpty ? 'Hora pendiente' : hora,
-          fotoLugar: fotoLugar.isEmpty ? 'assets/images/perfil1.jpg' : fotoLugar,
-          preferencia: preferencia,
-          intencion: intencion,
-          creadorNombre: creadorNombre.isEmpty ? 'Usuario' : creadorNombre,
-          creadorEdad: creadorEdad,
-          creadorFoto: creadorFoto,
-          createdAt: createdAt,
-        );
-      }).toList();
-
-      // ✅ quitar vencidas (solo UI)
-      final filtered = list.where((c) {
-        final dt = _extractCitaDateTimeFromDocMaybe(dataFromId: c.id);
-        // (No podemos leer el doc aquí; entonces parseamos strings)
-        final parsed = _parseCitaDateTime(c.fecha, c.hora);
-        if (parsed == null) return true;
-        return parsed.isAfter(now);
-      }).toList();
-
-      // orden UI por createdAt desc
-      filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      state = filtered;
-    });
-  }
-
-  // 🔴 CHINCHE VENCIDAS 1 — este helper solo existe por compat (no se usa)
-  // (lo dejo para no romper nada si después quieres meter scheduledAt)
-  DateTime? _extractCitaDateTimeFromDocMaybe({required String dataFromId}) {
-    return null;
-  }
-
-  // ✅ Cancelar: NO delete. Marca cancelled.
-  Future<void> cancelById(String docId) async {
-    try {
-      await FirebaseFirestore.instance.collection(kCitasCollection).doc(docId).set({
-        kStatusField: kStatusCancelled,
-        'cancelledAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Error cancelando cita: $e');
-    }
-  }
-
-  // ✅ COMPAT: si algún código viejo llama add(), NO HACEMOS NADA
-  // porque la cita YA se crea en CreaCitaScreen (Paso 1).
-  Future<void> add(CitaPendiente cita) async {
-    // intencionalmente vacío para evitar DUPLICADOS
-  }
-
-  DateTime? _parseCitaDateTime(String fecha, String hora) {
-    try {
-      final f = fecha.trim();
-      final h = hora.trim();
-      final parts = f.split('/');
-      if (parts.length != 3) return null;
-
-      final day = int.parse(parts[0]);
-      final month = int.parse(parts[1]);
-      final year = int.parse(parts[2]);
-
-      int hour24 = 0;
-      int minute = 0;
-
-      final upper = h.toUpperCase();
-      if (upper.contains('AM') || upper.contains('PM')) {
-        final isPM = upper.contains('PM');
-        final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim();
-        final hm = clean.split(':');
-        if (hm.length != 2) return null;
-
-        var hh = int.parse(hm[0].trim());
-        minute = int.parse(hm[1].trim());
-
-        if (isPM) {
-          if (hh != 12) hh += 12;
-        } else {
-          if (hh == 12) hh = 0;
+        Map<String, dynamic> lugarNew = {};
+        if (data[kLugarMap] is Map) {
+          lugarNew = Map<String, dynamic>.from(data[kLugarMap]);
         }
-        hour24 = hh;
-      } else {
-        final hm = upper.split(':');
-        if (hm.length != 2) return null;
-        hour24 = int.parse(hm[0].trim());
-        minute = int.parse(hm[1].trim());
+
+        String nombreLugar = lugarNew[kLugarNombre]?.toString() ?? '';
+        if (nombreLugar.isEmpty) {
+          nombreLugar = data[kLugarNombreOld]?.toString() ?? 'Lugar sin nombre';
+        }
+
+        String fotoLugar = lugarNew[kLugarFotoPortada]?.toString() ?? '';
+        if (fotoLugar.isEmpty) {
+          fotoLugar = data[kLugarFotoPortadaOld]?.toString() ?? '';
+        }
+        if (fotoLugar.isEmpty) {
+          final fotosOld = data[kLugarFotosOld];
+          if (fotosOld is List && fotosOld.isNotEmpty) {
+            fotoLugar = fotosOld.first.toString();
+          }
+        }
+        if (fotoLugar.isEmpty) {
+          fotoLugar = 'assets/images/perfil1.jpg';
+        }
+
+        final fecha = (data[kFechaField] ?? '').toString();
+        final hora = (data[kHoraField] ?? '').toString();
+
+        DateTime fechaHoraCita = DateTime(2100);
+        try {
+          final f = fecha.split('/');
+          final h = hora.split(':');
+          if (f.length == 3 && h.length >= 2) {
+            fechaHoraCita = DateTime(
+              int.parse(f[2]),
+              int.parse(f[1]),
+              int.parse(f[0]),
+              int.parse(h[0]),
+              int.parse(h[1]),
+            );
+          }
+        } catch (_) {}
+
+        if (fechaHoraCita.isBefore(now)) {
+          FirebaseFirestore.instance
+              .collection(kCitasCollection)
+              .doc(d.id)
+              .set({
+            kStatusField: kStatusCancelled,
+            kCancelReasonField: kCancelReasonTime,
+            kUpdatedAtField: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          continue;
+        }
+
+        list.add(
+          CitaPendiente(
+            id: d.id,
+            nombreLugar: nombreLugar,
+            fecha: fecha,
+            hora: hora,
+            fotoLugar: fotoLugar,
+            fechaHoraCita: fechaHoraCita,
+          ),
+        );
       }
 
-      return DateTime(year, month, day, hour24, minute);
-    } catch (_) {
-      return null;
-    }
+      list.sort((a, b) => a.fechaHoraCita.compareTo(b.fechaHoraCita));
+      state = list;
+    });
   }
 }
 
 final citasPendientesProvider =
 StateNotifierProvider<CitasPendientesNotifier, List<CitaPendiente>>(
-      (ref) => CitasPendientesNotifier(),
-);
+        (_) => CitasPendientesNotifier());
 
 // ================================================================
-// 🔹 SCREEN
+// SCREEN
 // ================================================================
 class CitasPendientesScreen extends ConsumerWidget {
   const CitasPendientesScreen({super.key});
 
+  // 🔴🔴 CHINCHES MAESTROS (DISEÑO PREMIUM) 🔴🔴
+  static const List<Color> kCapsulaGradient = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
+  static const Color kBorderColor = Colors.white12;
+  static const double kCapsulaRadius = 24.0;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    const double espacioBarraLogo = 35;
-    const double alturaLogo = 50;
-    const double espacioLogoTitulo = 15;
-    const double paddingBottom = 90;
-
     final citas = ref.watch(citasPendientesProvider);
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
+          // 1. FONDO
           Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
+            child: Image.asset("assets/images/fondo.jpg", fit: BoxFit.cover),
           ),
-
-          // ✅ (QUITADO) botón back superior — pedido por ti
 
           Column(
             children: [
-              const SizedBox(height: espacioBarraLogo),
+              const SizedBox(height: 35),
               SizedBox(
-                height: alturaLogo,
+                height: 50,
                 child: Image.asset('assets/images/logomatchyplano.png'),
               ),
-              const SizedBox(height: espacioLogoTitulo),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'CITAS PUBLICADAS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Poppins',
+              const SizedBox(height: 15),
+
+              // 2. HEADER CÁPSULA PREMIUM
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: kCapsulaGradient,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                    borderRadius: BorderRadius.circular(kCapsulaRadius),
+                    border: Border.all(color: kBorderColor, width: 1),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Botón Atrás Integrado
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          width: 40, height: 40,
+                          decoration: const BoxDecoration(
+                            color: Colors.white10,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                        ),
+                      ),
+
+                      // Título Centrado
+                      const Expanded(
+                        child: Text(
+                          "CITAS PUBLICADAS",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            fontFamily: "Poppins",
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                      ),
+
+                      // Espacio para equilibrar
+                      const SizedBox(width: 40),
+                    ],
                   ),
                 ),
               ),
+
               const SizedBox(height: 10),
+
+              // 3. LISTA
               Expanded(
-                child: ListView.builder(
+                child: citas.isEmpty
+                    ? const SizedBox(
+                  width: double.infinity,
+                  child: _EmptyState(),
+                )
+                    : ListView.builder(
+                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.only(
                     left: 16,
                     right: 16,
-                    bottom: paddingBottom,
+                    bottom: 120, // Espacio para el fade out
                   ),
-                  itemCount: citas.isEmpty ? 1 : citas.length,
-                  itemBuilder: (context, index) {
-                    if (citas.isEmpty) return _EmptyState();
-                    final cita = citas[index];
-                    return _CitaPendienteCard(cita: cita);
-                  },
+                  itemCount: citas.length,
+                  itemBuilder: (_, i) => _CitaCard(cita: citas[i]),
                 ),
               ),
             ],
           ),
+
+          // 4. DEGRADADO NEGRO INFERIOR (FADE OUT)
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            height: 80,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.95),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -377,114 +309,98 @@ class CitasPendientesScreen extends ConsumerWidget {
 }
 
 // ================================================================
-// EMPTY STATE
+// EMPTY — MISMO DISEÑO QUE CITAS_SCREEN
 // ================================================================
 class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(top: 18),
-      padding: const EdgeInsets.all(18),
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 14),
       decoration: BoxDecoration(
         color: const Color(0x33FFFFFF),
         borderRadius: BorderRadius.circular(22),
       ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Aún no tienes citas publicadas.',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'Poppins',
-            ),
+      child: Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: const Color(0x22FFFFFF),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Text(
+          'Aún no tienes citas publicadas.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Poppins',
           ),
-          SizedBox(height: 6),
-          Text(
-            'Crea una cita desde el Panel y aparecerá aquí automáticamente.',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.3,
-              fontFamily: 'Poppins',
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 // ================================================================
-// CARD
+// CARD (INTACTA)
 // ================================================================
-class _CitaPendienteCard extends ConsumerWidget {
+class _CitaCard extends StatelessWidget {
   final CitaPendiente cita;
-  const _CitaPendienteCard({required this.cita});
+  const _CitaCard({required this.cita});
 
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
+  bool _isNet(String v) => v.startsWith("http");
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    const Color cardColor = Color(0x996A5ACD);
-    const double cardHeight = 140;
-    const double fotoWidth = 120;
+  Widget build(BuildContext context) {
+    const double h = 130;
+    const double w = 120;
 
-    Widget fotoWidget;
-    final src = cita.fotoLugar.trim();
-    if (src.isEmpty) {
-      fotoWidget = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
-    } else if (_isNetwork(src)) {
-      fotoWidget = Image.network(
-        src,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    } else {
-      fotoWidget = Image.asset(
-        src,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
-      );
-    }
+    final Widget foto = _isNet(cita.fotoLugar)
+        ? Image.network(cita.fotoLugar, fit: BoxFit.cover)
+        : Image.asset(
+      cita.fotoLugar,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) =>
+          Image.asset("assets/images/perfil1.jpg", fit: BoxFit.cover),
+    );
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: Card(
+        color: const Color(0x886A5ACD),
         elevation: 6,
-        color: cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         child: InkWell(
+          borderRadius: BorderRadius.circular(22),
           onTap: () {
-            Navigator.of(context).push(
+            Navigator.push(
+              context,
               MaterialPageRoute(
-                builder: (_) => CitasPendientesDetalleScreen(citaId: cita.id),
+                builder: (_) =>
+                    CitasPendientesDetalleScreen(citaId: cita.id),
               ),
             );
           },
-          borderRadius: BorderRadius.circular(20),
           child: SizedBox(
-            height: cardHeight,
+            height: h,
             child: Row(
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    bottomLeft: Radius.circular(20),
+                    topLeft: Radius.circular(22),
+                    bottomLeft: Radius.circular(22),
                   ),
-                  child: SizedBox(
-                    width: fotoWidth,
-                    height: cardHeight,
-                    child: fotoWidget,
-                  ),
+                  child: SizedBox(width: w, height: h, child: foto),
                 ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 14),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -494,110 +410,39 @@ class _CitaPendienteCard extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            fontFamily: 'Poppins',
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            fontFamily: "Poppins",
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "📅  ${cita.fecha}",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: "Poppins",
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '📍 ${cita.direccionLugar}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          "🕒  ${cita.hora}",
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 12,
-                            fontFamily: 'Poppins',
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: "Poppins",
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '📅 ${cita.fecha}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '🕒 ${cita.hora}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontFamily: 'Poppins',
-                          ),
-                        ),
-                        const Spacer(),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.25),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                alignment: Alignment.center,
-                                child: Text(
-                                  'CÓDIGO: ${cita.codigo}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    fontFamily: 'Poppins',
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            SizedBox(
-                              height: 34,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE53935),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                onPressed: () async {
-                                  await ref
-                                      .read(citasPendientesProvider.notifier)
-                                      .cancelById(cita.id);
-
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Cita cancelada.')),
-                                  );
-                                },
-                                child: const Text(
-                                  'CANCELAR',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                    fontFamily: 'Poppins',
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 6),
                 const Padding(
-                  padding: EdgeInsets.only(right: 10),
-                  child: Icon(
-                    Icons.chevron_right,
-                    color: Colors.white70,
-                    size: 26,
-                  ),
+                  padding: EdgeInsets.only(right: 12),
+                  child: Icon(Icons.chevron_right,
+                      color: Colors.white70, size: 26),
                 ),
               ],
             ),

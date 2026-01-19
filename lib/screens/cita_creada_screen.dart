@@ -1,13 +1,15 @@
-import 'dart:math';
+// 📂 lib/screens/cita_creada_screen.dart
+// ✅ CITA CREADA (DISEÑO PREMIUM)
+// 🔥 UI: Botones estilo Cápsula Premium.
+// 🔥 UI: Degradado inferior (Fade Out).
+// 🔥 LÓGICA: Cancelar (update status) y Navegación segura.
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/screens/panel_screen.dart';
 
-class CitaCreadaScreen extends ConsumerStatefulWidget {
+class CitaCreadaScreen extends StatelessWidget {
   final String citaId;
   final LugarData lugar;
   final String fecha;
@@ -25,224 +27,327 @@ class CitaCreadaScreen extends ConsumerStatefulWidget {
     required this.intencion,
   });
 
-  @override
-  ConsumerState<CitaCreadaScreen> createState() => _CitaCreadaScreenState();
-}
+  // ===========================================================================
+  // 🔴🔴 CHINCHES MAESTROS (DISEÑO PREMIUM) 🔴🔴
+  // ===========================================================================
 
-class _CitaCreadaScreenState extends ConsumerState<CitaCreadaScreen> {
-  late final String _codigoCita;
-  bool _cancelling = false;
+  // Botones Premium (Gradiente + Sombra)
+  static const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)]; // Rojo Intenso
+  static const List<Color> kButtonGradientBack   = [Color(0xFF393975), Color(0xFF1A1A24)]; // Azul/Negro Premium (Igual Panel)
 
-  @override
-  void initState() {
-    super.initState();
-    _codigoCita = _generarCodigo();
-  }
+  static const double kButtonRadius = 18.0;
+  static const BorderSide kButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
+  static const List<BoxShadow> kButtonShadow = [
+    BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4)),
+  ];
 
-  String _generarCodigo() {
-    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const numeros = '0123456789';
-    final r = Random();
+  // ===========================================================================
 
-    return List.generate(3, (_) => letras[r.nextInt(letras.length)]).join() +
-        List.generate(5, (_) => numeros[r.nextInt(numeros.length)]).join();
-  }
+  // 🔧 FOTO DESDE FIREBASE (fallback seguro)
+  String _pickFotoLugar(Map<String, dynamic> data) {
+    final portada = (data['lugarFotoPortada'] ?? '').toString();
+    if (portada.startsWith('http')) return portada;
 
-  String _fotoLugar() {
-    if (widget.lugar.fotos.isEmpty) return 'assets/images/faro1.jpg';
-    final f = widget.lugar.fotos.first.trim();
-    if (f.startsWith('http')) return f;
-    return f.isEmpty ? 'assets/images/faro1.jpg' : f;
-  }
-
-  Future<void> _cancelarCita() async {
-    if (_cancelling) return;
-    setState(() => _cancelling = true);
-
-    await FirebaseFirestore.instance
-        .collection('citas')
-        .doc(widget.citaId)
-        .set({
-      'status': 'cancelled',
-      'cancelledAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    if (!mounted) return;
-    Navigator.of(context).popUntil((r) => r.isFirst);
+    final fotos = (data['lugarFotos'] as List?) ?? [];
+    for (final f in fotos) {
+      final s = f.toString();
+      if (s.startsWith('http')) return s;
+    }
+    return '';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-          ),
-          SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 40),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                Image.asset(
-                  'assets/images/logomatchyplano.png',
-                  height: 50,
-                ),
-                const SizedBox(height: 20),
+    // 1. BLOQUEAR BOTÓN ATRÁS FÍSICO
+    return PopScope(
+      canPop: false, // Impide volver atrás para evitar duplicados
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            // 2. FONDO INFINITO
+            Positioned.fill(
+              child: Image.asset(
+                'assets/images/fondo.jpg',
+                fit: BoxFit.cover,
+                height: double.infinity,
+                width: double.infinity,
+              ),
+            ),
 
-                // FOTO DEL LUGAR
-                Container(
-                  width: MediaQuery.of(context).size.width * 0.9,
-                  height: 180,
+            SafeArea(
+              child: SizedBox(
+                width: double.infinity,
+                height: double.infinity,
+                child: FutureBuilder<DocumentSnapshot>(
+                  future: FirebaseFirestore.instance.collection('citas').doc(citaId).get(),
+                  builder: (_, snap) {
+                    if (!snap.hasData) {
+                      return const Center(child: CircularProgressIndicator(color: Colors.white));
+                    }
+
+                    final data = snap.data!.data() as Map<String, dynamic>? ?? {};
+
+                    // 3. LEER CÓDIGO OWNER
+                    final codigo = (data['codigoOwner'] ?? 'PENDIENTE').toString();
+
+                    final sedeNombre = (data['sedeNombre'] ?? '').toString();
+                    final sedeDireccion = (data['sedeDireccion'] ?? '').toString();
+                    final fotoUrl = _pickFotoLugar(data);
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Image.asset('assets/images/logomatchyplano.png', height: 60),
+                          const SizedBox(height: 20),
+
+                          // 4. FOTO ANTI-MOCHAR CABEZAS
+                          Container(
+                            decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                boxShadow: [
+                                  BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 15, offset: const Offset(0, 8))
+                                ]
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: fotoUrl.isNotEmpty
+                                  ? Image.network(
+                                fotoUrl,
+                                height: 200, // Más alto para lucir mejor
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter, // 👈 CLAVE: Alineación Top
+                                errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, height: 200),
+                              )
+                                  : Image.asset('assets/images/perfil1.jpg', height: 200, width: double.infinity, fit: BoxFit.cover),
+                            ),
+                          ),
+
+                          const SizedBox(height: 25),
+
+                          const Text(
+                            "TU CITA ESTÁ CREADA",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'Poppins',
+                                shadows: [Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 3))]
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // 5. INFO CONTAINER (Glassmorphism)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(color: Colors.white12),
+                                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]
+                            ),
+                            child: Column(
+                              children: [
+                                _infoRow("LUGAR", lugar.nombre),
+                                if (sedeNombre.isNotEmpty) _infoRow("SEDE", sedeNombre),
+                                _infoRow("DIRECCIÓN", sedeDireccion.isNotEmpty ? sedeDireccion : lugar.direccion),
+                                const Divider(color: Colors.white12, height: 30, thickness: 1),
+                                _infoRow("FECHA", fecha),
+                                _infoRow("HORA", hora),
+                                _infoRow("PREFERENCIA", preferencia),
+                                _infoRow("INTENCIÓN", intencion),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 25),
+
+                          // 6. ADVERTENCIAS
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFF050000).withOpacity(0.3)),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  "NO PUEDES CANCELAR UNA CITA 12 HORAS ANTES DE LA HORA ACORDADA, DEBES REPROGRAMARLA O SERÁS PENALIZADO",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: Color(0xFFF80719),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      height: 1.4
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  "RECUERDA QUE EN MATCHY EL QUE INVITA PAGA.",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 30),
+
+                          // 7. CÓDIGO
+                          const Text("CÓDIGO DE LA CITA:", style: TextStyle(color: Colors.white70, fontSize: 20, letterSpacing: 1)),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            decoration: BoxDecoration(
+                                color: const Color(0xFF6B4EE6),
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: [BoxShadow(color: const Color(0xFF6B4EE6).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))]
+                            ),
+                            child: Text(
+                              codigo,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 3.0
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 40),
+
+                          // 8. BOTÓN CANCELAR (Premium)
+                          _PremiumButton(
+                            text: "CANCELAR TU CITA",
+                            gradientColors: kButtonGradientCancel,
+                            onTap: () async {
+                              await FirebaseFirestore.instance.collection('citas').doc(citaId).update({'status': 'canceled'});
+                              if (!context.mounted) return;
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (_) => const PanelScreen()),
+                                    (r) => false,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // 9. BOTÓN REGRESAR (Premium)
+                          _PremiumButton(
+                            text: "REGRESAR AL PANEL",
+                            gradientColors: kButtonGradientBack,
+                            onTap: () {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (_) => const PanelScreen()),
+                                    (r) => false,
+                              );
+                            },
+                          ),
+
+                          // Espacio extra para el fade out
+                          const SizedBox(height: 100),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            // 10. DEGRADADO INFERIOR (FADE OUT)
+            Positioned(
+              bottom: 0, left: 0, right: 0, height: 90,
+              child: IgnorePointer(
+                child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _fotoLugar().startsWith('http')
-                      ? Image.network(_fotoLugar(), fit: BoxFit.cover)
-                      : Image.asset(_fotoLugar(), fit: BoxFit.cover),
-                ),
-
-                const SizedBox(height: 20),
-
-                const Text(
-                  'TU CITA ESTÁ CREADA',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'LUGAR: ${widget.lugar.nombre}\n'
-                        'DIRECCIÓN: ${widget.lugar.direccion}\n'
-                        'FECHA: ${widget.fecha}\n'
-                        'HORA: ${widget.hora}\n'
-                        'PREFERENCIA: ${widget.preferencia}\n'
-                        'INTENCIÓN: ${widget.intencion}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      height: 1.4,
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                      stops: const [0.0, 1.0],
                     ),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                const SizedBox(height: 18),
-
-                // 🔶 TEXTO AMARILLO BIEN JUSTIFICADO
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 28),
-                  child: Text(
-                    'RECUERDA QUE SI HACES MATCHY CON ALGUIEN\n'
-                        'TIENES UN MÁXIMO DE 12 HORAS PARA\n'
-                        'CANCELAR TU CITA.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Color(0xFFFFC107),
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                const Text(
-                  'RECUERDA QUE EN MATCHY\nEL QUE INVITA PAGA.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFFFF5252),
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    height: 1.4,
-                  ),
-                ),
-
-                const SizedBox(height: 22),
-
-                const Text(
-                  'CÓDIGO DE LA CITA:',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Text(
-                  _codigoCita,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-
-                const SizedBox(height: 22),
-
-                // 🔴 BOTÓN CANCELAR — TEXTO BLANCO
-                SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.8,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _cancelarCita,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE53935),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    child: const Text(
-                      'CANCELAR TU CITA',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                // 🔵 BOTÓN REGRESAR — TEXTO BLANCO
-                SizedBox(
-                  width: MediaQuery.of(context).size.width * 0.8,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () =>
-                        Navigator.of(context).popUntil((r) => r.isFirst),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6A5ACD),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    child: const Text(
-                      'REGRESAR AL PANEL',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+  Widget _infoRow(String titulo, String valor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("$titulo:", style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              valor.toUpperCase(),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              textAlign: TextAlign.right,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 🔥 WIDGET REUTILIZABLE: BOTÓN PREMIUM
+class _PremiumButton extends StatelessWidget {
+  final String text;
+  final List<Color> gradientColors;
+  final VoidCallback onTap;
+
+  const _PremiumButton({
+    required this.text,
+    required this.gradientColors,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 54,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradientColors,
+          ),
+          borderRadius: BorderRadius.circular(CitaCreadaScreen.kButtonRadius),
+          border: Border.fromBorderSide(CitaCreadaScreen.kButtonBorder),
+          boxShadow: CitaCreadaScreen.kButtonShadow,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.5
+          ),
+        ),
       ),
     );
   }
