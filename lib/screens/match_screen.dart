@@ -1,7 +1,8 @@
 // 📂 lib/screens/match_screen.dart
-// ✅ MATCH SCREEN (FINAL - ARQUITECTURA ROBUSTA)
-// 🔥 FIX ANIMACIÓN: Restaurado el movimiento de flote de las tarjetas.
-// 🔥 CHINCHE: Agregado control de intensidad del flote.
+// ✅ MATCH SCREEN (CORREGIDO: NO SE CIERRA SOLA)
+// 🔥 FIX CRÍTICO: Eliminado 'consumeEvent' del Timer. Ahora la pantalla espera al usuario.
+// 🔥 LOGIC: El evento solo se borra al hundir "Iniciar Chat" o "Ir a Citas".
+// 🔥 UI: Foto inteligente y diseño intactos.
 
 import 'dart:async';
 import 'dart:io';
@@ -16,6 +17,7 @@ import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
 
 class MatchScreen extends ConsumerStatefulWidget {
   final String candidatoId;
@@ -23,7 +25,7 @@ class MatchScreen extends ConsumerStatefulWidget {
   final int candidatoEdad;
   final String candidatoFotoAsset;
 
-  // 🟢 DATOS DEL LUGAR (Se reciben directos)
+  // 🟢 DATOS DEL LUGAR
   final String lugarNombre;
   final String lugarFoto;
   final String? citaId;
@@ -36,7 +38,6 @@ class MatchScreen extends ConsumerStatefulWidget {
     required this.candidatoNombre,
     required this.candidatoEdad,
     required this.candidatoFotoAsset,
-    // Valores por defecto para seguridad
     this.lugarNombre = '',
     this.lugarFoto = '',
     this.citaId,
@@ -51,28 +52,18 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     with TickerProviderStateMixin {
 
   // ==============================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS DE EDICIÓN 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ==============================================================================
-
-  // 1. BLOQUE TÍTULO
   static const double kTitleOffsetY = 11.0;
   static const double kTitleScale   = 1.0;
-
-  // 2. BLOQUE MATCH (Personas)
   static const double kMatchOffsetY = -5.0;
   static const double kMatchScale   = 0.9;
-  // 🔥 INTENSIDAD DEL FLOTE (Qué tan arriba/abajo se mueven las cartas)
-  static const double kCardsWiggleIntensity = 6.0; // Aumenta para más movimiento
-
-  // 3. BLOQUE LUGAR (Sitio)
+  static const double kCardsWiggleIntensity = 6.0;
   static const double kLugarOffsetY = -39.0;
   static const double kLugarScale   = 0.9;
   static const double kLugarHeight  = 160.0;
-
-  // 4. BLOQUE BOTONES
   static const double kButtonsOffsetY = -29.0;
   static const double kButtonsScale   = 0.9;
-
   // ==============================================================================
 
   late final AnimationController _titleCtrl;
@@ -120,10 +111,15 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       await _hydratePeopleFromFirestore();
     });
 
+    // 🔥 TIMER: SOLO HABILITA LOS BOTONES. NO CIERRA LA PANTALLA.
     _finishTimer = Timer(_finishDelay, () async {
       if (!mounted) return;
       if (_finishCalled) return;
       _finishCalled = true;
+
+      // ⚠️ ELIMINADO: await HomeShell.consumeEvent();
+      // Al quitar esto, la pantalla NO se cierra sola.
+
       if (widget.onMatchAnimationFinished == null) {
         setState(() => _guardadoOk = true);
         return;
@@ -188,7 +184,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) {} finally { if (mounted) setState(() => _hydratingPeople = false); }
   }
 
-  // 🔴 AQUÍ SE GUARDAN LOS DATOS EN EL EVENTO 🔴
   Future<void> _createCandidateEventOnce({required String action}) async {
     if (_eventCreated || _creatingEvent) return;
     _creatingEvent = true;
@@ -211,8 +206,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
           'ownerNombre': _stableMyNombre.isNotEmpty ? _stableMyNombre : profile.nombre,
           'ownerFoto': ownerFotoCandidate.isEmpty ? 'assets/images/perfil1.jpg' : ownerFotoCandidate,
           'candidatoUid': peerUid,
-
-          // 🔥 GUARDAMOS LUGAR Y FOTO EN EL EVENTO
           'lugarNombre': widget.lugarNombre,
           'lugarFoto': widget.lugarFoto,
           'citaId': widget.citaId,
@@ -222,9 +215,14 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) {} finally { _creatingEvent = false; }
   }
 
+  // 🔴 BOTÓN 1: INICIAR CHAT
   Future<void> _startChat() async {
     if (_navigating) return;
     setState(() => _navigating = true);
+
+    // 🔥 AQUÍ SÍ CONSUMIMOS EL EVENTO (AL TOCAR EL BOTÓN)
+    await HomeShell.consumeEvent();
+
     await _createCandidateEventOnce(action: 'chat');
 
     final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
@@ -242,14 +240,12 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       );
 
       if (!mounted) return;
-      await HomeShell.consumeEvent();
 
-      // 🔥 CORRECCIÓN: Agregamos otherUid para que coincida con ChatDetalleScreen
       Navigator.of(context).pushReplacement(
           MaterialPageRoute(
               builder: (_) => ChatDetalleScreen(
                   id: tId,
-                  otherUid: widget.candidatoId, // 👈 ¡AQUÍ ESTÁ EL ARREGLO!
+                  otherUid: widget.candidatoId,
                   nombre: suN,
                   edad: '',
                   foto: suF
@@ -259,11 +255,16 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) { if(mounted) setState(() => _navigating = false); }
   }
 
+  // 🔴 BOTÓN 2: IR A CITAS
   Future<void> _irACitas() async {
     if (_navigating) return;
     setState(() => _navigating = true);
-    await _createCandidateEventOnce(action: 'citas');
+
+    // 🔥 AQUÍ SÍ CONSUMIMOS EL EVENTO (AL TOCAR EL BOTÓN)
     await HomeShell.consumeEvent();
+
+    await _createCandidateEventOnce(action: 'citas');
+
     if (!mounted) return;
     HomeShell.go(context, index: 1);
   }
@@ -278,7 +279,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final suEdad = _stablePeerEdad > 0 ? _stablePeerEdad : widget.candidatoEdad;
     final suFoto = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
 
-    // Usamos los datos directos
     final String nombreLugar = widget.lugarNombre.isNotEmpty ? widget.lugarNombre : 'LUGAR DE CITA';
     final String fotoLugar = widget.lugarFoto;
 
@@ -318,11 +318,31 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                                 child: LayoutBuilder(builder: (context, constraints) {
                                   final double cardW = ((constraints.maxWidth - 14.0) / 2.0).clamp(145.0, 190.0);
 
-                                  // 🔥 ANIMACIÓN DE FLOTE RESTAURADA
+                                  // 🔥 FOTO ESTABLE: Creadas fuera del builder
+                                  final matchyCard = _MatchPhotoCard(
+                                      width: cardW,
+                                      height: 230.0,
+                                      label: 'TU MATCHY',
+                                      // 🔥 WIDGET FOTO INTELIGENTE
+                                      image: FotoPerfilUsuario(
+                                        uid: widget.candidatoId,
+                                        fit: BoxFit.cover,
+                                        alignment: Alignment.topCenter,
+                                      ),
+                                      glowColor: matchyYellow
+                                  );
+
+                                  final myCard = _MatchPhotoCard(
+                                      width: cardW,
+                                      height: 230.0,
+                                      label: 'TÚ',
+                                      image: _imageSmart(miFoto, 'assets/images/perfil1.jpg'),
+                                      glowColor: matchyLilac
+                                  );
+
                                   return AnimatedBuilder(
                                     animation: _cardsCtrl,
                                     builder: (context, child) {
-                                      // Calcula el desplazamiento vertical (wiggle)
                                       final double wiggle = math.sin(_cardsCtrl.value * math.pi * 2.0) * kCardsWiggleIntensity;
 
                                       return Center(
@@ -335,19 +355,10 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                                               Row(
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
-                                                  // Tarjeta Izquierda (se mueve en sentido opuesto)
-                                                  Transform.translate(
-                                                    offset: Offset(0.0, -wiggle),
-                                                    child: _MatchPhotoCard(width: cardW, height: 230.0, label: 'TU MATCHY', image: _imageSmart(suFoto, 'assets/images/perfil1.jpg'), glowColor: matchyYellow),
-                                                  ),
-                                                  // Tarjeta Derecha
-                                                  Transform.translate(
-                                                    offset: Offset(0.0, wiggle),
-                                                    child: _MatchPhotoCard(width: cardW, height: 230.0, label: 'TÚ', image: _imageSmart(miFoto, 'assets/images/perfil1.jpg'), glowColor: matchyLilac),
-                                                  ),
+                                                  Transform.translate(offset: Offset(0.0, -wiggle), child: matchyCard),
+                                                  Transform.translate(offset: Offset(0.0, wiggle), child: myCard),
                                                 ],
                                               ),
-                                              // Corazón Central (Pulsación)
                                               Transform.scale(
                                                 scale: 1.0 + (math.sin(_cardsCtrl.value * math.pi) * 0.06),
                                                 child: Container(width: 74.0, height: 74.0, decoration: BoxDecoration(color: Colors.black.withOpacity(0.25), shape: BoxShape.circle, border: Border.all(color: matchyLilac.withOpacity(0.9), width: 2.0)), child: const Icon(Icons.favorite, color: Color(0xFFFF4D6D), size: 36.0)),
@@ -369,7 +380,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
                       const SizedBox(height: 20),
 
-                      // 3. LUGAR (Datos directos)
+                      // 3. LUGAR
                       Transform.translate(offset: const Offset(0, kLugarOffsetY), child: Transform.scale(scale: kLugarScale, child: Container(
                         width: double.infinity, height: kLugarHeight,
                         decoration: BoxDecoration(color: const Color(0xFF1F1F1F), borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))]),
