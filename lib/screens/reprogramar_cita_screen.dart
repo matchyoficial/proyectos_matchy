@@ -1,7 +1,7 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
-// ✅ PANTALLA REPROGRAMAR (DISEÑO PREMIUM)
-// 🔥 UI: Botón "Enviar" estilo Premium (Gradiente + Sombra).
-// 🔥 UI: Degradado negro inferior (Fade Out).
+// ✅ PANTALLA REPROGRAMAR (FOTO INTELIGENTE + DISEÑO PREMIUM)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar la foto del matchy.
+// 🔥 UI: Botón "Enviar" estilo Premium y Fade Out inferior.
 // 🔥 LÓGICA: WriteBatch para transacciones seguras + Notificaciones.
 
 import 'dart:ui';
@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
 
 class ReprogramarCitaScreen extends StatefulWidget {
   final String citaId;
@@ -205,12 +206,19 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     if (_loading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: kAccentColor)));
     if (_citaData == null) return const Scaffold(backgroundColor: Colors.black, body: Center(child: Text("ERROR CARGANDO CITA", style: TextStyle(color: Colors.white))));
 
+    // Datos generales
     final String lugarFoto = _citaData!['lugarFotoPortada'] ?? _citaData!['lugarFoto'] ?? '';
     final String lugarNombre = _citaData!['lugarNombre'] ?? 'LUGAR';
-    final String matchyFoto = _citaData!['matchyFoto'] ?? _citaData!['candidatoFoto'] ?? '';
     final String matchyNombre = _citaData!['matchyNombre'] ?? _citaData!['candidatoNombre'] ?? 'MATCHY';
     final String fechaActual = _citaData!['fecha'] ?? '--/--';
     final String horaActual = _citaData!['hora'] ?? '--:--';
+
+    // Determinar UID de la otra persona para el Widget Inteligente
+    final user = FirebaseAuth.instance.currentUser;
+    final String myUid = user?.uid ?? '';
+    final String ownerUid = (_citaData?['ownerUid'] ?? '').toString();
+    final String candUid = (_citaData?['matchyUid'] ?? _citaData?['candidatoUid'] ?? '').toString();
+    final String uidToShow = (myUid == ownerUid) ? candUid : ownerUid;
 
     return Scaffold(
       body: Stack(
@@ -261,6 +269,8 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                               ),
                             ),
                           ),
+
+                          // 🔥 FOTO MATCHY (WIDGET INTELIGENTE)
                           Positioned(
                             bottom: kUserPhotoMargin,
                             right: kUserPhotoMargin,
@@ -275,9 +285,12 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
-                                child: matchyFoto.isNotEmpty
-                                    ? Image.network(matchyFoto, fit: BoxFit.cover, alignment: Alignment.topCenter)
-                                    : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter),
+                                // 🔥 APLICADO AQUÍ
+                                child: FotoPerfilUsuario(
+                                  uid: uidToShow,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter,
+                                ),
                               ),
                             ),
                           ),

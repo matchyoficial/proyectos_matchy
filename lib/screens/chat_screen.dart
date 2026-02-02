@@ -1,8 +1,7 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS (DISEÑO PRO FINAL + FADE OUT)
-// 🔥 UI: Logo ajustado a 45.
-// 🔥 UI: Título "CHATS" centrado, grande y con sombra.
-// 🔥 UI: Degradado negro inferior (Fade Out).
+// ✅ LISTA DE CHATS (FOTO INTELIGENTE + DISEÑO PRO)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar fotos automáticamente.
+// 🔥 UI: Diseño Pro, Fade Out, Logo y Sombras intactos.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
 
 // UI Model
 class ChatThreadUI {
@@ -55,45 +55,6 @@ class _ChatScreenState extends State<ChatScreen> {
   static const List<Color> kCardGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
   static const BoxShadow kCardShadow = BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4));
   // ===========================================================================
-
-  bool _isUrl(String v) => v.startsWith('http');
-  bool _isAsset(String v) => v.startsWith('assets/');
-
-  Widget _safeAvatar(String value) {
-    final v = value.trim();
-    const fallback = 'assets/images/perfil1.jpg';
-
-    if (v.isEmpty) {
-      return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
-    }
-
-    if (_isUrl(v)) {
-      return Image.network(
-        v,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-        errorBuilder: (_,__,___) => Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter),
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            color: Colors.white10,
-            alignment: Alignment.center,
-            child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)),
-          );
-        },
-      );
-    }
-
-    if (_isAsset(v)) {
-      return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter));
-    }
-
-    if (v.startsWith('/') || v.contains(r':\')) {
-      return Image.file(File(v), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter));
-    }
-
-    return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
-  }
 
   ChatThreadUI _mapData(String myUid, QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -229,13 +190,18 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             child: Row(
                               children: [
-                                // FOTO
+                                // FOTO (Widget Inteligente)
                                 ClipRRect(
                                     borderRadius: BorderRadius.circular(kAvatarRadius),
                                     child: SizedBox(
                                         width: kAvatarSize,
                                         height: kAvatarSize,
-                                        child: _safeAvatar(t.foto)
+                                        // 🔥 AQUÍ ESTÁ EL CAMBIO
+                                        child: FotoPerfilUsuario(
+                                          uid: t.otherUid,
+                                          fit: BoxFit.cover,
+                                          alignment: Alignment.topCenter,
+                                        )
                                     )
                                 ),
 

@@ -1,7 +1,7 @@
 // 📂 lib/screens/matchys_screen.dart
-// ✅ MATCHYS SCREEN (DISEÑO AJUSTABLE)
-// 🔥 FIX: Botones cerca de la foto y controlables con Chinches Maestros.
-// 🔥 UI: Botones Premium con tamaño de fuente ajustable.
+// ✅ MATCHYS SCREEN (FOTO PERFIL INTELIGENTE + DISEÑO AJUSTABLE)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta del Matchy.
+// 🔥 UI: Botones Premium y Chinches Maestros intactos.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +13,7 @@ import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/cita_nueva_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
 
 // 🔵 MODELO DE DATOS MATCHY
 class MatchyData {
@@ -235,14 +236,12 @@ class _MatchyCard extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(24),
-                    child: data.fotoUrl.isNotEmpty
-                        ? Image.network(
-                      data.fotoUrl,
+                    // 🔥 AQUÍ ESTÁ EL CAMBIO: Usamos FotoPerfilUsuario
+                    child: FotoPerfilUsuario(
+                      uid: data.uid,
                       fit: BoxFit.cover,
                       alignment: Alignment.topCenter,
-                      errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white54)),
-                    )
-                        : Container(color: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white54)),
+                    ),
                   ),
                   Container(
                     decoration: BoxDecoration(

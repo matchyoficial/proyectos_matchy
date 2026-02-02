@@ -1,12 +1,14 @@
 // 📂 lib/screens/chat_detalle_screen.dart
-// ✅ CHAT DETALLE (NAVEGACIÓN FORZADA A CHAT)
-// 🔥 FIX: Tanto el botón atrás como el gesto del sistema SIEMPRE llevan a ChatScreen (Index 4).
+// ✅ CHAT DETALLE (FOTO INTELIGENTE + NAVEGACIÓN FORZADA A CHAT)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar foto en tiempo real.
+// 🔥 LOGIC: El botón atrás y el gesto system SIEMPRE llevan a ChatScreen.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:proyectos_matchy/screens/home_shell.dart'; // 👈 Necesario para navegar
+import 'package:proyectos_matchy/screens/home_shell.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
 
 class ChatDetalleScreen extends StatefulWidget {
   final String id; // Thread ID
@@ -93,20 +95,6 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
     }
   }
 
-  // Helpers de imagen
-  bool _isUrl(String v) => v.startsWith('http');
-  bool _isAsset(String v) => v.startsWith('assets/');
-
-  Widget _safeAvatar(String value) {
-    final v = value.trim();
-    const fallback = 'assets/images/perfil1.jpg';
-    if (v.isEmpty) return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
-    if (_isUrl(v)) return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
-    if (_isAsset(v)) return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
-    if (v.contains(r':\') || v.startsWith('/')) return Image.file(File(v), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___)=>Image.asset(fallback, fit: BoxFit.cover));
-    return Image.asset(fallback, fit: BoxFit.cover, alignment: Alignment.topCenter);
-  }
-
   // 🔥 FUNCIÓN QUE EJECUTA LA SALIDA OBLIGATORIA AL CHAT
   void _irAChatSiempre() {
     // Index 4 = ChatScreen (Listado de chats)
@@ -170,13 +158,18 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
 
                           const SizedBox(width: 12),
 
-                          // Foto (Cápsula redondeada)
+                          // Foto (Cápsula redondeada con Widget Inteligente)
                           ClipRRect(
                             borderRadius: BorderRadius.circular(16),
                             child: SizedBox(
                               width: kAvatarSize,
                               height: kAvatarSize,
-                              child: _safeAvatar(widget.foto),
+                              // 🔥 AQUÍ ESTÁ EL CAMBIO
+                              child: FotoPerfilUsuario(
+                                uid: widget.otherUid,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter,
+                              ),
                             ),
                           ),
 

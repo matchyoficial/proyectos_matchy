@@ -1,8 +1,7 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY (HISTORIAL FINAL + POP-UP COMPACTO)
-// 🔥 FIX: Pop-up con textos compactos (height: 1.0) y sin aire extra.
-// 🔥 CHINCHES: Nueva zona de configuración exclusiva para el Pop-up.
-// 🔥 LOGIC: Mantiene la lectura correcta desde la colección 'citas'.
+// ✅ DETALLE DE MATCHY (FOTO PERFIL INTELIGENTE + HISTORIAL OK)
+// 🔥 FIX: Reemplazada la foto grande por el widget 'FotoPerfilUsuario'.
+// 🔥 LOGIC: Mantiene toda la lógica de historial y pop-up intacta.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +11,7 @@ import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/cita_nueva_screen.dart';
 import 'package:proyectos_matchy/screens/zona_de_descuentos_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: El nuevo widget
 
 class MatchysDetalleScreen extends StatefulWidget {
   final MatchyData matchyData;
@@ -45,10 +45,10 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   static const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
 
   // 🔴 CHINCHES DEL POP-UP (ZOOM)
-  static const Color kPopUpBackground = Color(0xFF0A3043); // Fondo oscuro
+  static const Color kPopUpBackground = Color(0xFF1A1A1A); // Fondo oscuro
   static const double kPopUpRadius = 25.0; // Borde redondeado
   static const double kPopUpTitleSize = 22.0; // Tamaño Nombre Sitio
-  static const double kPopUpDateSize = 21.0;  // Tamaño Fecha
+  static const double kPopUpDateSize = 16.0;  // Tamaño Fecha
   static const Color kPopUpIconColor = Color(0xFFBEB3FF); // Color ícono calendario
   static const double kPopUpFotoHeight = 250.0; // Altura foto zoom
 
@@ -72,7 +72,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // FOTO PERFIL GRANDE
+                  // FOTO PERFIL GRANDE (USANDO EL WIDGET INTELIGENTE)
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyData.uid))),
                     child: Container(
@@ -81,11 +81,11 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                       child: Stack(fit: StackFit.expand, children: [
                         ClipRRect(
                             borderRadius: BorderRadius.circular(28),
-                            child: Image.network(
-                                widget.matchyData.fotoUrl,
+                            // 🔥 AQUÍ ESTÁ EL CAMBIO: Usamos FotoPerfilUsuario
+                            child: FotoPerfilUsuario(
+                                uid: widget.matchyData.uid,
                                 fit: BoxFit.cover,
-                                alignment: Alignment.topCenter,
-                                errorBuilder: (_,__,___) => Container(color: Colors.grey)
+                                alignment: Alignment.topCenter // Mantiene el anti-corte
                             )
                         ),
                         Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(28), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
@@ -194,17 +194,17 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                                                     Text(
                                                         nombreLugar.toUpperCase(),
                                                         textAlign: TextAlign.center,
-                                                        maxLines: 2, // Por si es muy largo, máximo 2 líneas
+                                                        maxLines: 2,
                                                         overflow: TextOverflow.ellipsis,
                                                         style: const TextStyle(
                                                             color: Colors.white,
                                                             fontWeight: FontWeight.w900,
                                                             fontSize: kPopUpTitleSize,
                                                             fontFamily: 'Poppins',
-                                                            height: 1.0 // 🔥 FIX: Elimina el aire vertical
+                                                            height: 1.0
                                                         )
                                                     ),
-                                                    const SizedBox(height: 4), // 🔥 FIX: Espacio reducido
+                                                    const SizedBox(height: 4),
                                                     Row(
                                                       mainAxisAlignment: MainAxisAlignment.center,
                                                       children: [
@@ -215,7 +215,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                                                             style: const TextStyle(
                                                                 color: Colors.white70,
                                                                 fontSize: kPopUpDateSize,
-                                                                height: 1.0 // 🔥 FIX: Elimina el aire vertical
+                                                                height: 1.0
                                                             )
                                                         ),
                                                       ],

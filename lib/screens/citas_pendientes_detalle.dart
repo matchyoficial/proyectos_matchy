@@ -1,10 +1,8 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ DETALLE CITA PENDIENTE (DISEÑO PREMIUM + CHINCHES MAESTROS)
-// 🔥 UI: Botones Premium (Gradiente + Sombra).
-// 🔥 UI: Textos con sombra, centrados y sin icono de ubicación.
-// 🔥 UI: Degradado negro inferior (Fade Out).
-// 🔥 CHINCHES: Control total del Logo y Estilos.
-// ✅ LOGIC: Flujo Matchy Intacto.
+// ✅ DETALLE CITA PENDIENTE (SIN PARPADEO + DISEÑO PREMIUM)
+// 🔥 FIX PARPADEO: El reloj ahora es un widget independiente, evitando que toda la pantalla se redibuje cada segundo.
+// 🔥 UI: Diseño Premium, Sombras, Botones y Fecha Larga intactos.
+// 🔥 FIX: Widget 'FotoPerfilUsuario' aplicado correctamente.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -15,6 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
 
 // ============================================================
 // FIRESTORE KEYS
@@ -41,6 +40,28 @@ const String kLugarDireccionField = 'direccion';
 const String kLugarFotoPortadaField = 'fotoPortada';
 
 const String kUsersCollection = 'users';
+
+// ===========================================================================
+// 🔴🔴 ZONA DE CHINCHES MAESTROS (DISEÑO PREMIUM) 🔴🔴
+// ===========================================================================
+
+// 1. LOGO
+const double kLogoHeight = 45.0;
+const double kLogoTopSpace = 35.0;
+
+// 2. SOMBRAS Y BORDES
+const List<BoxShadow> kCardShadow = [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 5))];
+const List<BoxShadow> kCapsuleShadow = [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))];
+const BorderSide kPremiumBorder = BorderSide(color: Colors.white24, width: 1);
+
+// 3. BOTONES
+const List<Color> kButtonGradientBack = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
+const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)];
+const double kButtonRadius = 25.0;
+const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
+
+// 4. TEXTOS
+const List<Shadow> kTextShadow = [Shadow(color: Colors.black, offset: Offset(2, 2), blurRadius: 4)];
 
 // ============================================================
 // MODELOS
@@ -110,53 +131,27 @@ class CitasPendientesDetalleScreen extends ConsumerStatefulWidget {
 
 class _CitasPendientesDetalleScreenState
     extends ConsumerState<CitasPendientesDetalleScreen> {
-  Timer? _timer;
-  Duration _restante = Duration.zero;
-  bool _alerta1hMostrada = false;
-  bool _busy = false;
 
+  bool _busy = false;
   _CitaFS? _cita;
 
-  // ===========================================================================
-  // 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
-  // ===========================================================================
-
-  // 1. LOGO
-  static const double kLogoHeight = 45.0;      // Tamaño del logo
-  static const double kLogoTopSpace = 35.0;    // Espacio desde el borde superior
-
-  // 2. BOTONES
-  static const List<Color> kButtonGradientBack = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
-  static const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)];
-  static const double kButtonRadius = 18.0;
-  static const List<BoxShadow> kButtonShadow = [
-    BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))
-  ];
-
-  // 3. TEXTOS
-  static const List<Shadow> kTextShadow = [
-    Shadow(color: Colors.black, offset: Offset(1, 1), blurRadius: 4)
-  ];
-
-  // ===========================================================================
+  // Cacheamos el stream para evitar recreaciones
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _candidatosStreamCache;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      _actualizarReloj();
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _cargarCita();
-      _actualizarReloj();
     });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    // Inicializamos el stream una sola vez
+    _candidatosStreamCache = FirebaseFirestore.instance
+        .collection(kCitasCollection)
+        .doc(widget.citaId)
+        .collection(kCandidatosSubcol)
+        .orderBy(kCandCreatedAt, descending: true)
+        .limit(40)
+        .snapshots();
   }
 
   void _goBackToPanel() {
@@ -173,9 +168,6 @@ class _CitasPendientesDetalleScreenState
     return 0;
   }
 
-  // ============================================================
-  // CARGAR CITA
-  // ============================================================
   Future<void> _cargarCita() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -225,9 +217,6 @@ class _CitasPendientesDetalleScreenState
     }
   }
 
-  // ============================================================
-  // CANCELACIÓN AUTOMÁTICA
-  // ============================================================
   Future<void> _cancelarAuto() async {
     await FirebaseFirestore.instance
         .collection(kCitasCollection)
@@ -241,16 +230,7 @@ class _CitasPendientesDetalleScreenState
     _goBackToPanel();
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> _candidatosStream(String citaId) {
-    return FirebaseFirestore.instance
-        .collection(kCitasCollection)
-        .doc(citaId)
-        .collection(kCandidatosSubcol)
-        .orderBy(kCandCreatedAt, descending: true)
-        .limit(40)
-        .snapshots();
-  }
-
+  // Helper de hidratación (se mantiene pero no afecta UI loop)
   Future<_CandidatoFS> _hydrateCandidateFromUsers(_CandidatoFS c) async {
     final hasName = c.nombre.trim().isNotEmpty;
     final hasAge = c.edad > 0;
@@ -318,7 +298,6 @@ class _CitasPendientesDetalleScreenState
         final status = (citaSnap.data()?['status'] ?? '').toString();
         if (status != 'online') throw Exception('La cita ya fue cerrada');
 
-        // 1️⃣ Cerrar Cita
         tx.update(citaRef, {
           'status': 'matched',
           'matchyUid': cFull.uid,
@@ -329,7 +308,6 @@ class _CitasPendientesDetalleScreenState
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // 2️⃣ Guardar en colección raíz
         tx.set(matchyRef, {
           'ownerUid': user.uid,
           'candidatoUid': cFull.uid,
@@ -338,7 +316,6 @@ class _CitasPendientesDetalleScreenState
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        // 3️⃣ Guardar en historial
         tx.set(historialRef, {
           'citaId': cita.docId,
           'fechaHora': '${cita.fecha} ${cita.hora}',
@@ -348,7 +325,6 @@ class _CitasPendientesDetalleScreenState
           'createdAt': FieldValue.serverTimestamp(),
         });
 
-        // 4️⃣ 🔥 GUARDAR EN MI LISTA
         tx.set(myMatchyRef, {
           'nombre': cFull.nombre,
           'edad': cFull.edad,
@@ -357,7 +333,6 @@ class _CitasPendientesDetalleScreenState
           'lastInteraction': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        // 5️⃣ 🔥 GUARDAR EN SU LISTA
         tx.set(otherMatchyRef, {
           'nombre': myName,
           'edad': myAge,
@@ -392,59 +367,20 @@ class _CitasPendientesDetalleScreenState
     }
   }
 
-  // ============================================================
-  // HELPERS FECHA/RELOJ
-  // ============================================================
-  DateTime? _parse(String fecha, String hora) {
+  // Formateador manual para asegurar español
+  String _fechaLarga(String fechaCorta) {
     try {
-      final f = fecha.split('/');
-      if (f.length != 3) return null;
-      final day = int.parse(f[0]);
-      final month = int.parse(f[1]);
-      final year = int.parse(f[2]);
-      final upper = hora.toUpperCase();
-      final isPM = upper.contains('PM');
-      final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim();
-      final hm = clean.split(':');
-      int h = int.parse(hm[0]);
-      int m = int.parse(hm[1]);
-      if (isPM) { if (h != 12) h += 12; } else { if (h == 12) h = 0; }
-      return DateTime(year, month, day, h, m);
-    } catch (_) { return null; }
+      final f = fechaCorta.split('/');
+      final d = int.parse(f[0]);
+      final m = int.parse(f[1]);
+      final y = int.parse(f[2]);
+      final dt = DateTime(y, m, d);
+      const dias = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo'];
+      const meses = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      return "${dias[dt.weekday - 1]} $d de ${meses[m - 1]} $y";
+    } catch (_) { return fechaCorta; }
   }
 
-  void _actualizarReloj() {
-    final c = _cita;
-    if (c == null) return;
-    final dt = _parse(c.fecha, c.hora);
-    if (dt == null) return;
-    final limite = dt.subtract(const Duration(hours: 12));
-    final now = DateTime.now();
-    final diff = limite.difference(now);
-
-    if (!_alerta1hMostrada && diff <= const Duration(hours: 1) && diff > Duration.zero) {
-      _alerta1hMostrada = true;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Te queda 1 hora para escoger tu matchy en la cita del ${c.nombreLugar}")));
-    }
-    if (diff.isNegative || diff == Duration.zero) {
-      _cancelarAuto();
-    }
-    setState(() {
-      _restante = diff.isNegative ? Duration.zero : diff;
-    });
-  }
-
-  String _fmt(Duration d) {
-    final s = d.inSeconds;
-    final h = (s ~/ 3600).toString().padLeft(2, '0');
-    final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0');
-    final ss = (s % 60).toString().padLeft(2, '0');
-    return '$h:$m:$ss';
-  }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
   @override
   Widget build(BuildContext context) {
     final cita = _cita;
@@ -457,7 +393,7 @@ class _CitasPendientesDetalleScreenState
 
           Column(
             children: [
-              SizedBox(height: kLogoTopSpace),
+              const SizedBox(height: kLogoTopSpace),
               SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png')),
               const SizedBox(height: 14),
               Expanded(child: cita == null ? _buildError() : _buildDetalle(cita)),
@@ -493,7 +429,6 @@ class _CitasPendientesDetalleScreenState
           const SizedBox(height: 18),
           _box('❌ No pude cargar la cita.'),
           const SizedBox(height: 16),
-          // Botón Premium Error
           _PremiumButton(
             text: 'VOLVER AL PANEL',
             gradient: kButtonGradientBack,
@@ -510,15 +445,53 @@ class _CitasPendientesDetalleScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _fotoLugar(cita.fotoLugar),
-          const SizedBox(height: 14),
+          // FOTO CON SOMBRA
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: kCardShadow,
+            ),
+            child: _fotoLugar(cita.fotoLugar),
+          ),
+          const SizedBox(height: 20),
 
           // 🔥 TITULO CENTRADO CON SOMBRA
           Text(
-            cita.nombreLugar,
+            cita.nombreLugar.toUpperCase(),
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Poppins',
+              shadows: kTextShadow,
+              letterSpacing: 0.5,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          // 🔥 DIRECCIÓN
+          Text(
+            cita.direccionLugar,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 19,
+              fontWeight: FontWeight.w500,
+              fontFamily: 'Poppins',
+              shadows: kTextShadow,
+            ),
+          ),
+
+          const SizedBox(height: 25),
+
+          // 🔥 FECHA GRANDE FORMATO LARGO
+          Text(
+            _fechaLarga(cita.fecha).toUpperCase(),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFFF8F7FA),
               fontSize: 22,
               fontWeight: FontWeight.w900,
               fontFamily: 'Poppins',
@@ -526,33 +499,42 @@ class _CitasPendientesDetalleScreenState
             ),
           ),
 
-          const SizedBox(height: 4),
-
-          // 🔥 DIRECCIÓN CENTRADA SIN ICONO
+          // 🔥 HORA DEBAJO
           Text(
-            cita.direccionLugar,
+            cita.hora,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
               fontFamily: 'Poppins',
               shadows: kTextShadow,
             ),
           ),
 
-          const SizedBox(height: 14),
-          Row(children: [Expanded(child: _infoChip(icon: '📅', text: cita.fecha)), const SizedBox(width: 10), Expanded(child: _infoChip(icon: '🕒', text: cita.hora))]),
-          const SizedBox(height: 10),
-          Row(children: [Expanded(child: _infoChip(icon: '🎯', text: cita.intencion)), const SizedBox(width: 10), Expanded(child: _infoChip(icon: '👥', text: cita.preferencia))]),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), gradient: const LinearGradient(colors: [Color(0x55FF4081), Color(0x55FF5252)], begin: Alignment.topLeft, end: Alignment.bottomRight)),
-            child: Column(children: [Text(_fmt(_restante), style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Poppins')), const SizedBox(height: 4), const Text('TIEMPO PARA ELEGIR TU MATCHY', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700, fontFamily: 'Poppins'))]),
-          ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 15),
 
-          // 🔥 TEXTO CON SOMBRA
+          // 🔥 CHIPS ABAJO
+          Row(
+              children: [
+                Expanded(child: _infoChip(icon: '🎯', text: cita.intencion)),
+                const SizedBox(width: 10),
+                Expanded(child: _infoChip(icon: '👥', text: cita.preferencia))
+              ]
+          ),
+
+          const SizedBox(height: 25),
+
+          // 🔥 RELOJ AISLADO (SIN PARPADEO)
+          _RelojPremium(
+            fecha: cita.fecha,
+            hora: cita.hora,
+            nombreLugar: cita.nombreLugar,
+            onCancel: _cancelarAuto,
+          ),
+
+          const SizedBox(height: 30),
+
           const Text(
             '¿CON QUIÉN QUIERES IR A TU CITA?',
             textAlign: TextAlign.center,
@@ -565,28 +547,40 @@ class _CitasPendientesDetalleScreenState
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 15),
+
+          // GRIDVIEW (El stream se crea una vez en initState para evitar flicker)
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _candidatosStream(cita.docId),
+            stream: _candidatosStreamCache,
             builder: (_, snap) {
               if (snap.hasError) return _box('❌ Error cargando candidatos.');
               if (!snap.hasData) return const Padding(padding: EdgeInsets.symmetric(vertical: 18), child: Center(child: CircularProgressIndicator()));
               final docs = snap.data!.docs;
               if (docs.isEmpty) return _box('Aún no hay candidatos.\nCuando alguien haga swipe a la derecha, aparecerá aquí.', soft: true);
+
               final candidatos = docs.map(_CandidatoFS.fromDoc).toList();
-              return GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: candidatos.length, gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.86), itemBuilder: (_, i) {
-                return FutureBuilder<_CandidatoFS>(future: _hydrateCandidateFromUsers(candidatos[i]), builder: (_, snapC) {
-                  final cand = snapC.data ?? candidatos[i];
-                  final hideLoading = snapC.connectionState != ConnectionState.done;
-                  return _CandidatoCard(candidato: cand, hideAssetWhileLoading: hideLoading, busy: _busy, onTapFoto: () => _openPerfil(cand.uid), onMatchy: () async => await _hacerMatchyFlow(c: cand, cita: _cita!));
-                });
-              });
+
+              // GRID directo sin FutureBuilder envolvente
+              return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: candidatos.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 0.86),
+                  itemBuilder: (_, i) {
+                    return _CandidatoCard(
+                        candidato: candidatos[i],
+                        busy: _busy,
+                        onTapFoto: () => _openPerfil(candidatos[i].uid),
+                        onMatchy: () async => await _hacerMatchyFlow(c: candidatos[i], cita: _cita!)
+                    );
+                  }
+              );
             },
           ),
 
-          const SizedBox(height: 22),
+          const SizedBox(height: 30),
 
-          // 🔥 BOTÓN VOLVER PREMIUM
+          // 🔥 BOTÓN VOLVER
           _PremiumButton(
             text: 'VOLVER AL PANEL',
             gradient: kButtonGradientBack,
@@ -595,7 +589,7 @@ class _CitasPendientesDetalleScreenState
 
           const SizedBox(height: 12),
 
-          // 🔥 BOTÓN CANCELAR PREMIUM
+          // 🔥 BOTÓN CANCELAR
           _PremiumButton(
             text: 'CANCELAR CITA',
             gradient: kButtonGradientCancel,
@@ -606,7 +600,7 @@ class _CitasPendientesDetalleScreenState
             },
           ),
 
-          const SizedBox(height: 40), // Espacio para Fade Out
+          const SizedBox(height: 40),
         ],
       ),
     );
@@ -619,14 +613,156 @@ class _CitasPendientesDetalleScreenState
     Widget w = (src.isEmpty) ? Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover) : (_isNetwork(src) ? Image.network(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)) : Image.asset(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)));
     return Container(height: 190, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(22)), child: w);
   }
-  Widget _box(String t, {bool soft = false}) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18)), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: soft ? Colors.white70 : Colors.white, fontFamily: 'Poppins', fontWeight: FontWeight.w700)));
+  Widget _box(String t, {bool soft = false}) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white12)), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: soft ? Colors.white70 : Colors.white, fontFamily: 'Poppins', fontWeight: FontWeight.w700)));
+
   Widget _infoChip({required String icon, required String text}) {
     final t = text.trim().isEmpty ? '—' : text.trim();
-    return Container(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(14)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Text(icon, style: const TextStyle(fontSize: 16)), const SizedBox(width: 8), Flexible(child: Text(t, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Poppins')))]));
+    return Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: const Color(0x33FFFFFF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: kPremiumBorder.color, width: 0.5),
+          boxShadow: kCapsuleShadow,
+        ),
+        child: Column(
+            children: [
+              Text(icon, style: const TextStyle(fontSize: 20)),
+              const SizedBox(height: 4),
+              Text(
+                  t.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins')
+              )
+            ]
+        )
+    );
   }
 }
 
-// 🔥 WIDGET REUTILIZABLE: BOTÓN PREMIUM
+// -----------------------------------------------------------
+// 🔥 WIDGET RELOJ AISLADO (PARA EVITAR PARPADEO)
+// -----------------------------------------------------------
+class _RelojPremium extends StatefulWidget {
+  final String fecha;
+  final String hora;
+  final String nombreLugar;
+  final VoidCallback onCancel;
+
+  const _RelojPremium({required this.fecha, required this.hora, required this.nombreLugar, required this.onCancel});
+
+  @override
+  State<_RelojPremium> createState() => _RelojPremiumState();
+}
+
+class _RelojPremiumState extends State<_RelojPremium> {
+  Timer? _timer;
+  Duration _restante = Duration.zero;
+  bool _alerta1hMostrada = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _actualizar();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      _actualizar();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _actualizar() {
+    final dt = _parse(widget.fecha, widget.hora);
+    if (dt == null) return;
+    final limite = dt.subtract(const Duration(hours: 12));
+    final now = DateTime.now();
+    final diff = limite.difference(now);
+
+    if (!_alerta1hMostrada && diff <= const Duration(hours: 1) && diff > Duration.zero) {
+      _alerta1hMostrada = true;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Te queda 1 hora para escoger tu matchy en la cita del ${widget.nombreLugar}")));
+    }
+    if (diff.isNegative || diff == Duration.zero) {
+      widget.onCancel();
+    }
+    setState(() {
+      _restante = diff.isNegative ? Duration.zero : diff;
+    });
+  }
+
+  DateTime? _parse(String fecha, String hora) {
+    try {
+      final f = fecha.split('/');
+      if (f.length != 3) return null;
+      final day = int.parse(f[0]);
+      final month = int.parse(f[1]);
+      final year = int.parse(f[2]);
+      final upper = hora.toUpperCase();
+      final isPM = upper.contains('PM');
+      final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim();
+      final hm = clean.split(':');
+      int h = int.parse(hm[0]);
+      int m = int.parse(hm[1]);
+      if (isPM) { if (h != 12) h += 12; } else { if (h == 12) h = 0; }
+      return DateTime(year, month, day, h, m);
+    } catch (_) { return null; }
+  }
+
+  String _fmt(Duration d) {
+    final s = d.inSeconds;
+    final h = (s ~/ 3600).toString().padLeft(2, '0');
+    final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0');
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$h:$m:$ss';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: const LinearGradient(colors: [Color(0x88FF4081), Color(0x88FF5252)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        border: Border.all(color: Colors.white24, width: 1),
+        boxShadow: kCardShadow,
+      ),
+      child: Column(
+          children: [
+            Text(
+                _fmt(_restante),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'monospace',
+                  letterSpacing: 2.0,
+                  shadows: kTextShadow,
+                )
+            ),
+            const SizedBox(height: 6),
+            const Text(
+                'TIEMPO PARA ELEGIR TU MATCHY',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Poppins',
+                  letterSpacing: 1.0,
+                )
+            )
+          ]
+      ),
+    );
+  }
+}
+
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
@@ -640,17 +776,17 @@ class _PremiumButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        height: 48,
+        height: 55,
         decoration: BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient),
-          borderRadius: BorderRadius.circular(_CitasPendientesDetalleScreenState.kButtonRadius),
-          boxShadow: _CitasPendientesDetalleScreenState.kButtonShadow,
+          borderRadius: BorderRadius.circular(kButtonRadius),
+          boxShadow: kButtonShadow,
           border: Border.all(color: Colors.white24, width: 1),
         ),
         alignment: Alignment.center,
         child: Text(
             text,
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)
+            style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)
         ),
       ),
     );
@@ -662,24 +798,59 @@ class _CandidatoCard extends StatelessWidget {
   final Future<void> Function() onMatchy;
   final VoidCallback onTapFoto;
   final bool busy;
-  final bool hideAssetWhileLoading;
-  const _CandidatoCard({required this.candidato, required this.onMatchy, required this.onTapFoto, required this.busy, required this.hideAssetWhileLoading});
-  bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
-  Widget _loading() => Container(color: const Color(0x22000000), alignment: Alignment.center, child: const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
-  Widget _noPhoto() => Container(color: const Color(0x22000000), alignment: Alignment.center, child: const Icon(Icons.person, color: Colors.white54, size: 44));
+  const _CandidatoCard({required this.candidato, required this.onMatchy, required this.onTapFoto, required this.busy});
+
+  // 🔥 USO DEL WIDGET INTELIGENTE (No parpadea gracias a que el padre no se reconstruye)
   Widget _buildImage() {
-    final v = candidato.foto.trim();
-    if (hideAssetWhileLoading && v.isEmpty) return _loading();
-    if (v.isEmpty) return _noPhoto();
-    if (_isNetwork(v)) return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true, loadingBuilder: (_, child, progress) => progress == null ? child : _loading(), errorBuilder: (_,__,___) => _noPhoto());
-    return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _noPhoto());
+    return FotoPerfilUsuario(
+      uid: candidato.uid,
+      fit: BoxFit.cover,
+      alignment: Alignment.topCenter,
+    );
   }
+
   @override
   Widget build(BuildContext context) {
     const double radio = 18;
     const double altoBoton = 36;
     final nombre = candidato.nombre.trim().isNotEmpty ? candidato.nombre : 'Sin nombre';
     final edadTxt = candidato.edad > 0 ? ', ${candidato.edad}' : '';
-    return Column(children: [Expanded(child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(radio), child: InkWell(borderRadius: BorderRadius.circular(radio), onTap: onTapFoto, child: ClipRRect(borderRadius: BorderRadius.circular(radio), child: Stack(children: [Positioned.fill(child: _buildImage()), Positioned(bottom: 0, left: 0, right: 0, height: 70, child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black.withOpacity(0.7)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))), Positioned(bottom: 10, left: 10, right: 10, child: Text('$nombre$edadTxt', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins')))]))))), const SizedBox(height: 8), SizedBox(width: double.infinity, height: altoBoton, child: ElevatedButton(onPressed: busy ? null : () async => await onMatchy(), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('HACER MATCHY', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))))]);
+    return Column(children: [
+      Expanded(
+          child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(radio),
+              child: InkWell(
+                  borderRadius: BorderRadius.circular(radio),
+                  onTap: onTapFoto,
+                  child: ClipRRect(
+                      borderRadius: BorderRadius.circular(radio),
+                      child: Stack(
+                          children: [
+                            Positioned.fill(child: _buildImage()),
+                            Positioned(bottom: 0, left: 0, right: 0, height: 70, child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black.withOpacity(0.9)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))),
+                            Positioned(bottom: 10, left: 10, right: 10, child: Text('$nombre$edadTxt', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)))
+                          ]
+                      )
+                  )
+              )
+          )
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+          width: double.infinity,
+          height: altoBoton,
+          child: ElevatedButton(
+              onPressed: busy ? null : () async => await onMatchy(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFFC107),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                elevation: 4,
+                shadowColor: Colors.black54,
+              ),
+              child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)) : const Text('HACER MATCHY', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))
+          )
+      )
+    ]);
   }
 }

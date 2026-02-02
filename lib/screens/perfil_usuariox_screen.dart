@@ -1,13 +1,15 @@
 // 📂 lib/screens/perfil_usuariox_screen.dart
 // -----------------------------------------------------------
-// PERFIL PÚBLICO DEL USUARIO (DISEÑO PREMIUM)
+// PERFIL PÚBLICO DEL USUARIO (DISEÑO PREMIUM + FOTO INTELIGENTE)
 // ✅ UI: Botón Atrás (Chevron) arriba a la izquierda.
 // ✅ UI: Degradado negro inferior (Fade Out) para suavizar scroll.
+// 🔥 FIX: Foto principal usa 'FotoPerfilUsuario' para actualizarse sola.
 // -----------------------------------------------------------
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
 
 class PerfilUsuarioXScreen extends StatefulWidget {
   final String uid;
@@ -326,11 +328,6 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
         .map((e) => e.toString())
         .toList();
 
-    final principal =
-    (_data!['profilePhotoUrl'] ?? (galeriaRaw.isNotEmpty ? galeriaRaw.first : null))
-        ?.toString()
-        .trim();
-
     // -------------------------------------------------------------
     // UI
     // -------------------------------------------------------------
@@ -375,7 +372,14 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                         clipBehavior: Clip.antiAlias,
                         child: Stack(
                           children: [
-                            Positioned.fill(child: _buildImage(principal)),
+                            // 🔥 AQUÍ ESTÁ EL CAMBIO: Widget Inteligente
+                            Positioned.fill(
+                              child: FotoPerfilUsuario(
+                                uid: widget.uid,
+                                fit: BoxFit.cover,
+                                alignment: Alignment.topCenter,
+                              ),
+                            ),
                             Positioned(
                               left: 0,
                               right: 0,

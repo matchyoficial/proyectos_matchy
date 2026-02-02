@@ -1,8 +1,8 @@
 // 📂 lib/screens/perfil_screen.dart
-// ✅ PERFIL (DISEÑO PREMIUM FINAL)
-// 🔥 UI: Botones Premium (Cerrar Sesión / Borrar) con gradiente y sombra.
-// 🔥 UI: Degradado negro inferior (Fade Out) añadido.
-// ✅ LOGIC: Carga draft, Logout seguro, Borrado profundo (Storage/Firestore/Auth).
+// ✅ PERFIL (DISEÑO PREMIUM FINAL + FOTO INTELIGENTE)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta principal.
+// 🔥 LOGIC: Prioriza fotos locales (drafts) y usa el widget inteligente para la URL remota.
+// 🔥 UI: Botones Premium y degradados intactos.
 
 import 'dart:io';
 
@@ -25,6 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
 
 class PerfilScreen extends ConsumerStatefulWidget {
   static const String routeName = 'perfil';
@@ -356,13 +357,18 @@ class _PerfilContent extends StatelessWidget {
     final principal = _resolveFotoPrincipal();
     final bool tieneFotos = principal != null;
 
+    // Obtenemos UID para el widget inteligente
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 🔥 FOTO PRINCIPAL CON WIDGET INTELIGENTE (Pasamos smartUid)
           _FotoTarjeta(
             imagePathOrAssetOrUrl: principal,
+            smartUid: myUid, // 👈 Pasamos el UID para que active el modo "FotoPerfilUsuario" si es URL
             height: 450,
             overlay: (context) {
               return Stack(
@@ -480,18 +486,20 @@ class _PremiumButton extends StatelessWidget {
 }
 
 // ================================================================
-// 🔹 COMPONENTES EXISTENTES (Intactos visualmente)
+// 🔹 COMPONENTES EXISTENTES (Con soporte para Foto Inteligente)
 // ================================================================
 
 class _FotoTarjeta extends StatelessWidget {
   final String? imagePathOrAssetOrUrl;
   final double height;
   final Widget Function(BuildContext context)? overlay;
+  final String? smartUid; // 👈 NUEVO: Parámetro para activar el widget inteligente
 
   const _FotoTarjeta({
     required this.imagePathOrAssetOrUrl,
     required this.height,
     this.overlay,
+    this.smartUid, // 👈
   });
 
   bool _isAsset(String v) => v.startsWith('assets/');
@@ -503,13 +511,30 @@ class _FotoTarjeta extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget background = _fallback();
     final raw = (imagePathOrAssetOrUrl ?? '').trim();
-    if (raw.isNotEmpty) {
+
+    // Lógica para priorizar:
+    // 1. Si es archivo local (Borrador editando), lo mostramos.
+    // 2. Si no es archivo local Y tenemos smartUid, usamos FotoPerfilUsuario (Firebase actualizado).
+    // 3. Fallback normal.
+
+    bool isFile = raw.isNotEmpty && !_isUrl(raw) && !_isAsset(raw);
+
+    if (isFile) {
+      // Es borrador local, mostrar el archivo
+      background = Image.file(File(raw), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _fallback());
+    } else if (smartUid != null) {
+      // 🔥 ES URL REMOTA: Usamos el WIDGET INTELIGENTE
+      background = FotoPerfilUsuario(
+        uid: smartUid!,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+      );
+    } else if (raw.isNotEmpty) {
       if (_isUrl(raw)) {
+        // Para galerías secundarias que no tienen smartUid
         background = Image.network(raw, fit: BoxFit.cover, alignment: Alignment.topCenter, loadingBuilder: (_, c, p) => p == null ? c : Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())), errorBuilder: (_,__,___) => _fallback());
       } else if (_isAsset(raw)) {
         background = Image.asset(raw, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _fallback());
-      } else {
-        background = Image.file(File(raw), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _fallback());
       }
     }
 

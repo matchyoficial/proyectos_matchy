@@ -1,7 +1,7 @@
 // 📂 lib/screens/nueva_cita_solicitud_screen.dart
-// ✅ PANTALLA DE SOLICITUD DE CITA (FINAL + FIX FOTOS)
-// 🔥 UI FIX: Fotos con 'alignment: Alignment.topCenter' (Anti-corte de cabezas).
-// 🔥 UI FIX: Textos compactos sin aire extra.
+// ✅ PANTALLA DE SOLICITUD DE CITA (FOTO INTELIGENTE + FIX CABEZAS)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la foto del solicitante.
+// 🔥 FIX UI: Fotos con 'alignment: Alignment.topCenter' (Anti-corte).
 // 🔥 UI: Diseño Premium + Fade Out inferior + Botón Chevron.
 
 import 'package:flutter/material.dart';
@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
 
 class NuevaCitaSolicitudScreen extends StatefulWidget {
   final String citaId;
@@ -144,7 +145,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                       final fechaBonita = _formatearFechaLarga(fechaRaw);
 
                       final ownerNombre = (data['ownerNombre'] ?? 'Tu Matchy').toString().toUpperCase();
-                      final ownerFoto = (data['ownerFoto'] ?? '').toString();
                       final ownerUid = (data['ownerUid'] ?? '').toString();
 
                       return Container(
@@ -165,7 +165,7 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                             Text("$ownerNombre te ha invitado", style: kSubtituloStyle, textAlign: TextAlign.center),
                             const SizedBox(height: 25),
 
-                            // FOTO PERFIL (ANTI-CORTE DE CABEZA)
+                            // FOTO PERFIL (ANTI-CORTE DE CABEZA + WIDGET INTELIGENTE)
                             Container(
                               width: kFotoPerfilSize,
                               height: kFotoPerfilSize,
@@ -175,14 +175,12 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(kFotoPerfilRadius),
-                                child: ownerFoto.isNotEmpty
-                                    ? Image.network(
-                                    ownerFoto,
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment.topCenter, // 🔥 FIX: Prioriza la parte superior
-                                    errorBuilder: (_,__,___)=> Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)
-                                )
-                                    : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
+                                // 🔥 AQUÍ ESTÁ EL CAMBIO
+                                child: FotoPerfilUsuario(
+                                  uid: ownerUid,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter, // 🔥 Anti-corte de cabezas
+                                ),
                               ),
                             ),
 

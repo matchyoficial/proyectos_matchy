@@ -1,7 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS (FINAL)
-// 🔥 UI: Nombres de sitios ajustados (1 línea, FittedBox).
-// 🔥 UI: Botones 'POR ACEPTAR/RESPONDER' con animación de LATIDO (Pulso).
+// ✅ PANTALLA CITAS (FINAL + FOTO INTELIGENTE)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar fotos automáticamente.
+// 🔥 UI: Nombres ajustados y Botones con animación de LATIDO (Pulso) intactos.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/cita_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
 
 // 🔵 SECCIÓN 1: CONFIGURACIÓN
 const String kCitasCollection = 'citas';
@@ -24,7 +25,7 @@ class CitaItem {
   final String id;
   final String nombreMostrar;
   final String fotoMostrar;
-  final String matchyUid;
+  final String matchyUid; // Este es el UID de la "otra" persona (sea matchy u owner)
   final int matchyEdad;
   final String lugarNombre;
   final String lugarDireccion;
@@ -358,7 +359,15 @@ class _CitaCard extends StatelessWidget {
               ),
             ])),
             Expanded(flex: 4, child: Stack(fit: StackFit.expand, children: [
-              ClipRRect(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), child: item.fotoMostrar.isNotEmpty && _isNet(item.fotoMostrar) ? Image.network(item.fotoMostrar, fit: BoxFit.cover, alignment: Alignment.topCenter) : Container(color: Colors.grey[800], child: const Icon(Icons.person, color: Colors.white24))),
+              ClipRRect(
+                borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
+                // 🔥 APLICADO: Usamos el Widget Inteligente aquí
+                child: FotoPerfilUsuario(
+                  uid: item.matchyUid,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                ),
+              ),
 
               // 🔥 FIX OVERLAY: Animación de Latido (Pulsing)
               if (mostrarOverlay) Container(

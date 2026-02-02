@@ -1,7 +1,7 @@
 // 📂 lib/screens/reprogramar_cita_aceptar_screen.dart
-// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN (FINAL)
-// 🔥 FIX: Ahora envía notificación de confirmación al usuario que solicitó el cambio.
-// 🔥 Mantiene formato de fecha en español.
+// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN (FOTO INTELIGENTE + FINAL)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para la foto del solicitante.
+// 🔥 LOGIC: Notificaciones y transacciones con WriteBatch intactas.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // 🟢 Necesario para current user
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
 
 class ReprogramarCitaAceptarScreen extends StatefulWidget {
   final String citaId;
@@ -167,10 +168,12 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
     final String lugarFoto = _citaData!['lugarFotoPortada'] ?? _citaData!['lugarFoto'] ?? '';
     final String lugarNombre = _citaData!['lugarNombre'] ?? 'LUGAR';
-    final String matchyFoto = _citaData!['matchyFoto'] ?? _citaData!['candidatoFoto'] ?? '';
     final String matchyNombre = _citaData!['matchyNombre'] ?? _citaData!['candidatoNombre'] ?? 'MATCHY';
     final String fechaVieja = _citaData!['fecha'] ?? '--/--';
     final String horaVieja = _citaData!['hora'] ?? '--:--';
+
+    // 🔥 Recuperamos el UID de quien reprogramó para mostrar su foto actual
+    final String reproByUid = (_citaData!['repro_by_uid'] ?? '').toString();
 
     return Scaffold(
       body: MatchyPageLayout(
@@ -220,6 +223,8 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                           ),
                         ),
                       ),
+
+                      // 🔥 FOTO SOLICITANTE (WIDGET INTELIGENTE)
                       Positioned(
                         bottom: kUserPhotoMargin,
                         right: kUserPhotoMargin,
@@ -234,9 +239,12 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
-                            child: matchyFoto.isNotEmpty
-                                ? Image.network(matchyFoto, fit: BoxFit.cover, alignment: Alignment.topCenter)
-                                : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter),
+                            // 🔥 AQUÍ ESTÁ EL CAMBIO
+                            child: FotoPerfilUsuario(
+                              uid: reproByUid,
+                              fit: BoxFit.cover,
+                              alignment: Alignment.topCenter,
+                            ),
                           ),
                         ),
                       ),

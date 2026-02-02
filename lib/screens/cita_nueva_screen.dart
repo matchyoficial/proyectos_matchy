@@ -1,5 +1,6 @@
 // 📂 lib/screens/cita_nueva_screen.dart
-// ✅ PANTALLA CITA NUEVA (FINAL - ESTRUCTURA CORRECTA)
+// ✅ PANTALLA CITA NUEVA (FINAL + FOTO INTELIGENTE)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar fotos en tiempo real.
 // 🔥 FIX: 'Lugares Populares' usa la lógica original (LugarCard + Firebase 'popular').
 // 🔥 LOGIC: Acepta 'matchyUidInvitado' y lo pasa a las categorías y lugares.
 
@@ -7,9 +8,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
-import 'package:proyectos_matchy/widgets/lugar_card.dart'; // 🔥 USAMOS EL WIDGET OFICIAL
+import 'package:proyectos_matchy/widgets/lugar_card.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
 
 // PANTALLAS DESTINO
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
@@ -47,6 +50,7 @@ class CitaNuevaScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileFormProvider);
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     final String? fotoProvider = profile.fotosCargadas.isNotEmpty ? profile.fotosCargadas.first : null;
     final String fotoUserFinal = fotoProvider ?? (fotoUsuario.isNotEmpty ? fotoUsuario : 'assets/images/perfil1.jpg');
@@ -74,12 +78,15 @@ class CitaNuevaScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 120),
                   child: Column(
                     children: [
-                      // Header Fotos
+                      // Header Fotos (Con Widget Inteligente)
                       _HeaderFotos(
-                        fotoUser: fotoUserFinal,
+                        fotoUser: fotoUserFinal, // Foto local si existe
                         nombreUser: nombreUserFinal,
-                        fotoMatch: fotoMatch,
+                        userUid: myUid, // UID para buscar foto real si no hay local
+
+                        fotoMatch: fotoMatch, // Foto fallback
                         nombreMatch: nombreMatchFinal,
+                        matchUid: matchyUidInvitado, // UID del matchy
                       ),
 
                       const SizedBox(height: 20),
@@ -165,25 +172,31 @@ class CitaNuevaScreen extends ConsumerWidget {
 }
 
 // ===============================================================
-// 🔹 HEADER FOTOS
+// 🔹 HEADER FOTOS (ACTUALIZADO)
 // ===============================================================
 class _HeaderFotos extends StatelessWidget {
-  final String fotoUser, nombreUser, fotoMatch, nombreMatch;
-  const _HeaderFotos({required this.fotoUser, required this.nombreUser, required this.fotoMatch, required this.nombreMatch});
+  final String fotoUser, nombreUser;
+  final String fotoMatch, nombreMatch;
+  final String? userUid, matchUid;
+
+  const _HeaderFotos({
+    required this.fotoUser, required this.nombreUser, this.userUid,
+    required this.fotoMatch, required this.nombreMatch, this.matchUid,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildCapsula(fotoUser, nombreUser),
+        _buildCapsula(fotoUser, nombreUser, uid: userUid),
         const SizedBox(width: 20),
-        _buildCapsula(fotoMatch, nombreMatch),
+        _buildCapsula(fotoMatch, nombreMatch, uid: matchUid),
       ],
     );
   }
 
-  Widget _buildCapsula(String path, String nombre) {
+  Widget _buildCapsula(String pathFallback, String nombre, {String? uid}) {
     return Container(
       width: 110, height: 150,
       decoration: BoxDecoration(
@@ -194,7 +207,13 @@ class _HeaderFotos extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ClipRRect(borderRadius: BorderRadius.circular(20), child: _SafeImage(path: path)),
+          ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              // 🔥 USAMOS EL WIDGET SI TENEMOS UID
+              child: uid != null
+                  ? FotoPerfilUsuario(uid: uid, fit: BoxFit.cover, alignment: Alignment.topCenter)
+                  : _SafeImage(path: pathFallback)
+          ),
           Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))),
           Positioned(bottom: 15, left: 0, right: 0, child: Text(nombre, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Poppins'))),
         ],

@@ -1,8 +1,7 @@
 // 📂 lib/screens/cita_detalle_screen.dart
-// ✅ DETALLE DE CITA (CORREGIDO ERROR DE TIPOS DART)
-// 🔥 FIX: Casting explícito en el resultado de la transacción (Object? -> Map).
-// 🔥 LOGIC: El status 'finished' solo se activa cuando AMBOS han confirmado.
-// 🔥 UI: Pop-up invita al otro usuario por nombre si falta su código.
+// ✅ DETALLE DE CITA (FOTO INTELIGENTE + LÓGICA DOBLE CONFIRMACIÓN)
+// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta del candidato.
+// 🔥 LOGIC: Mantiene intacta la validación doble, el casting de tipos y la sincronización.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import 'package:proyectos_matchy/screens/confirmar_cita.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
 
 // =============================================================================
 // 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
@@ -89,14 +89,14 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   final TextEditingController _codigoMatchyController = TextEditingController();
   bool _procesandoValidacion = false;
 
-  // 🔥 VARIABLES NUEVAS PARA SINCRONIZACIÓN AUTOMÁTICA
+  // VARIABLES DE SINCRONIZACIÓN
   bool _navegandoExito = false;
   StreamSubscription<DocumentSnapshot>? _citaSubscription;
 
   @override
   void initState() {
     super.initState();
-    // 🔥 LISTENER: Escucha en tiempo real si la cita cambia a 'finished'
+    // LISTENER: Escucha en tiempo real si la cita cambia a 'finished'
     _citaSubscription = FirebaseFirestore.instance
         .collection('citas')
         .doc(widget.citaId)
@@ -106,9 +106,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         final data = snapshot.data() as Map<String, dynamic>;
         // Si el status cambia a 'finished' y yo aún estoy aquí, navego automáticamente
         if (data['status'] == 'finished' && !_navegandoExito && mounted) {
-          // Si tengo el diálogo abierto, verifico si puedo cerrarlo
           if (Navigator.canPop(context)) {
-            // Opcional: Cerrar diálogo si está visible
+            // Cierra diálogo si está abierto
           }
           _procesarExito();
         }
@@ -130,12 +129,11 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     return diferencia.inHours >= 12;
   }
 
-  // 🔥 HELPER: Navegación centralizada al éxito
+  // HELPER: Navegación centralizada al éxito
   Future<void> _procesarExito() async {
     if (_navegandoExito) return;
     setState(() => _navegandoExito = true);
 
-    // OBTENER MIS DATOS ACTUALES
     final user = FirebaseAuth.instance.currentUser;
     String myName = "Tú";
     String myPhoto = "";
@@ -149,7 +147,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
     if (!mounted) return;
 
-    // IR A PANTALLA DE ÉXITO
     Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -164,7 +161,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   }
 
   // -------------------------------------------------------------------------
-  // 🔥 LÓGICA DE VALIDACIÓN DOBLE + POP-UP (FIXED TYPES)
+  // 🔥 LÓGICA DE VALIDACIÓN DOBLE + POP-UP
   // -------------------------------------------------------------------------
   Future<void> _validarYConfirmar() async {
     if (_procesandoValidacion || _navegandoExito) return;
@@ -181,18 +178,15 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       setState(() => _procesandoValidacion = true);
 
       try {
-        // TRANSACCIÓN DE VERIFICACIÓN DOBLE
         final result = await FirebaseFirestore.instance.runTransaction((transaction) async {
           DocumentSnapshot snapshot = await transaction.get(FirebaseFirestore.instance.collection('citas').doc(widget.citaId));
 
           if (!snapshot.exists) throw Exception("Error: Cita no encontrada");
           final data = snapshot.data() as Map<String, dynamic>;
 
-          // Identificar campos según quién soy
           String miCampo = widget.isOwner ? 'ownerConfirmado' : 'matchyConfirmado';
           String otroCampo = widget.isOwner ? 'matchyConfirmado' : 'ownerConfirmado';
 
-          // Obtener nombre del otro para el mensaje
           String nombreOtro = widget.isOwner
               ? (data['matchyNombre'] ?? 'tu matchy')
               : (data['ownerNombre'] ?? 'tu matchy');
@@ -204,7 +198,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             'updatedAt': FieldValue.serverTimestamp(),
           };
 
-          // 🔥 CONDICIÓN CRUCIAL: SOLO si ambos confirmaron, cerramos la cita
           if (elOtroYaConfirmo) {
             updates['status'] = 'finished';
             updates['citaExitosa'] = true;
@@ -213,26 +206,23 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
           transaction.update(snapshot.reference, updates);
 
-          // Retornamos el estado para saber qué mostrar en la UI
           return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
         });
 
-        // 🔥 FIX AQUÍ: Casting explícito para evitar error "Object?"
+        // Casting explícito (IMPORTANTE: Mantenemos este arreglo)
         final Map<String, dynamic> resultMap = result as Map<String, dynamic>;
         bool isFinished = resultMap['finished'] as bool;
         String otherName = resultMap['otherName'] as String;
 
         if (isFinished) {
-          // Si fuimos los segundos en confirmar, la cita terminó. Vamos al éxito.
           _procesarExito();
         } else {
-          // 🔥 SI SOMOS LOS PRIMEROS: MOSTRAR POP-UP DE ESPERA
           setState(() => _procesandoValidacion = false);
           if (!mounted) return;
 
           showDialog(
             context: context,
-            barrierDismissible: false, // Obliga a esperar o cerrar manual
+            barrierDismissible: false,
             builder: (ctx) => AlertDialog(
               backgroundColor: const Color(0xFF1A1A1A),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
@@ -385,7 +375,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
                       const SizedBox(height: 20),
 
-                      // 🔵 2. TARJETA CANDIDATO (FIX DE FOTO)
+                      // 🔵 2. TARJETA CANDIDATO (FIX: FOTO INTELIGENTE)
                       GestureDetector(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
                         child: Container(
@@ -396,13 +386,11 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                // 🔥 FIX FOTO HUMANO: alignment.topCenter para priorizar cabezas
-                                child: Image.network(
-                                    widget.matchyFoto,
+                                // 🔥 AQUÍ ESTÁ EL CAMBIO: Widget FotoPerfilUsuario
+                                child: FotoPerfilUsuario(
+                                    uid: widget.matchyUid,
                                     fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    alignment: Alignment.topCenter, // 🔥 Prelación al TOP
-                                    errorBuilder: (_,__,___) => Container(color: Colors.grey)
+                                    alignment: Alignment.topCenter // Anti-corte cabezas
                                 ),
                               ),
                               Container(
