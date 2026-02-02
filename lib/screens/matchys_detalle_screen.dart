@@ -1,11 +1,12 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY (HISTORIAL + ACCIONES)
-// 🔥 FIX: Foto de perfil con 'Alignment.topCenter' (No corta cabezas).
-// 🔥 FIX LOGIC: Historial muestra SOLO citas con status 'finished'.
-// 🔥 UI: Pop-up (Dialog) al hacer clic en una foto del historial.
+// ✅ DETALLE DE MATCHY (HISTORIAL FINAL + POP-UP COMPACTO)
+// 🔥 FIX: Pop-up con textos compactos (height: 1.0) y sin aire extra.
+// 🔥 CHINCHES: Nueva zona de configuración exclusiva para el Pop-up.
+// 🔥 LOGIC: Mantiene la lectura correcta desde la colección 'citas'.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
@@ -30,7 +31,11 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   }
   @override void dispose() { _controller.dispose(); super.dispose(); }
 
-  // CHINCHES MAESTROS
+  // ===========================================================================
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
+  // ===========================================================================
+
+  // GENERAL
   static const double kFotoPerfilHeight = 350.0;
   static const double kHistorialHeight = 250.0;
   static const Color kCapsulaColor = Color(0x33FFFFFF);
@@ -39,8 +44,20 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   static const double kButtonRadius = 20.0;
   static const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
 
+  // 🔴 CHINCHES DEL POP-UP (ZOOM)
+  static const Color kPopUpBackground = Color(0xFF0A3043); // Fondo oscuro
+  static const double kPopUpRadius = 25.0; // Borde redondeado
+  static const double kPopUpTitleSize = 22.0; // Tamaño Nombre Sitio
+  static const double kPopUpDateSize = 21.0;  // Tamaño Fecha
+  static const Color kPopUpIconColor = Color(0xFFBEB3FF); // Color ícono calendario
+  static const double kPopUpFotoHeight = 250.0; // Altura foto zoom
+
+  // ===========================================================================
+
   @override
   Widget build(BuildContext context) {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -55,7 +72,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // FOTO PERFIL GRANDE (FIX ANTI-MOCHA CABEZAS)
+                  // FOTO PERFIL GRANDE
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyData.uid))),
                     child: Container(
@@ -67,7 +84,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                             child: Image.network(
                                 widget.matchyData.fotoUrl,
                                 fit: BoxFit.cover,
-                                alignment: Alignment.topCenter, // 🔥 FIX: Prioriza la parte superior
+                                alignment: Alignment.topCenter,
                                 errorBuilder: (_,__,___) => Container(color: Colors.grey)
                             )
                         ),
@@ -85,26 +102,35 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   const Text("TU HISTORIAL CON TU MATCHY", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 6, offset: Offset(0, 3))])),
                   const SizedBox(height: 4),
 
-                  // 🔥 HISTORIAL FILTRADO (SOLO FINISHED)
+                  // 🔥 HISTORIAL FILTRADO
                   Container(
                     height: kHistorialHeight, padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(color: kCapsulaColor, borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.white10)),
                     child: StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance
-                          .collection('matchys')
-                          .doc(widget.matchyData.matchId)
-                          .collection('historial')
-                          .orderBy('createdAt', descending: true)
+                          .collection('citas')
+                          .orderBy('updatedAt', descending: true)
                           .snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.hasError) return const Icon(Icons.error, color: Colors.white);
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
-                        // 🔥 FILTRO MANUAL: Solo mostramos las que tengan status 'finished'
                         final allDocs = snapshot.data?.docs ?? [];
+
                         final docs = allDocs.where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
-                          return data['status'] == 'finished'; // Solo pasamos las finalizadas
+                          final status = data['status'];
+                          final ownerUid = data['ownerUid'];
+                          final matchyUid = data['matchyUid'];
+
+                          if (status != 'finished') return false;
+
+                          bool soyYoOwner = ownerUid == myUid;
+                          bool soyYoMatchy = matchyUid == myUid;
+                          bool esElMatchy = matchyUid == widget.matchyData.uid;
+                          bool esElOwner = ownerUid == widget.matchyData.uid;
+
+                          return (soyYoOwner && esElMatchy) || (soyYoMatchy && esElOwner);
                         }).toList();
 
                         if (docs.isEmpty) return const Center(child: Text("Aún no tienen citas completadas.", style: TextStyle(color: Colors.white54, fontSize: 12)));
@@ -120,11 +146,16 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                             final d = docs[i].data() as Map<String, dynamic>;
                             final nombreLugar = (d['lugarNombre'] ?? 'Cita').toString();
                             final fotoLugar = (d['lugarFotoPortada'] ?? '').toString();
-                            final fechaRaw = d['fechaHora'] ?? '';
-                            final fechaMostrable = fechaRaw.toString().split(' ').first;
+
+                            String fechaMostrable = "Fecha";
+                            if (d['fecha'] != null) {
+                              fechaMostrable = d['fecha'].toString();
+                            } else if (d['fechaHora'] != null) {
+                              fechaMostrable = d['fechaHora'].toString().split(' ').first;
+                            }
 
                             return GestureDetector(
-                              // POP-UP (ZOOM)
+                              // 🔥 POP-UP CON CHINCHES Y TEXTO COMPACTO
                               onTap: () {
                                 showDialog(
                                   context: context,
@@ -136,30 +167,57 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                                       alignment: Alignment.topRight,
                                       children: [
                                         Container(
-                                          decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 15, offset: Offset(0, 5))]),
+                                          decoration: BoxDecoration(
+                                              color: kPopUpBackground,
+                                              borderRadius: BorderRadius.circular(kPopUpRadius),
+                                              border: Border.all(color: Colors.white12),
+                                              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 15, offset: Offset(0, 5))]
+                                          ),
                                           child: Column(
                                             mainAxisSize: MainAxisSize.min,
                                             crossAxisAlignment: CrossAxisAlignment.stretch,
                                             children: [
+                                              // FOTO POP-UP
                                               ClipRRect(
-                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(kPopUpRadius)),
                                                 child: SizedBox(
-                                                  height: 250,
+                                                  height: kPopUpFotoHeight,
                                                   child: Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54))),
                                                 ),
                                               ),
+
+                                              // TEXTOS (FIX DE AIRE)
                                               Padding(
                                                 padding: const EdgeInsets.all(20.0),
                                                 child: Column(
                                                   children: [
-                                                    Text(nombreLugar.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, fontFamily: 'Poppins')),
-                                                    const SizedBox(height: 8),
+                                                    Text(
+                                                        nombreLugar.toUpperCase(),
+                                                        textAlign: TextAlign.center,
+                                                        maxLines: 2, // Por si es muy largo, máximo 2 líneas
+                                                        overflow: TextOverflow.ellipsis,
+                                                        style: const TextStyle(
+                                                            color: Colors.white,
+                                                            fontWeight: FontWeight.w900,
+                                                            fontSize: kPopUpTitleSize,
+                                                            fontFamily: 'Poppins',
+                                                            height: 1.0 // 🔥 FIX: Elimina el aire vertical
+                                                        )
+                                                    ),
+                                                    const SizedBox(height: 4), // 🔥 FIX: Espacio reducido
                                                     Row(
                                                       mainAxisAlignment: MainAxisAlignment.center,
                                                       children: [
-                                                        const Icon(Icons.calendar_today, color: Color(0xFFBEB3FF), size: 16),
-                                                        const SizedBox(width: 8),
-                                                        Text("Fecha: $fechaMostrable", style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                                                        const Icon(Icons.calendar_today, color: kPopUpIconColor, size: 16),
+                                                        const SizedBox(width: 5),
+                                                        Text(
+                                                            "Fecha: $fechaMostrable",
+                                                            style: const TextStyle(
+                                                                color: Colors.white70,
+                                                                fontSize: kPopUpDateSize,
+                                                                height: 1.0 // 🔥 FIX: Elimina el aire vertical
+                                                            )
+                                                        ),
                                                       ],
                                                     ),
                                                   ],
