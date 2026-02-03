@@ -134,7 +134,7 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
                             textAlign: TextAlign.justify, // Justificado
                             style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 14,
+                                fontSize: 13,
                                 height: 1.5,
                                 fontFamily: 'Poppins'
                             )
