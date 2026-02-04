@@ -1,8 +1,7 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
-// ✅ SALA DE REPORTE (EL TRIBUNAL)
-// 🔥 UI: Reloj Casio Gigante + Botones de Sentencia.
-// 🔥 LOGIC: Calcula tiempo restante (2h límite) y ejecuta castigos/disputas.
-// 🔥 CONTROL: Zona de Chinches Maestros incluida.
+// ✅ SALA DE REPORTE (VERSIÓN FINAL CON BLOQUEO)
+// 🔥 UI: Usa tus "Chinches Maestros" personalizados.
+// 🔥 LOGIC: CULPABLE = -20 pts. Si Score < 60 o Strikes >= 3 -> BLOQUEO DE PERFIL.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -22,7 +21,7 @@ class ReporteInasistenciaScreen extends StatefulWidget {
 
 class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS (TUS AJUSTES) 🔴🔴
   // ===========================================================================
 
   // 1. LOGO Y HEADER
@@ -30,31 +29,35 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   static const double kLogoTopMargin        = 10.0;
 
   // 2. TEXTOS DE ALERTA
-  static const double kTituloSize           = 26.0; // "TIEMPO RESTANTE"
-  static const double kSubtituloSize        = 14.0; // "Para reportar..."
+  static const double kIconoAlertaSize      = 60.0;
+  static const double kTituloSize           = 32.0;
+  static const double kSubtituloSize        = 19.0;
   static const double kEspacioTituloReloj   = 20.0;
 
-  // 3. RELOJ GIGANTE (CASIO STYLE)
-  static const double kRelojFontSize        = 55.0; // Números grandes
-  static const double kRelojContainerHeight = 110.0; // Altura caja negra
-  static const double kRelojLetterSpacing   = 4.0;  // Separación números
+  // 3. RELOJ GIGANTE
+  static const double kRelojFontSize        = 55.0;
+  static const double kRelojContainerHeight = 110.0;
+  static const double kRelojLetterSpacing   = 4.0;
 
-  // 4. BOTONES DE ACCIÓN (SENTENCIA)
-  static const double kBotonesGap           = 16.0; // Espacio entre botones
-  static const double kBotonHeight          = 60.0; // Altura botones
+  // 4. TEXTOS INFORMATIVOS
+  static const double kAdvertenciaSize      = 17.0;
+
+  // 5. BOTONES DE ACCIÓN
+  static const double kBotonesGap           = 16.0;
+  static const double kBotonHeight          = 60.0;
   static const double kBotonFontSize        = 14.0;
 
   // COLORES DE BOTONES
-  static const List<Color> kBtnYoFui        = [Color(0xFF00E676), Color(0xFF00C853)]; // Verde (Acusación)
-  static const List<Color> kBtnNoFui        = [Color(0xFFFF5252), Color(0xFFD32F2F)]; // Rojo (Confesión)
-  static const List<Color> kBtnMutuo        = [Color(0xFF64B5F6), Color(0xFF1976D2)]; // Azul (Acuerdo)
+  static const List<Color> kBtnYoFui        = [Color(0xFF00E676), Color(0xFF00C853)];
+  static const List<Color> kBtnNoFui        = [Color(0xFFFF5252), Color(0xFFD32F2F)];
+  static const List<Color> kBtnMutuo        = [Color(0xFF64B5F6), Color(0xFF1976D2)];
 
   // ===========================================================================
 
   String _tiempoRestante = "--:--:--";
   Timer? _timer;
   bool _isLoading = false;
-  DateTime? _deadline; // Hora cita + 2 horas
+  DateTime? _deadline;
 
   @override
   void initState() {
@@ -68,23 +71,45 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     super.dispose();
   }
 
+  // 🔥 PARSER MANUAL DE FECHA
+  DateTime _parsearFechaManual(String fStr, String hStr) {
+    try {
+      final parts = fStr.trim().split(RegExp(r'[/ -]'));
+      if (parts.length < 3) return DateTime.now();
+
+      int d = int.parse(parts[0]);
+      int m = int.parse(parts[1]);
+      int y = int.parse(parts[2]);
+
+      String rawHora = hStr.toUpperCase().replaceAll('.', '').trim();
+      bool esPM = rawHora.contains("PM");
+
+      String soloNumeros = rawHora.replaceAll(RegExp(r'[^0-9:]'), '');
+      final timeParts = soloNumeros.split(':');
+      int hora = int.parse(timeParts[0]);
+      int min = int.parse(timeParts[1]);
+
+      if (esPM && hora != 12) hora += 12;
+      if (!esPM && hora == 12) hora = 0;
+
+      return DateTime(y, m, d, hora, min);
+    } catch (e) {
+      return DateTime.now();
+    }
+  }
+
   Future<void> _cargarDatosCita() async {
     try {
       final doc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
       if (!doc.exists) return;
 
       final data = doc.data()!;
+      final String fTexto = (data['fecha'] ?? '').toString();
+      final String hTexto = (data['hora'] ?? '').toString();
 
-      // Calcular Deadline (Hora Cita + 2 Horas)
-      DateTime fechaCita;
-      if (data['scheduledAt'] is Timestamp) {
-        fechaCita = (data['scheduledAt'] as Timestamp).toDate();
-      } else {
-        // Fallback por si es string (usamos lógica simple o actual)
-        fechaCita = DateTime.now();
-      }
-
+      DateTime fechaCita = _parsearFechaManual(fTexto, hTexto);
       _deadline = fechaCita.add(const Duration(hours: 2));
+
       _startTimer();
 
     } catch (e) {
@@ -100,20 +125,69 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       final difference = _deadline!.difference(now);
 
       if (difference.isNegative) {
-        // SE ACABÓ EL TIEMPO
         _timer?.cancel();
-        setState(() => _tiempoRestante = "00:00:00");
-        // Aquí podrías disparar el castigo automático si el usuario está viendo la pantalla
+        if (mounted) setState(() => _tiempoRestante = "00:00:00");
+        if (!_isLoading) _ejecutarCastigoAutomatico();
       } else {
         final h = difference.inHours.toString().padLeft(2, '0');
         final m = (difference.inMinutes % 60).toString().padLeft(2, '0');
         final s = (difference.inSeconds % 60).toString().padLeft(2, '0');
-        setState(() => _tiempoRestante = "$h:$m:$s");
+        if (mounted) setState(() => _tiempoRestante = "$h:$m:$s");
       }
     });
   }
 
-  // ⚖️ LÓGICA DEL TRIBUNAL
+  Future<void> _ejecutarCastigoAutomatico() async {
+    setState(() => _isLoading = true);
+    try {
+      final citaDoc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
+      if (!citaDoc.exists) return;
+      final data = citaDoc.data()!;
+
+      if (data['status'] == 'finished') {
+        if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 1)), (route) => false);
+        return;
+      }
+
+      final String ownerUid = data['ownerUid'];
+      final String matchyUid = data['matchyUid'];
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final ownerRef = FirebaseFirestore.instance.collection('users').doc(ownerUid);
+        final matchyRef = FirebaseFirestore.instance.collection('users').doc(matchyUid);
+        final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
+
+        // Castigo Owner
+        final ownerSnap = await transaction.get(ownerRef);
+        if (ownerSnap.exists) {
+          int score = (ownerSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+          transaction.update(ownerRef, {'confiabilidad': (score - 10).clamp(0, 100)});
+        }
+
+        // Castigo Matchy
+        final matchySnap = await transaction.get(matchyRef);
+        if (matchySnap.exists) {
+          int score = (matchySnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+          transaction.update(matchyRef, {'confiabilidad': (score - 10).clamp(0, 100)});
+        }
+
+        transaction.update(citaRef, {
+          'status': 'finished',
+          'resultado': 'expired_timeout',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tiempo agotado. La cita se cerró automáticamente."), backgroundColor: Colors.red));
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 1)), (route) => false);
+      }
+    } catch (e) {
+      debugPrint("Error castigo automático: $e");
+    }
+  }
+
+  // ⚖️ JUEZ MANUAL (CON LÓGICA DE BLOQUEO AGREGADA)
   Future<void> _ejecutarSentencia(String tipo) async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -125,65 +199,50 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
 
-        // 1. CONFESIÓN ("NO PUDE IR") -> Castigo Inmediato (-20%)
+        // 🚨 AQUÍ ESTÁ EL ARREGLO DE BLOQUEO
         if (tipo == 'CULPABLE') {
+          // 1. Leer datos actuales del usuario
           final userSnap = await transaction.get(userRef);
           int currentScore = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-          int newScore = (currentScore - 20).clamp(0, 100); // Castigo duro por faltar
+          int currentStrikes = (userSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
 
-          transaction.update(userRef, {
+          // 2. Calcular nuevos valores
+          int newScore = (currentScore - 20).clamp(0, 100);
+          int newStrikes = currentStrikes + 1;
+
+          Map<String, dynamic> updates = {
             'confiabilidad': newScore,
-            'strikes': FieldValue.increment(1), // Suma strike
-          });
+            'strikes': newStrikes,
+          };
+
+          // 3. 🚨 REGLA DE BLOQUEO: Si Score < 60 o Strikes >= 3
+          if (newScore < 60 || newStrikes >= 3) {
+            updates['userStatus'] = 'blocked';
+            updates['isBlocked'] = true; // Doble check por si acaso
+          }
+
+          transaction.update(userRef, updates);
 
           transaction.update(citaRef, {
             'status': 'finished',
             'resultado': 'absent_confessed',
-            'culpableUid': user.uid,
+            'culpableUid': user.uid
           });
         }
-
-        // 2. ACUSACIÓN ("YO SÍ FUI") -> Abre Disputa
         else if (tipo == 'INOCENTE') {
-          transaction.update(citaRef, {
-            'status': 'dispute', // Pasa a revisión manual o espera reporte del otro
-            'reclamo_por': user.uid,
-            'reclamo_at': FieldValue.serverTimestamp(),
-          });
-          // Nota: Aquí no bajamos puntos aún, esperamos a ver qué dice el otro.
+          transaction.update(citaRef, {'status': 'dispute', 'reclamo_por': user.uid, 'reclamo_at': FieldValue.serverTimestamp()});
         }
-
-        // 3. MUTUO ACUERDO -> Castigo Leve o Neutro
         else if (tipo == 'MUTUO') {
-          // Asumamos castigo leve (-5% o nada si ambos coinciden)
-          // Por ahora lo marcamos para revisión
-          transaction.update(citaRef, {
-            'status': 'mutual_cancel_request',
-            'solicitado_por': user.uid,
-          });
+          transaction.update(citaRef, {'status': 'mutual_cancel_request', 'solicitado_por': user.uid});
         }
-
       });
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 1)), (route) => false);
-
-        String msg = "";
-        if (tipo == 'CULPABLE') msg = "Reporte enviado. Se ha aplicado la penalidad por inasistencia.";
-        if (tipo == 'INOCENTE') msg = "Reporte enviado. Esperaremos la confirmación de tu Matchy.";
-        if (tipo == 'MUTUO') msg = "Solicitud de cancelación mutua enviada.";
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(msg),
-          backgroundColor: tipo == 'CULPABLE' ? Colors.red : Colors.blue,
-        ));
       }
 
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -193,30 +252,16 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Fondo Sutil
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.3,
-              child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-            ),
-          ),
-
+          Positioned.fill(child: Opacity(opacity: 0.3, child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover))),
           SafeArea(
             child: Column(
               children: [
-                // 1. HEADER
                 Padding(
                   padding: EdgeInsets.only(top: kLogoTopMargin, left: 10, right: 10),
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white, size: 28),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
+                      Align(alignment: Alignment.centerLeft, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 28), onPressed: () => Navigator.pop(context))),
                       Image.asset('assets/images/logomatchyplano.png', height: kLogoHeight),
                     ],
                   ),
@@ -228,95 +273,41 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                     child: Column(
                       children: [
                         const SizedBox(height: 40),
-
-                        // 2. TEXTOS DE ALERTA
-                        Icon(Icons.timer_off_outlined, color: Colors.redAccent, size: 50),
+                        Icon(Icons.timer_off_outlined, color: Colors.redAccent, size: kIconoAlertaSize),
                         const SizedBox(height: 10),
-                        Text(
-                          "TIEMPO RESTANTE",
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: kTituloSize,
-                              fontWeight: FontWeight.w900,
-                              fontFamily: 'Poppins',
-                              letterSpacing: 1.0
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          "Para reportar el estado de tu cita",
-                          style: TextStyle(color: Colors.white54, fontSize: kSubtituloSize),
-                        ),
 
+                        Text("TIEMPO RESTANTE", style: TextStyle(color: Colors.white, fontSize: kTituloSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0)),
+                        const SizedBox(height: 5),
+
+                        Text("Para reportar el estado de tu cita", style: TextStyle(color: Colors.white54, fontSize: kSubtituloSize)),
                         SizedBox(height: kEspacioTituloReloj),
 
-                        // 3. RELOJ GIGANTE (CASIO)
+                        // RELOJ
                         Container(
-                          height: kRelojContainerHeight,
-                          width: double.infinity,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                              color: const Color(0xFF111111), // Negro casi puro
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2),
-                              boxShadow: [
-                                BoxShadow(color: Colors.redAccent.withOpacity(0.2), blurRadius: 20, spreadRadius: 2)
-                              ]
-                          ),
-                          child: Text(
-                            _tiempoRestante,
-                            style: TextStyle(
-                                color: const Color(0xFFFF5252), // Rojo Digital
-                                fontSize: kRelojFontSize,
-                                fontFamily: 'monospace', // Estilo Digital
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: kRelojLetterSpacing,
-                                shadows: [
-                                  BoxShadow(color: Colors.red.withOpacity(0.6), blurRadius: 15)
-                                ]
-                            ),
-                          ),
+                          height: kRelojContainerHeight, width: double.infinity, alignment: Alignment.center,
+                          decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2), boxShadow: [BoxShadow(color: Colors.redAccent.withOpacity(0.2), blurRadius: 20, spreadRadius: 2)]),
+                          child: Text(_tiempoRestante, style: TextStyle(color: const Color(0xFFFF5252), fontSize: kRelojFontSize, fontFamily: 'monospace', fontWeight: FontWeight.w900, letterSpacing: kRelojLetterSpacing, shadows: [BoxShadow(color: Colors.red.withOpacity(0.6), blurRadius: 15)])),
                         ),
 
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 10),
                         const Text(
-                          "Si el contador llega a cero sin confirmación, ambos perderán 10 puntos de confiabilidad.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.orangeAccent, fontSize: 13, fontStyle: FontStyle.italic),
+                            "Si el contador llega a cero sin confirmación, ambos perderán 10 puntos de confiabilidad.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.orangeAccent, fontSize: kAdvertenciaSize, fontStyle: FontStyle.italic)
                         ),
 
                         const SizedBox(height: 50),
 
-                        // 4. BOTONES DE SENTENCIA
+                        // BOTONES
                         if (_isLoading)
                           const CircularProgressIndicator(color: Colors.white)
                         else ...[
-                          _SentenciaButton(
-                            text: "YO SÍ ASISTÍ, MI MATCHY NO",
-                            icon: Icons.person_pin_circle_rounded,
-                            gradient: kBtnYoFui,
-                            onTap: () => _ejecutarSentencia('INOCENTE'),
-                          ),
-
+                          _SentenciaButton(text: "YO SÍ ASISTÍ, MI MATCHY NO", icon: Icons.person_pin_circle_rounded, gradient: kBtnYoFui, onTap: () => _ejecutarSentencia('INOCENTE')),
                           SizedBox(height: kBotonesGap),
-
-                          _SentenciaButton(
-                            text: "NINGUNO ASISTIÓ / ACUERDO",
-                            icon: Icons.handshake_rounded,
-                            gradient: kBtnMutuo,
-                            onTap: () => _ejecutarSentencia('MUTUO'),
-                          ),
-
+                          _SentenciaButton(text: "NINGUNO ASISTIÓ / ACUERDO", icon: Icons.handshake_rounded, gradient: kBtnMutuo, onTap: () => _ejecutarSentencia('MUTUO')),
                           SizedBox(height: kBotonesGap),
-
-                          _SentenciaButton(
-                            text: "NO PUDE ASISTIR",
-                            icon: Icons.cancel_presentation_rounded,
-                            gradient: kBtnNoFui,
-                            onTap: () => _ejecutarSentencia('CULPABLE'),
-                          ),
+                          _SentenciaButton(text: "NO PUDE ASISTIR", icon: Icons.cancel_presentation_rounded, gradient: kBtnNoFui, onTap: () => _ejecutarSentencia('CULPABLE')),
                         ],
-
                         const SizedBox(height: 40),
                       ],
                     ),
@@ -337,42 +328,21 @@ class _SentenciaButton extends StatelessWidget {
   final List<Color> gradient;
   final VoidCallback onTap;
 
-  const _SentenciaButton({
-    required this.text,
-    required this.icon,
-    required this.gradient,
-    required this.onTap
-  });
+  const _SentenciaButton({required this.text, required this.icon, required this.gradient, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity,
-        height: _ReporteInasistenciaScreenState.kBotonHeight,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: gradient),
-          borderRadius: BorderRadius.circular(18),
-          boxShadow: [
-            BoxShadow(color: gradient.last.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))
-          ],
-          border: Border.all(color: Colors.white24, width: 1),
-        ),
+        width: double.infinity, height: _ReporteInasistenciaScreenState.kBotonHeight,
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: gradient), borderRadius: BorderRadius.circular(18), boxShadow: [BoxShadow(color: gradient.last.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))], border: Border.all(color: Colors.white24, width: 1)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: Colors.white, size: 22),
             const SizedBox(width: 10),
-            Text(
-              text,
-              style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  fontSize: _ReporteInasistenciaScreenState.kBotonFontSize,
-                  letterSpacing: 0.5
-              ),
-            ),
+            Text(text, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: _ReporteInasistenciaScreenState.kBotonFontSize, letterSpacing: 0.5)),
           ],
         ),
       ),
