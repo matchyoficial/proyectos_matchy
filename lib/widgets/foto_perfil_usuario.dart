@@ -1,4 +1,8 @@
 // 📂 lib/widgets/foto_perfil_usuario.dart
+// ✅ WIDGET INTELIGENTE DE FOTO DE PERFIL
+// 🔥 FIX: Muestra 'CircularProgressIndicator' mientras carga, eliminando el "parpadeo negro".
+// 🔥 LOGIC: Se conecta a Firestore en tiempo real para mostrar siempre la foto más reciente.
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -25,9 +29,18 @@ class FotoPerfilUsuario extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snapshot) {
 
-        // Cargando... (mostramos un fondo gris oscuro sutil)
+        // 🔥 CARGANDO: Muestra un indicador sutil en vez de negro vacío
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(color: Colors.grey[900]);
+          return Container(
+            color: Colors.grey[900],
+            child: const Center(
+              child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+              ),
+            ),
+          );
         }
 
         // Si hay error o el usuario no existe
@@ -50,7 +63,17 @@ class FotoPerfilUsuario extends StatelessWidget {
           errorBuilder: (_, __, ___) => _buildDefault(),
           loadingBuilder: (context, child, loadingProgress) {
             if (loadingProgress == null) return child;
-            return Container(color: Colors.grey[900]);
+            // 🔥 CARGANDO IMAGEN REAL: También muestra spinner
+            return Container(
+              color: Colors.grey[900],
+              child: const Center(
+                child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+                ),
+              ),
+            );
           },
         );
       },
