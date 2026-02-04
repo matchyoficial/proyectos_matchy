@@ -1,7 +1,8 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (DISEÑO FINAL)
-// 🔥 FIX: Notificaciones se ELIMINAN al hacer click para evitar dobles activaciones.
-// 🔥 UI: Diseño Intacto (Categorías con título dentro + Degradado + Sombra).
+// ✅ PANEL CENTRAL (FINAL + LÓGICA DE BLOQUEO)
+// 🔥 UI: Termómetro Inteligente integrado.
+// 🔥 LOGIC: Los botones "Crear" y "Buscar" ahora respetan el bloqueo temporal.
+// 🔥 UX: "Citas Publicadas" permanece abierto para permitir redención.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -12,6 +13,9 @@ import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/screens/splash_screen.dart';
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
+
+// 🔹 WIDGET TERMÓMETRO
+import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 
 // PANTALLAS DE NAVEGACIÓN
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
@@ -245,12 +249,18 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                       final localPhoto = (data?['profilePhotoLocalPath'] ?? '').toString();
                       final fotoFinal = profilePhotoUrl.isNotEmpty ? profilePhotoUrl : (localPhoto.isNotEmpty ? localPhoto : 'assets/images/perfil1.jpg');
 
+                      // 🟢 EXTRAER DATOS PARA EL BLOQUEO
+                      final puntaje = (data?['confiabilidad'] as num?)?.toInt() ?? 100;
+                      final bloqueadoHasta = data?['bloqueadoHasta'] as Timestamp?;
+
                       return _PanelContent(
                         textTheme: textTheme,
                         nombre: nombre,
                         edad: edad,
                         ubicacion: ubicacion,
                         fotoWidget: _buildFotoWidget(fotoFinal),
+                        puntaje: puntaje,
+                        fechaDesbloqueo: bloqueadoHasta?.toDate(),
                       );
                     },
                   ),
@@ -282,7 +292,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   }
 }
 
-// ... _NotificacionesSheet (Lógica ajustada) ...
+// ... _NotificacionesSheet (Sin cambios) ...
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
@@ -295,7 +305,6 @@ class _NotificacionesSheet extends ConsumerWidget {
         children: [
           const SizedBox(height: 15), Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 20), const Text("NOTIFICACIONES", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0)), const SizedBox(height: 15),
           Expanded(child: notificacionesAsync.when(loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))), error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))), data: (docs) { if (docs.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins'))); return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; final docId = docs[index].id; final leido = data['read'] == true; final titulo = data['title'] ?? 'Notificación'; final cuerpo = data['body'] ?? ''; final type = data['type'] ?? ''; final citaId = data['citaId']; IconData icono = Icons.notifications_rounded; if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded; if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded; return Dismissible(key: Key(docId), direction: DismissDirection.endToStart, background: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)), alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete_outline, color: Colors.white)), onDismissed: (_) => NotificationLogic.deleteNotification(docId), child: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kNotifGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius), border: leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5), boxShadow: _PanelScreenState.kNotifShadow), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), leading: CircleAvatar(backgroundColor: leido ? Colors.white10 : const Color(0xFF6B4EE6), child: Icon(icono, color: Colors.white)), title: Text(titulo, style: TextStyle(color: Colors.white, fontWeight: leido ? FontWeight.normal : FontWeight.bold, fontSize: 15)), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: const TextStyle(color: Colors.white70, fontSize: 13))), trailing: const Icon(Icons.chevron_right, color: Colors.white38), onTap: () {
-            // 🔥 AQUÍ ESTÁ EL CAMBIO: Eliminamos la notificación para que desaparezca inmediatamente
             NotificationLogic.deleteNotification(docId);
             Navigator.pop(context);
             if (type == 'repro_request' && citaId != null) Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaAceptarScreen(citaId: citaId)));
@@ -308,14 +317,50 @@ class _NotificacionesSheet extends ConsumerWidget {
   }
 }
 
+// 🟢 AQUÍ ESTÁ LA LÓGICA DE BLOQUEO EN LOS BOTONES
 class _PanelContent extends StatelessWidget {
   final TextTheme textTheme;
   final String nombre;
   final String edad;
   final String ubicacion;
   final Widget fotoWidget;
+  final int puntaje;
+  final DateTime? fechaDesbloqueo;
 
-  const _PanelContent({required this.textTheme, required this.nombre, required this.edad, required this.ubicacion, required this.fotoWidget});
+  const _PanelContent({
+    required this.textTheme,
+    required this.nombre,
+    required this.edad,
+    required this.ubicacion,
+    required this.fotoWidget,
+    required this.puntaje,
+    this.fechaDesbloqueo,
+  });
+
+  // 🔥 Función Maestra: Verifica si hoy es antes que la fecha de desbloqueo
+  void _ejecutarAccion(BuildContext context, VoidCallback accion) {
+    if (fechaDesbloqueo != null && fechaDesbloqueo!.isAfter(DateTime.now())) {
+      // ⛔ BLOQUEADO: Mostrar Alerta
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.lock_clock, color: Colors.white),
+                SizedBox(width: 10),
+                Expanded(child: Text("Tu cuenta tiene una restricción activa. Completa tus citas pendientes para desbloquearte.", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              ],
+            ),
+            backgroundColor: const Color(0xFFD50000), // Rojo Advertencia
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(20),
+          )
+      );
+    } else {
+      // ✅ LIBRE: Ejecutar acción
+      accion();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -339,8 +384,16 @@ class _PanelContent extends StatelessWidget {
             ]))
           ]),
         ),
-        const SizedBox(height: 20),
-        // ACCIONES
+
+        // 🔥 TERMÓMETRO INTELIGENTE
+        TermometroConfiabilidad(
+          puntaje: puntaje,
+          fechaDesbloqueo: fechaDesbloqueo,
+        ),
+
+        const SizedBox(height: 10),
+
+        // ACCIONES (BOTONES PROTEGIDOS)
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
@@ -349,11 +402,30 @@ class _PanelContent extends StatelessWidget {
             Image.asset('assets/images/ic_calendar.png', width: 90, height: 90, fit: BoxFit.contain),
             const SizedBox(width: 22),
             Expanded(child: Column(children: [
-              _BotonPanelPremium(texto: "CREAR UNA CITA", onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CrearCitaPanelScreen(nombreUsuario: nombre)))),
+
+              // 1. CREAR CITA (PROTEGIDO)
+              _BotonPanelPremium(
+                  texto: "CREAR UNA CITA",
+                  onTap: () => _ejecutarAccion(context, () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => CrearCitaPanelScreen(nombreUsuario: nombre)));
+                  })
+              ),
               const SizedBox(height: 12),
-              _BotonPanelPremium(texto: "BUSCAR UNA CITA", onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitaBuscarScreen()))),
+
+              // 2. BUSCAR CITA (PROTEGIDO)
+              _BotonPanelPremium(
+                  texto: "BUSCAR UNA CITA",
+                  onTap: () => _ejecutarAccion(context, () {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitaBuscarScreen()));
+                  })
+              ),
               const SizedBox(height: 12),
-              _BotonPanelPremium(texto: "CITAS PUBLICADAS", onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitasPendientesScreen()))),
+
+              // 3. CITAS PUBLICADAS (LIBRE - SIEMPRE ACCESIBLE)
+              _BotonPanelPremium(
+                  texto: "CITAS PUBLICADAS",
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitasPendientesScreen()))
+              ),
             ]))
           ]),
         ),
@@ -361,7 +433,7 @@ class _PanelContent extends StatelessWidget {
         Text("SITIOS RECOMENDADOS", style: textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
         const SizedBox(height: 16),
 
-        // 3. SITIOS RECOMENDADOS (🔥 GRID MEJORADO)
+        // SITIOS RECOMENDADOS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(children: [
@@ -394,7 +466,6 @@ class _BotonPanelPremium extends StatelessWidget {
   }
 }
 
-// 🔥 WIDGET CATEGORÍA MEJORADO (TEXTO ADENTRO + DEGRADADO + SOMBRA)
 class _CategoriaPanelCard extends StatelessWidget {
   final String label;
   final String imageAsset;
@@ -409,7 +480,6 @@ class _CategoriaPanelCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.bottomCenter,
         children: [
-          // Imagen Fondo
           Container(
             height: 110,
             decoration: BoxDecoration(
@@ -418,8 +488,6 @@ class _CategoriaPanelCard extends StatelessWidget {
               image: DecorationImage(image: AssetImage(imageAsset), fit: BoxFit.cover),
             ),
           ),
-
-          // Degradado Negro Inferior (Para leer el texto)
           Container(
             height: 110,
             decoration: BoxDecoration(
@@ -432,8 +500,6 @@ class _CategoriaPanelCard extends StatelessWidget {
               ),
             ),
           ),
-
-          // Texto Encima
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
@@ -443,7 +509,6 @@ class _CategoriaPanelCard extends StatelessWidget {
                 color: Colors.white,
                 fontSize: 14,
                 fontWeight: FontWeight.w800,
-                // Sombreado al texto
                 shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
               ),
             ),

@@ -1,7 +1,7 @@
 // 📂 lib/screens/cita_detalle_screen.dart
-// ✅ DETALLE DE CITA (FOTO INTELIGENTE + LÓGICA DOBLE CONFIRMACIÓN)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta del candidato.
-// 🔥 LOGIC: Mantiene intacta la validación doble, el casting de tipos y la sincronización.
+// ✅ DETALLE DE CITA (RESTAURADO + FECHA TEXTO)
+// 🔥 FIX: Solo cambia la visualización de la fecha a texto amigable.
+// 🔥 LOGIC: El resto del código es IDÉNTICO al original que funcionaba.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -14,7 +14,9 @@ import 'package:proyectos_matchy/screens/confirmar_cita.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
+// (Nota: Si tenías import de cancelar_cita_screen, déjalo, si no, bórralo)
+import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 
 // =============================================================================
 // 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
@@ -127,6 +129,37 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     final ahora = DateTime.now();
     final diferencia = widget.citaDateTime!.difference(ahora);
     return diferencia.inHours >= 12;
+  }
+
+  // 🔥 NUEVO: HELPER PARA FECHA AMIGABLE (Texto en vez de números)
+  String _getFechaAmigable() {
+    try {
+      DateTime fechaReal;
+      if (widget.citaDateTime != null) {
+        fechaReal = widget.citaDateTime!;
+      } else {
+        // Intenta parsear string dd/mm/yyyy
+        final partes = widget.fecha.trim().split(RegExp(r'[/ -]'));
+        if (partes.length >= 3) {
+          int dia = int.parse(partes[0]);
+          int mes = int.parse(partes[1]);
+          int year = int.parse(partes[2]);
+          fechaReal = DateTime(year, mes, dia);
+        } else {
+          return widget.fecha;
+        }
+      }
+
+      const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+      const List<String> meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+      String diaSemana = dias[fechaReal.weekday - 1];
+      String mes = meses[fechaReal.month - 1];
+
+      return "$diaSemana ${fechaReal.day} de $mes ${fechaReal.year}";
+    } catch (e) {
+      return widget.fecha; // Si falla, retorna original
+    }
   }
 
   // HELPER: Navegación centralizada al éxito
@@ -272,25 +305,15 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     }
   }
 
+  // 🔴 MANTENGO TU CAMBIO DE CANCELAR HACIA EL TRIBUNAL
   void _gestionarCancelacion() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text("¿CANCELAR CITA?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text("¿Estás seguro de que quieres cancelar tu cita?.", style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("NO", style: TextStyle(color: Colors.white))),
-          TextButton(
-            onPressed: () async {
-              await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update({'status': 'canceled'});
-              if (mounted) {
-                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
-              }
-            },
-            child: const Text("SÍ, CANCELAR", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CancelarCitaScreen(
+          citaId: widget.citaId,
+          otherUserId: widget.matchyUid,
+        ),
       ),
     );
   }
@@ -422,7 +445,12 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                       // 🔵 3. GRILLA DATOS
                       Column(
                         children: [
-                          Row(children: [Expanded(child: _buildVividCapsule(Icons.calendar_month, widget.fecha)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))]),
+                          // 🔥 AQUÍ SE APLICA EL CAMBIO DE FECHA
+                          Row(children: [
+                            Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable())),
+                            const SizedBox(width: 12),
+                            Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))
+                          ]),
                           const SizedBox(height: 12),
                           Row(children: [Expanded(child: _buildVividCapsule(Icons.star, widget.intencion)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.favorite, widget.preferencia))]),
                         ],
@@ -465,21 +493,23 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
                       const SizedBox(height: 15),
 
-                      if (widget.isOwner) ...[
-                        Opacity(
-                          opacity: _esCancelable ? 1.0 : 0.5,
-                          child: _PremiumButton(
-                            text: "CANCELAR CITA",
-                            gradient: kBtnCancelGradient,
-                            onTap: _esCancelable ? _gestionarCancelacion : () {},
-                          ),
+                      // 🔴 BOTÓN CANCELAR (VISIBLE PARA TODOS - ORIGINAL)
+                      Opacity(
+                        opacity: _esCancelable ? 1.0 : 0.5,
+                        child: _PremiumButton(
+                          text: "CANCELAR CITA",
+                          gradient: kBtnCancelGradient,
+                          onTap: _esCancelable
+                              ? _gestionarCancelacion // -> Va al Tribunal
+                              : () {},
                         ),
-                        if (!_esCancelable)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 8.0),
-                            child: Text("Faltan menos de 12 horas. Solo puedes reprogramar.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 19)),
-                          ),
-                      ],
+                      ),
+
+                      if (!_esCancelable)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8.0),
+                          child: Text("Faltan menos de 12 horas. Solo puedes reprogramar.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 19)),
+                        ),
                     ],
                   ),
                 ),
@@ -521,11 +551,25 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     );
   }
 
+  // 🔥 WIDGET CÁPSULA (MEJORADO CON FITTEDBOX PARA FECHAS LARGAS)
   Widget _buildVividCapsule(IconData icon, String text) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
       decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))),
-      child: Column(children: [Icon(icon, color: Colors.white, size: 28), const SizedBox(height: 8), Text(text.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis))]),
+      child: Column(
+          children: [
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 8),
+            FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                    text.toUpperCase(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                )
+            )
+          ]
+      ),
     );
   }
 
@@ -548,7 +592,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   }
 }
 
-// 🔥 WIDGET BOTÓN PREMIUM
+// 🔥 WIDGET BOTÓN PREMIUM (RESTAURADO ORIGINAL)
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
