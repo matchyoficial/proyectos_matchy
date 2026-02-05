@@ -1,15 +1,17 @@
 // 📂 lib/screens/perfil_usuariox_screen.dart
 // -----------------------------------------------------------
-// PERFIL PÚBLICO DEL USUARIO (DISEÑO PREMIUM + FOTO INTELIGENTE)
+// PERFIL PÚBLICO DEL USUARIO (DISEÑO PREMIUM + FOTO INTELIGENTE + PUNTUALIDAD)
 // ✅ UI: Botón Atrás (Chevron) arriba a la izquierda.
 // ✅ UI: Degradado negro inferior (Fade Out) para suavizar scroll.
 // 🔥 FIX: Foto principal usa 'FotoPerfilUsuario' para actualizarse sola.
+// 🔥 ADD: Barra de Puntualidad (Solo barra, sin reloj) entre foto y bio.
 // -----------------------------------------------------------
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
+import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart'; // 👈 IMPORTANTE: Widget Nuevo
 
 class PerfilUsuarioXScreen extends StatefulWidget {
   final String uid;
@@ -51,22 +53,28 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
           .get();
 
       if (!snap.exists) {
+        if (mounted) {
+          setState(() {
+            _data = null;
+            _loading = false;
+          });
+        }
+        return;
+      }
+
+      if (mounted) {
+        setState(() {
+          _data = snap.data();
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
         setState(() {
           _data = null;
           _loading = false;
         });
-        return;
       }
-
-      setState(() {
-        _data = snap.data();
-        _loading = false;
-      });
-    } catch (_) {
-      setState(() {
-        _data = null;
-        _loading = false;
-      });
     }
   }
 
@@ -328,6 +336,29 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
         .map((e) => e.toString())
         .toList();
 
+    // 🟢 RECOLECCIÓN DATOS PUNTUALIDAD
+    final puntaje = (_data!['confiabilidad'] as num?)?.toInt() ?? 100;
+    final userStatus = (_data!['userStatus'] ?? 'active').toString();
+    final strikes = (_data!['strikes'] as num?)?.toInt() ?? 0;
+    final bloqueadoTimestamp = _data!['bloqueadoHasta'] as Timestamp?;
+
+    // Lógica de cálculo de fecha (igual al Panel)
+    bool estaBloqueado = false;
+    DateTime? fechaTermometro;
+
+    if (userStatus == 'blocked') estaBloqueado = true;
+    if (bloqueadoTimestamp != null && bloqueadoTimestamp.toDate().isAfter(DateTime.now())) estaBloqueado = true;
+
+    if (estaBloqueado) {
+      if (bloqueadoTimestamp != null) {
+        fechaTermometro = bloqueadoTimestamp.toDate();
+      } else {
+        // Cálculo teórico basado en strikes si no hay fecha explícita
+        final diasCastigo = strikes * 5;
+        fechaTermometro = DateTime.now().add(Duration(days: diasCastigo > 0 ? diasCastigo : 1));
+      }
+    }
+
     // -------------------------------------------------------------
     // UI
     // -------------------------------------------------------------
@@ -372,7 +403,7 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                         clipBehavior: Clip.antiAlias,
                         child: Stack(
                           children: [
-                            // 🔥 AQUÍ ESTÁ EL CAMBIO: Widget Inteligente
+                            // 🔥 Widget Inteligente
                             Positioned.fill(
                               child: FotoPerfilUsuario(
                                 uid: widget.uid,
@@ -456,7 +487,18 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                         ),
                       ),
 
+                      // =======================================================
+                      // 🔥 BARRA DE PUNTUALIDAD (SOLO BARRA)
+                      // =======================================================
                       const SizedBox(height: 16),
+                      TermometroConfiabilidad(
+                        puntaje: puntaje,
+                        fechaDesbloqueo: fechaTermometro,
+                        mostrarReloj: false, // 👈 Sin reloj para este perfil
+                      ),
+                      const SizedBox(height: 6),
+                      // =======================================================
+
                       _cardTexto('Biografía', bio.isEmpty ? '—' : bio),
 
                       if (sobreMi.isNotEmpty) _cardChips('Sobre mí', sobreMi),

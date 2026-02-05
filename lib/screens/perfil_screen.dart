@@ -1,8 +1,6 @@
 // 📂 lib/screens/perfil_screen.dart
-// ✅ PERFIL (DISEÑO PREMIUM FINAL + FOTO INTELIGENTE)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta principal.
-// 🔥 LOGIC: Prioriza fotos locales (drafts) y usa el widget inteligente para la URL remota.
-// 🔥 UI: Botones Premium y degradados intactos.
+// ✅ PERFIL (DISEÑO PREMIUM FINAL + FOTO INTELIGENTE + PUNTUALIDAD SIN RELOJ)
+// 🔥 FIX: Barra de Puntualidad ahora solo muestra la barra (sin reloj).
 
 import 'dart:io';
 
@@ -25,7 +23,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: Widget Nuevo
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
+import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 
 class PerfilScreen extends ConsumerStatefulWidget {
   static const String routeName = 'perfil';
@@ -357,7 +356,6 @@ class _PerfilContent extends StatelessWidget {
     final principal = _resolveFotoPrincipal();
     final bool tieneFotos = principal != null;
 
-    // Obtenemos UID para el widget inteligente
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
     return Padding(
@@ -365,10 +363,10 @@ class _PerfilContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 🔥 FOTO PRINCIPAL CON WIDGET INTELIGENTE (Pasamos smartUid)
+          // 🔥 FOTO PRINCIPAL
           _FotoTarjeta(
             imagePathOrAssetOrUrl: principal,
-            smartUid: myUid, // 👈 Pasamos el UID para que active el modo "FotoPerfilUsuario" si es URL
+            smartUid: myUid,
             height: 450,
             overlay: (context) {
               return Stack(
@@ -400,7 +398,17 @@ class _PerfilContent extends StatelessWidget {
             },
           ),
 
+          // ===================================================================
+          // 🔥 BARRA DE PUNTUALIDAD (SIN RELOJ)
+          // ===================================================================
           const SizedBox(height: 16),
+
+          if (myUid != null)
+            _BarraPuntualidadLive(uid: myUid),
+
+          const SizedBox(height: 6),
+          // ===================================================================
+
           _CardTexto(titulo: 'Biografía', texto: biografia, textTheme: textTheme),
           if (sobreMi.isNotEmpty) _CardChips(titulo: 'Sobre mí', items: sobreMi, textTheme: textTheme),
           if (galeria.length >= 2) _FotoTarjeta(imagePathOrAssetOrUrl: galeria[1], height: 400),
@@ -413,7 +421,6 @@ class _PerfilContent extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // ✅ BOTONES PREMIUM AL FINAL
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: _PremiumButton(
@@ -436,14 +443,59 @@ class _PerfilContent extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 100), // Espacio para el Fade Out
+          const SizedBox(height: 100),
         ],
       ),
     );
   }
 }
 
-// 🔥 WIDGET BOTÓN PREMIUM 🔥
+// 🔥 WIDGET AUXILIAR: BARRA LIVE
+class _BarraPuntualidadLive extends StatelessWidget {
+  final String uid;
+
+  const _BarraPuntualidadLive({required this.uid});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox();
+
+        final data = snapshot.data!.data();
+        if (data == null) return const SizedBox();
+
+        final puntaje = (data['confiabilidad'] as num?)?.toInt() ?? 100;
+        final userStatus = (data['userStatus'] ?? 'active').toString();
+        final strikes = (data['strikes'] as num?)?.toInt() ?? 0;
+        final bloqueadoHasta = data['bloqueadoHasta'] as Timestamp?;
+
+        bool estaBloqueado = false;
+        DateTime? fechaTermometro;
+
+        if (userStatus == 'blocked') estaBloqueado = true;
+        if (bloqueadoHasta != null && bloqueadoHasta.toDate().isAfter(DateTime.now())) estaBloqueado = true;
+
+        if (estaBloqueado) {
+          if (bloqueadoHasta != null) {
+            fechaTermometro = bloqueadoHasta.toDate();
+          } else {
+            final diasCastigo = strikes * 5;
+            fechaTermometro = DateTime.now().add(Duration(days: diasCastigo > 0 ? diasCastigo : 1));
+          }
+        }
+
+        return TermometroConfiabilidad(
+          puntaje: puntaje,
+          fechaDesbloqueo: fechaTermometro,
+          mostrarReloj: false, // 👈 AQUÍ: OCULTAMOS EL RELOJ EN EL PERFIL
+        );
+      },
+    );
+  }
+}
+
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
@@ -485,21 +537,17 @@ class _PremiumButton extends StatelessWidget {
   }
 }
 
-// ================================================================
-// 🔹 COMPONENTES EXISTENTES (Con soporte para Foto Inteligente)
-// ================================================================
-
 class _FotoTarjeta extends StatelessWidget {
   final String? imagePathOrAssetOrUrl;
   final double height;
   final Widget Function(BuildContext context)? overlay;
-  final String? smartUid; // 👈 NUEVO: Parámetro para activar el widget inteligente
+  final String? smartUid;
 
   const _FotoTarjeta({
     required this.imagePathOrAssetOrUrl,
     required this.height,
     this.overlay,
-    this.smartUid, // 👈
+    this.smartUid,
   });
 
   bool _isAsset(String v) => v.startsWith('assets/');
@@ -512,18 +560,11 @@ class _FotoTarjeta extends StatelessWidget {
     Widget background = _fallback();
     final raw = (imagePathOrAssetOrUrl ?? '').trim();
 
-    // Lógica para priorizar:
-    // 1. Si es archivo local (Borrador editando), lo mostramos.
-    // 2. Si no es archivo local Y tenemos smartUid, usamos FotoPerfilUsuario (Firebase actualizado).
-    // 3. Fallback normal.
-
     bool isFile = raw.isNotEmpty && !_isUrl(raw) && !_isAsset(raw);
 
     if (isFile) {
-      // Es borrador local, mostrar el archivo
       background = Image.file(File(raw), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _fallback());
     } else if (smartUid != null) {
-      // 🔥 ES URL REMOTA: Usamos el WIDGET INTELIGENTE
       background = FotoPerfilUsuario(
         uid: smartUid!,
         fit: BoxFit.cover,
@@ -531,7 +572,6 @@ class _FotoTarjeta extends StatelessWidget {
       );
     } else if (raw.isNotEmpty) {
       if (_isUrl(raw)) {
-        // Para galerías secundarias que no tienen smartUid
         background = Image.network(raw, fit: BoxFit.cover, alignment: Alignment.topCenter, loadingBuilder: (_, c, p) => p == null ? c : Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())), errorBuilder: (_,__,___) => _fallback());
       } else if (_isAsset(raw)) {
         background = Image.asset(raw, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => _fallback());
@@ -605,9 +645,6 @@ class _CardChips extends StatelessWidget {
   }
 }
 
-// ================================================================
-// 🔹 BARRA DE NAVEGACIÓN INFERIOR
-// ================================================================
 class _MatchyBottomNav extends StatelessWidget {
   final int currentIndex;
   const _MatchyBottomNav({required this.currentIndex});
