@@ -1,8 +1,7 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ DETALLE CITA PENDIENTE (SIN PARPADEO + DISEÑO PREMIUM)
-// 🔥 FIX PARPADEO: El reloj ahora es un widget independiente, evitando que toda la pantalla se redibuje cada segundo.
-// 🔥 UI: Diseño Premium, Sombras, Botones y Fecha Larga intactos.
-// 🔥 FIX: Widget 'FotoPerfilUsuario' aplicado correctamente.
+// ✅ DETALLE CITA PENDIENTE (DISEÑO PREMIUM)
+// 🔥 UI: Botón "BORRAR CITA" (Rojo suave).
+// 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -13,7 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 // ============================================================
 // FIRESTORE KEYS
@@ -56,7 +55,9 @@ const BorderSide kPremiumBorder = BorderSide(color: Colors.white24, width: 1);
 
 // 3. BOTONES
 const List<Color> kButtonGradientBack = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
-const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)];
+// 🔥 CAMBIO: Rojo suave para borrar (No penaliza)
+const List<Color> kButtonGradientDelete = [Color(0xFFEF5350), Color(0xFFE57373)];
+
 const double kButtonRadius = 25.0;
 const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
 
@@ -217,14 +218,13 @@ class _CitasPendientesDetalleScreenState
     }
   }
 
+  // 🔥 LÓGICA DE BORRADO AUTOMÁTICO (RELOJ)
   Future<void> _cancelarAuto() async {
+    // Si el reloj llega a cero, borramos la cita físicamente
     await FirebaseFirestore.instance
         .collection(kCitasCollection)
         .doc(widget.citaId)
-        .set({
-      'status': 'cancelled',
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+        .delete();
 
     if (!mounted) return;
     _goBackToPanel();
@@ -589,12 +589,14 @@ class _CitasPendientesDetalleScreenState
 
           const SizedBox(height: 12),
 
-          // 🔥 BOTÓN CANCELAR
+          // 🔥 BOTÓN BORRAR (CAMBIO CLAVE)
           _PremiumButton(
-            text: 'CANCELAR CITA',
-            gradient: kButtonGradientCancel,
+            text: 'BORRAR CITA',
+            gradient: kButtonGradientDelete, // Color suave
             onTap: () async {
-              await FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.docId).set({'status': 'cancelled', 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+              // 🔥 LÓGICA DE BORRADO FÍSICO (DELETE)
+              await FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.docId).delete();
+
               if (!mounted) return;
               _goBackToPanel();
             },
@@ -643,7 +645,7 @@ class _CitasPendientesDetalleScreenState
 }
 
 // -----------------------------------------------------------
-// 🔥 WIDGET RELOJ AISLADO (PARA EVITAR PARPADEO)
+// 🔥 WIDGET RELOJ AISLADO (SIN PARPADEO)
 // -----------------------------------------------------------
 class _RelojPremium extends StatefulWidget {
   final String fecha;
@@ -751,7 +753,7 @@ class _RelojPremiumState extends State<_RelojPremium> {
                 'TIEMPO PARA ELEGIR TU MATCHY',
                 style: TextStyle(
                   color: Colors.white70,
-                  fontSize: 11,
+                  fontSize: 13,
                   fontWeight: FontWeight.w800,
                   fontFamily: 'Poppins',
                   letterSpacing: 1.0,
