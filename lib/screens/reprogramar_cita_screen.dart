@@ -1,8 +1,8 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
-// ✅ PANTALLA REPROGRAMAR (FOTO INTELIGENTE + DISEÑO PREMIUM)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' para actualizar la foto del matchy.
-// 🔥 UI: Botón "Enviar" estilo Premium y Fade Out inferior.
-// 🔥 LÓGICA: WriteBatch para transacciones seguras + Notificaciones.
+// ✅ PANTALLA REPROGRAMAR (FECHAS TEXTO EN TODAS PARTES)
+// 🔥 FIX: Ahora la fecha de la cápsula superior TAMBIÉN muestra el día (Ej: Sábado/03/05/2026).
+// 🔥 UI: Diseño Premium intacto.
+// 🔥 LÓGICA: WriteBatch y Notificaciones intactos.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 class ReprogramarCitaScreen extends StatefulWidget {
   final String citaId;
@@ -108,6 +108,40 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
         pickedTime.hour, pickedTime.minute,
       );
     });
+  }
+
+  // 🔥 HELPER 1: Formatea fecha DateTime a texto (Para selectores)
+  String _formatDateWithDay(DateTime dt) {
+    const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    String diaSemana = dias[dt.weekday - 1];
+    String fechaNum = DateFormat('dd/MM/yyyy').format(dt);
+    String hora = DateFormat('hh:mm a').format(dt);
+    return "$diaSemana/$fechaNum - $hora".toUpperCase();
+  }
+
+  // 🔥 HELPER 2: Formatea String "dd/mm/yyyy" a texto (Para la cápsula superior)
+  String _formatStoredDate(String dateStr) {
+    try {
+      // Asume formato "dd/MM/yyyy" o "d/M/yyyy"
+      final parts = dateStr.trim().split('/');
+      if (parts.length != 3) return dateStr;
+
+      final int day = int.parse(parts[0]);
+      final int month = int.parse(parts[1]);
+      final int year = int.parse(parts[2]);
+      final dt = DateTime(year, month, day);
+
+      const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+      String diaSemana = dias[dt.weekday - 1];
+
+      // Aseguramos ceros a la izquierda para mantener uniformidad (03/05/2026)
+      String d = day.toString().padLeft(2, '0');
+      String m = month.toString().padLeft(2, '0');
+
+      return "$diaSemana/$d/$m/$year";
+    } catch (_) {
+      return dateStr; // Si falla el parseo, retorna original
+    }
   }
 
   Future<void> _enviarReprogramacion() async {
@@ -285,7 +319,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
-                                // 🔥 APLICADO AQUÍ
                                 child: FotoPerfilUsuario(
                                   uid: uidToShow,
                                   fit: BoxFit.cover,
@@ -311,7 +344,8 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         const SizedBox(height: 10),
                         _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
                         const SizedBox(height: 10),
-                        _buildInfoRow(Icons.calendar_month_rounded, "$fechaActual - $horaActual".toUpperCase(), isAccent: true),
+                        // 🔥 AQUÍ SE APLICA EL CAMBIO A LA CÁPSULA SUPERIOR
+                        _buildInfoRow(Icons.calendar_month_rounded, "${_formatStoredDate(fechaActual)} - $horaActual".toUpperCase(), isAccent: true),
                       ],
                     ),
                   ),
@@ -443,7 +477,8 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
               child: Center(child: Text("${index + 1}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
             ),
             const SizedBox(width: 15),
-            Expanded(child: Text(isSelected ? DateFormat('dd/MM/yyyy - hh:mm a').format(date).toUpperCase() : "SELECCIONAR OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600, fontSize: 14, fontFamily: 'Poppins'))),
+            // 🔥 AQUÍ USO EL NUEVO FORMATO PARA LOS SELECTORES
+            Expanded(child: Text(isSelected ? _formatDateWithDay(date) : "SELECCIONAR OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600, fontSize: 14, fontFamily: 'Poppins'))),
             Icon(Icons.calendar_today_rounded, color: isSelected ? kAccentColor : Colors.white24, size: 20),
           ],
         ),

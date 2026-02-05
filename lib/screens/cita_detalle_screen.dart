@@ -1,7 +1,8 @@
 // 📂 lib/screens/cita_detalle_screen.dart
-// ✅ DETALLE DE CITA (RESTAURADO + FECHA TEXTO)
-// 🔥 FIX: Solo cambia la visualización de la fecha a texto amigable.
-// 🔥 LOGIC: El resto del código es IDÉNTICO al original que funcionaba.
+// ✅ DETALLE DE CITA (FECHA SIN "DE")
+// 🔥 FIX: Formato de fecha ajustado a "Domingo 25 Octubre".
+// 🔥 CHINCHE: 'kDateFontSize' controla el tamaño de esa letra.
+// 🔥 LOGIC: Código original intacto.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -15,7 +16,6 @@ import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
-// (Nota: Si tenías import de cancelar_cita_screen, déjalo, si no, bórralo)
 import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 
 // =============================================================================
@@ -26,6 +26,9 @@ import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 const double kLugarTitleSize     = 28.0;
 const double kLugarAddressSize   = 20.0;
 const double kLugarTextGap       = 2.0;
+
+// 🔥 CHINCHE PARA TAMAÑO LETRA FECHA
+const double kDateFontSize       = 17.0;
 
 // 2. TARJETAS
 const double kCardLugarHeight    = 180.0;
@@ -131,7 +134,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     return diferencia.inHours >= 12;
   }
 
-  // 🔥 NUEVO: HELPER PARA FECHA AMIGABLE (Texto en vez de números)
+  // 🔥 HELPER: FECHA LIMPIA (Domingo 25 Octubre)
   String _getFechaAmigable() {
     try {
       DateTime fechaReal;
@@ -156,7 +159,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       String diaSemana = dias[fechaReal.weekday - 1];
       String mes = meses[fechaReal.month - 1];
 
-      return "$diaSemana ${fechaReal.day} de $mes ${fechaReal.year}";
+      // Formato solicitado: "Domingo 25 Octubre" (SIN "de")
+      return "$diaSemana ${fechaReal.day} $mes";
     } catch (e) {
       return widget.fecha; // Si falla, retorna original
     }
@@ -242,7 +246,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
           return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
         });
 
-        // Casting explícito (IMPORTANTE: Mantenemos este arreglo)
+        // Casting explícito
         final Map<String, dynamic> resultMap = result as Map<String, dynamic>;
         bool isFinished = resultMap['finished'] as bool;
         String otherName = resultMap['otherName'] as String;
@@ -305,7 +309,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     }
   }
 
-  // 🔴 MANTENGO TU CAMBIO DE CANCELAR HACIA EL TRIBUNAL
+  // 🔴 GESTIÓN CANCELACIÓN
   void _gestionarCancelacion() {
     Navigator.push(
       context,
@@ -398,7 +402,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
                       const SizedBox(height: 20),
 
-                      // 🔵 2. TARJETA CANDIDATO (FIX: FOTO INTELIGENTE)
+                      // 🔵 2. TARJETA CANDIDATO (FOTO INTELIGENTE)
                       GestureDetector(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
                         child: Container(
@@ -409,11 +413,10 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                // 🔥 AQUÍ ESTÁ EL CAMBIO: Widget FotoPerfilUsuario
                                 child: FotoPerfilUsuario(
                                     uid: widget.matchyUid,
                                     fit: BoxFit.cover,
-                                    alignment: Alignment.topCenter // Anti-corte cabezas
+                                    alignment: Alignment.topCenter
                                 ),
                               ),
                               Container(
@@ -447,7 +450,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                         children: [
                           // 🔥 AQUÍ SE APLICA EL CAMBIO DE FECHA
                           Row(children: [
-                            Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable())),
+                            Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), // 🔥 CHINCHE LETRA
                             const SizedBox(width: 12),
                             Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))
                           ]),
@@ -493,14 +496,14 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
                       const SizedBox(height: 15),
 
-                      // 🔴 BOTÓN CANCELAR (VISIBLE PARA TODOS - ORIGINAL)
+                      // 🔴 BOTÓN CANCELAR
                       Opacity(
                         opacity: _esCancelable ? 1.0 : 0.5,
                         child: _PremiumButton(
                           text: "CANCELAR CITA",
                           gradient: kBtnCancelGradient,
                           onTap: _esCancelable
-                              ? _gestionarCancelacion // -> Va al Tribunal
+                              ? _gestionarCancelacion
                               : () {},
                         ),
                       ),
@@ -552,7 +555,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   }
 
   // 🔥 WIDGET CÁPSULA (MEJORADO CON FITTEDBOX PARA FECHAS LARGAS)
-  Widget _buildVividCapsule(IconData icon, String text) {
+  Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
       decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))),
@@ -565,7 +568,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                 child: Text(
                     text.toUpperCase(),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                    // 🔥 USA EL TAMAÑO DE LETRA VARIABLE
+                    style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)
                 )
             )
           ]
@@ -586,7 +590,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)),
       child: TextField(
         controller: _codigoMatchyController, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0), textCapitalization: TextCapitalization.characters,
-        decoration: const InputDecoration(hintText: "CÓDIGO DE TU MATCHY", hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 18)),
+        decoration: const InputDecoration(hintText: "PON EL CÓDIGO DE TU MATCHY", hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 18)),
       ),
     );
   }
