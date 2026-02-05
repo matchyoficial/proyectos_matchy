@@ -1,8 +1,8 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (FINAL + LÓGICA DE BLOQUEO)
-// 🔥 UI: Termómetro Inteligente integrado.
-// 🔥 LOGIC: Los botones "Crear" y "Buscar" ahora respetan el bloqueo temporal.
-// 🔥 UX: "Citas Publicadas" permanece abierto para permitir redención.
+// ✅ PANEL CENTRAL (CORREGIDO - LECTURA REAL DE BLOQUEO)
+// 🔥 FIX: Ahora lee 'userStatus: blocked' y 'strikes' directamente.
+// 🔥 LOGIC: Si userStatus == 'blocked', activa el modo castigo inmediatamente.
+// 🔥 UI: Botones con CANDADO 🔒 visual si hay bloqueo.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -29,7 +29,7 @@ import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
 
 // =============================================================================
-// 🔔 LÓGICA DE NOTIFICACIONES (RIVERPOD)
+// 🔔 LÓGICA DE NOTIFICACIONES
 // =============================================================================
 
 final unreadNotificationsProvider = StreamProvider<int>((ref) {
@@ -95,7 +95,7 @@ class PanelScreen extends ConsumerStatefulWidget {
 
 class _PanelScreenState extends ConsumerState<PanelScreen> {
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONTROL DE DISEÑO) 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ===========================================================================
 
   static const Color kCardBackground   = Color(0x4FFFFFFF);
@@ -108,15 +108,12 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
 
   static const List<BoxShadow> kCardShadow = [BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 5))];
 
-  static const List<Color> kPremiumButtonGradient = [
-    Color(0xFF7E208E),
-    Color(0xFC4B3F60),
-  ];
+  static const List<Color> kPremiumButtonGradient = [Color(0xFF7E208E), Color(0xFC4B3F60)];
+  static const List<Color> kDisabledButtonGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color gris para bloqueado
+
   static const double kPremiumButtonRadius = 18.0;
   static const BorderSide kPremiumButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
-  static const List<BoxShadow> kPremiumButtonShadow = [
-    BoxShadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 4)),
-  ];
+  static const List<BoxShadow> kPremiumButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 4))];
 
   bool _bootstrapped = false;
   bool _sentToShell = false;
@@ -249,9 +246,11 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                       final localPhoto = (data?['profilePhotoLocalPath'] ?? '').toString();
                       final fotoFinal = profilePhotoUrl.isNotEmpty ? profilePhotoUrl : (localPhoto.isNotEmpty ? localPhoto : 'assets/images/perfil1.jpg');
 
-                      // 🟢 EXTRAER DATOS PARA EL BLOQUEO
+                      // 🟢 RECOLECCIÓN DE DATOS DE BLOQUEO
                       final puntaje = (data?['confiabilidad'] as num?)?.toInt() ?? 100;
-                      final bloqueadoHasta = data?['bloqueadoHasta'] as Timestamp?;
+                      final userStatus = (data?['userStatus'] ?? 'active').toString(); // 🔥 Leemos el Status
+                      final strikes = (data?['strikes'] as num?)?.toInt() ?? 0;        // 🔥 Leemos Strikes
+                      final bloqueadoHastaTimestamp = data?['bloqueadoHasta'] as Timestamp?;
 
                       return _PanelContent(
                         textTheme: textTheme,
@@ -260,7 +259,9 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                         ubicacion: ubicacion,
                         fotoWidget: _buildFotoWidget(fotoFinal),
                         puntaje: puntaje,
-                        fechaDesbloqueo: bloqueadoHasta?.toDate(),
+                        userStatus: userStatus, // Pasamos al widget hijo
+                        strikes: strikes,       // Pasamos al widget hijo
+                        bloqueadoHasta: bloqueadoHastaTimestamp?.toDate(),
                       );
                     },
                   ),
@@ -269,21 +270,10 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ],
           ),
 
-          // 🔥 DEGRADADO INFERIOR
+          // DEGRADADO INFERIOR
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 80,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
-                ),
-              ),
-            ),
+            bottom: 0, left: 0, right: 0, height: 80,
+            child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)]))),
           ),
         ],
       ),
@@ -292,7 +282,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   }
 }
 
-// ... _NotificacionesSheet (Sin cambios) ...
+// ... _NotificacionesSheet (Igual) ...
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
@@ -317,7 +307,7 @@ class _NotificacionesSheet extends ConsumerWidget {
   }
 }
 
-// 🟢 AQUÍ ESTÁ LA LÓGICA DE BLOQUEO EN LOS BOTONES
+// 🟢 LÓGICA DE BLOQUEO ACTUALIZADA
 class _PanelContent extends StatelessWidget {
   final TextTheme textTheme;
   final String nombre;
@@ -325,7 +315,9 @@ class _PanelContent extends StatelessWidget {
   final String ubicacion;
   final Widget fotoWidget;
   final int puntaje;
-  final DateTime? fechaDesbloqueo;
+  final String userStatus;
+  final int strikes;
+  final DateTime? bloqueadoHasta;
 
   const _PanelContent({
     required this.textTheme,
@@ -334,36 +326,63 @@ class _PanelContent extends StatelessWidget {
     required this.ubicacion,
     required this.fotoWidget,
     required this.puntaje,
-    this.fechaDesbloqueo,
+    required this.userStatus,
+    required this.strikes,
+    this.bloqueadoHasta,
   });
 
-  // 🔥 Función Maestra: Verifica si hoy es antes que la fecha de desbloqueo
+  // 🔥 DETECTOR MAESTRO DE BLOQUEO
+  bool get _estaBloqueado {
+    if (userStatus == 'blocked') return true; // Bloqueo manual o por sistema
+    if (bloqueadoHasta != null && bloqueadoHasta!.isAfter(DateTime.now())) return true; // Bloqueo por fecha
+    return false;
+  }
+
+  // 🔥 CALCULAR FECHA SI NO EXISTE (AUTO-CORRECCIÓN VISUAL)
+  DateTime? get _fechaParaTermometro {
+    if (!_estaBloqueado) return null;
+    if (bloqueadoHasta != null) return bloqueadoHasta;
+
+    // Si está bloqueado pero no hay fecha, calculamos una teórica basada en strikes
+    // Regla: 1 strike = 5 días, 2 = 10, etc.
+    final diasCastigo = strikes * 5;
+    // Asumimos que se bloqueó hoy para mostrar algo coherente
+    return DateTime.now().add(Duration(days: diasCastigo > 0 ? diasCastigo : 1));
+  }
+
   void _ejecutarAccion(BuildContext context, VoidCallback accion) {
-    if (fechaDesbloqueo != null && fechaDesbloqueo!.isAfter(DateTime.now())) {
+    if (_estaBloqueado) {
       // ⛔ BLOQUEADO: Mostrar Alerta
+      final dias = strikes * 5;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
-              children: const [
-                Icon(Icons.lock_clock, color: Colors.white),
-                SizedBox(width: 10),
-                Expanded(child: Text("Tu cuenta tiene una restricción activa. Completa tus citas pendientes para desbloquearte.", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+              children: [
+                const Icon(Icons.lock_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                    "ACCESO RESTRINGIDO.\nTienes $strikes strike(s). Debes esperar $dias días o resolver tus citas pendientes.",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                )),
               ],
             ),
-            backgroundColor: const Color(0xFFD50000), // Rojo Advertencia
+            backgroundColor: const Color(0xFFC62828),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             margin: const EdgeInsets.all(20),
+            duration: const Duration(seconds: 4),
           )
       );
     } else {
-      // ✅ LIBRE: Ejecutar acción
       accion();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 🔒 Variable local para saber si mostramos candados
+    final bool bloqueado = _estaBloqueado;
+
     return Column(
       children: [
         const SizedBox(height: 10),
@@ -385,15 +404,15 @@ class _PanelContent extends StatelessWidget {
           ]),
         ),
 
-        // 🔥 TERMÓMETRO INTELIGENTE
+        // 🔥 TERMÓMETRO INTELIGENTE (Ahora recibe la fecha calculada si es null)
         TermometroConfiabilidad(
           puntaje: puntaje,
-          fechaDesbloqueo: fechaDesbloqueo,
+          fechaDesbloqueo: _fechaParaTermometro,
         ),
 
         const SizedBox(height: 10),
 
-        // ACCIONES (BOTONES PROTEGIDOS)
+        // ACCIONES
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
@@ -403,27 +422,30 @@ class _PanelContent extends StatelessWidget {
             const SizedBox(width: 22),
             Expanded(child: Column(children: [
 
-              // 1. CREAR CITA (PROTEGIDO)
+              // 1. CREAR CITA (🔒 PROTEGIDO)
               _BotonPanelPremium(
                   texto: "CREAR UNA CITA",
+                  bloqueado: bloqueado, // 🔥 Muestra candado si true
                   onTap: () => _ejecutarAccion(context, () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => CrearCitaPanelScreen(nombreUsuario: nombre)));
                   })
               ),
               const SizedBox(height: 12),
 
-              // 2. BUSCAR CITA (PROTEGIDO)
+              // 2. BUSCAR CITA (🔒 PROTEGIDO)
               _BotonPanelPremium(
                   texto: "BUSCAR UNA CITA",
+                  bloqueado: bloqueado, // 🔥 Muestra candado si true
                   onTap: () => _ejecutarAccion(context, () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitaBuscarScreen()));
                   })
               ),
               const SizedBox(height: 12),
 
-              // 3. CITAS PUBLICADAS (LIBRE - SIEMPRE ACCESIBLE)
+              // 3. CITAS PUBLICADAS (✅ SIEMPRE LIBRE)
               _BotonPanelPremium(
                   texto: "CITAS PUBLICADAS",
+                  bloqueado: false, // Siempre libre
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitasPendientesScreen()))
               ),
             ]))
@@ -459,10 +481,53 @@ class _PanelContent extends StatelessWidget {
 class _BotonPanelPremium extends StatelessWidget {
   final String texto;
   final VoidCallback onTap;
-  const _BotonPanelPremium({required this.texto, required this.onTap});
+  final bool bloqueado; // Nuevo parámetro
+
+  const _BotonPanelPremium({
+    required this.texto,
+    required this.onTap,
+    this.bloqueado = false,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap, child: Container(height: 44, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kPremiumButtonGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius), border: Border.fromBorderSide(_PanelScreenState.kPremiumButtonBorder), boxShadow: _PanelScreenState.kPremiumButtonShadow), alignment: Alignment.center, child: Text(texto, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5))));
+    return GestureDetector(
+        onTap: onTap,
+        child: Container(
+            height: 44,
+            decoration: BoxDecoration(
+              // Si está bloqueado usa gris, si no, usa el morado
+                gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: bloqueado ? _PanelScreenState.kDisabledButtonGradient : _PanelScreenState.kPremiumButtonGradient
+                ),
+                borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius),
+                border: Border.fromBorderSide(_PanelScreenState.kPremiumButtonBorder),
+                boxShadow: _PanelScreenState.kPremiumButtonShadow
+            ),
+            alignment: Alignment.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (bloqueado) ...[
+                  const Icon(Icons.lock, color: Colors.white54, size: 16),
+                  const SizedBox(width: 8),
+                ],
+                Text(
+                    texto,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: bloqueado ? Colors.white54 : Colors.white, // Texto más apagado si está bloqueado
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        letterSpacing: 0.5
+                    )
+                ),
+              ],
+            )
+        )
+    );
   }
 }
 

@@ -1,7 +1,7 @@
 // 📂 lib/screens/matchys_screen.dart
-// ✅ MATCHYS SCREEN (FOTO PERFIL INTELIGENTE + DISEÑO AJUSTABLE)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la tarjeta del Matchy.
-// 🔥 UI: Botones Premium y Chinches Maestros intactos.
+// ✅ MATCHYS SCREEN (CON SISTEMA DE BLOQUEO)
+// 🔥 FIX: Ahora lee 'userStatus' del usuario actual para bloquear 'CREAR NUEVA CITA'.
+// 🔥 UI: Botón con Candado 🔒 si está bloqueado. 'TU HISTORIAL' sigue libre.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,15 +13,15 @@ import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/cita_nueva_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 // 🔵 MODELO DE DATOS MATCHY
 class MatchyData {
-  final String uid;       // El UID de la otra persona
-  final String nombre;    // Su nombre para mostrar
-  final int edad;         // Su edad
-  final String fotoUrl;   // Su foto principal
-  final String matchId;   // El ID de la conexión global
+  final String uid;
+  final String nombre;
+  final int edad;
+  final String fotoUrl;
+  final String matchId;
 
   const MatchyData({
     required this.uid,
@@ -32,7 +32,7 @@ class MatchyData {
   });
 }
 
-// 🔵 PROVIDER
+// 🔵 PROVIDER 1: LISTA DE MATCHYS
 final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -57,28 +57,42 @@ final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
   });
 });
 
+// 🔵 PROVIDER 2: ESTADO DEL USUARIO ACTUAL (EL ESPÍA)
+final currentUserStatusProvider = StreamProvider<Map<String, dynamic>>((ref) {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return const Stream.empty();
+
+  return FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .snapshots()
+      .map((doc) {
+    final data = doc.data();
+    return {
+      'userStatus': data?['userStatus'] ?? 'active',
+      'strikes': data?['strikes'] ?? 0,
+      'bloqueadoHasta': data?['bloqueadoHasta'], // Timestamp
+    };
+  });
+});
+
 class MatchysScreen extends ConsumerWidget {
   final bool showBottomNav;
 
   const MatchysScreen({super.key, this.showBottomNav = true});
 
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONTROL TOTAL) 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ===========================================================================
+  static const double kSpacePhotoToButtons = 8.0;
+  static const double kSpaceBetweenButtons = 6.0;
+  static const double kButtonFontSize = 14.0;
+  static const double kButtonHeight = 34.0;
 
-  // 1. DISTANCIAS (Sube o baja los botones)
-  static const double kSpacePhotoToButtons = 8.0;   // Distancia entre Foto y 1er Botón (Menos es más cerca)
-  static const double kSpaceBetweenButtons = 6.0;   // Distancia entre los dos botones
+  static const List<Color> kBtnNewCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
+  static const List<Color> kBtnHistorialGradient = [Color(0xFF7A43BF), Color(0xFF4A238F)];
+  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color Bloqueado
 
-  // 2. TAMAÑO DE TEXTO (Agrande o achica títulos de botones)
-  static const double kButtonFontSize = 14.0;       // Tamaño de la fuente
-
-  // 3. TAMAÑO DE BOTÓN
-  static const double kButtonHeight = 34.0;         // Altura de los botones (Más compactos)
-
-  // 4. ESTILOS PREMIUM
-  static const List<Color> kBtnNewCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)]; // Lila Claro
-  static const List<Color> kBtnHistorialGradient = [Color(0xFF7A43BF), Color(0xFF4A238F)]; // Morado Oscuro
   static const double kButtonRadius = 18.0;
   static const List<BoxShadow> kButtonShadow = [
     BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))
@@ -88,6 +102,20 @@ class MatchysScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncMatchys = ref.watch(myMatchysProvider);
+    final asyncStatus = ref.watch(currentUserStatusProvider); // 🔥 Escuchamos estado
+
+    // Determinamos si está bloqueado globalmente
+    bool isBlocked = false;
+    int strikes = 0;
+
+    asyncStatus.whenData((data) {
+      final status = data['userStatus'].toString();
+      final bloqueadoHasta = data['bloqueadoHasta'] as Timestamp?;
+      strikes = (data['strikes'] as num?)?.toInt() ?? 0;
+
+      if (status == 'blocked') isBlocked = true;
+      if (bloqueadoHasta != null && bloqueadoHasta.toDate().isAfter(DateTime.now())) isBlocked = true;
+    });
 
     return Scaffold(
       body: Stack(
@@ -97,14 +125,13 @@ class MatchysScreen extends ConsumerWidget {
             backgroundAsset: 'assets/images/fondo.jpg',
             logoAsset: 'assets/images/logomatchyplano.png',
             topSpacing: 35,
-            logoHeight: 45, // Ajustado a 45 como pediste
+            logoHeight: 45,
             spaceLogoToScroll: 15,
             scrollContent: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // TÍTULO GRANDE
                   const Text(
                     'MIS MATCHYS',
                     textAlign: TextAlign.center,
@@ -120,7 +147,6 @@ class MatchysScreen extends ConsumerWidget {
 
                   const SizedBox(height: 10),
 
-                  // SUBTÍTULO MOTIVACIONAL
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     decoration: BoxDecoration(
@@ -143,7 +169,6 @@ class MatchysScreen extends ConsumerWidget {
 
                   const SizedBox(height: 25),
 
-                  // GRID DE MATCHYS
                   asyncMatchys.when(
                     loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
                     error: (e, __) => Center(child: Text("Error: $e", style: const TextStyle(color: Colors.white))),
@@ -159,20 +184,23 @@ class MatchysScreen extends ConsumerWidget {
                         );
                       }
 
-                      // GRID 2 COLUMNAS
                       return GridView.builder(
-                        padding: const EdgeInsets.only(bottom: 120), // Espacio para Fade Out
+                        padding: const EdgeInsets.only(bottom: 120),
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 15,
                           mainAxisSpacing: 20,
-                          childAspectRatio: 0.55, // Ajustado para que quepan los botones
+                          childAspectRatio: 0.55,
                         ),
                         itemCount: matchys.length,
                         itemBuilder: (context, index) {
-                          return _MatchyCard(data: matchys[index]);
+                          return _MatchyCard(
+                              data: matchys[index],
+                              isBlocked: isBlocked, // 🔥 Pasamos el estado
+                              strikes: strikes
+                          );
                         },
                       );
                     },
@@ -182,7 +210,7 @@ class MatchysScreen extends ConsumerWidget {
             ),
           ),
 
-          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          // 2. FADE OUT
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -205,17 +233,55 @@ class MatchysScreen extends ConsumerWidget {
   }
 }
 
-// 🔵 TARJETA CON 2 BOTONES
 class _MatchyCard extends StatelessWidget {
   final MatchyData data;
+  final bool isBlocked;
+  final int strikes;
 
-  const _MatchyCard({required this.data});
+  const _MatchyCard({required this.data, required this.isBlocked, required this.strikes});
+
+  void _manejarClickCrearCita(BuildContext context) {
+    if (isBlocked) {
+      final dias = strikes * 5;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.lock_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                    "BLOQUEADO.\nTienes $strikes strike(s). Resuelve tus pendientes.",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                )),
+              ],
+            ),
+            backgroundColor: const Color(0xFFC62828),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(20),
+            duration: const Duration(seconds: 4),
+          )
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CitaNuevaScreen(
+            nombreUsuario: 'YO',
+            nombreMatch: data.nombre,
+            fotoUsuario: '',
+            fotoMatch: data.fotoUrl,
+            matchyUidInvitado: data.uid,
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 1. FOTO + INFO (Ocupa el espacio restante)
         Expanded(
           child: GestureDetector(
             onTap: () {
@@ -236,7 +302,6 @@ class _MatchyCard extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(24),
-                    // 🔥 AQUÍ ESTÁ EL CAMBIO: Usamos FotoPerfilUsuario
                     child: FotoPerfilUsuario(
                       uid: data.uid,
                       fit: BoxFit.cover,
@@ -277,36 +342,24 @@ class _MatchyCard extends StatelessWidget {
           ),
         ),
 
-        // 🔥 CHINCHE 1: Distancia Foto -> Botones
         const SizedBox(height: MatchysScreen.kSpacePhotoToButtons),
 
-        // 2. BOTÓN "CREAR NUEVA CITA" (PREMIUM)
+        // 2. BOTÓN "CREAR NUEVA CITA" (BLOQUEABLE)
         _PremiumButton(
           text: "CREAR NUEVA CITA",
-          gradient: MatchysScreen.kBtnNewCitaGradient,
-          textColor: Colors.black, // Letra negra para contraste
+          // Si está bloqueado -> Gris, Si no -> Lila
+          gradient: isBlocked ? MatchysScreen.kBtnBlockedGradient : MatchysScreen.kBtnNewCitaGradient,
+          // Si está bloqueado -> Candado, Si no -> Nada
+          icon: isBlocked ? Icons.lock : null,
+          textColor: isBlocked ? Colors.white54 : Colors.black, // Gris si bloqueado
           fontSize: MatchysScreen.kButtonFontSize,
           height: MatchysScreen.kButtonHeight,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CitaNuevaScreen(
-                  nombreUsuario: 'YO',
-                  nombreMatch: data.nombre,
-                  fotoUsuario: '',
-                  fotoMatch: data.fotoUrl,
-                  matchyUidInvitado: data.uid,
-                ),
-              ),
-            );
-          },
+          onTap: () => _manejarClickCrearCita(context),
         ),
 
-        // 🔥 CHINCHE 2: Distancia entre botones
         const SizedBox(height: MatchysScreen.kSpaceBetweenButtons),
 
-        // 3. BOTÓN "TU HISTORIAL" (PREMIUM)
+        // 3. BOTÓN "TU HISTORIAL" (SIEMPRE LIBRE)
         _PremiumButton(
           text: "TU HISTORIAL",
           gradient: MatchysScreen.kBtnHistorialGradient,
@@ -327,7 +380,6 @@ class _MatchyCard extends StatelessWidget {
   }
 }
 
-// 🔥 WIDGET REUTILIZABLE: BOTÓN PREMIUM AJUSTABLE
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
@@ -335,6 +387,7 @@ class _PremiumButton extends StatelessWidget {
   final VoidCallback onTap;
   final double fontSize;
   final double height;
+  final IconData? icon; // 🔥 Nuevo soporte para ícono
 
   const _PremiumButton({
     required this.text,
@@ -343,6 +396,7 @@ class _PremiumButton extends StatelessWidget {
     required this.onTap,
     required this.fontSize,
     required this.height,
+    this.icon,
   });
 
   @override
@@ -359,14 +413,23 @@ class _PremiumButton extends StatelessWidget {
           border: Border.all(color: Colors.white24, width: 0.5),
         ),
         alignment: Alignment.center,
-        child: Text(
-          text,
-          style: TextStyle(
-              color: textColor,
-              fontSize: fontSize, // 🔥 Controlado por chinche
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5
-          ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, color: textColor, size: 14),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              text,
+              style: TextStyle(
+                  color: textColor,
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5
+              ),
+            ),
+          ],
         ),
       ),
     );

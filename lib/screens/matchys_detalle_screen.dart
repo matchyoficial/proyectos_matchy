@@ -1,8 +1,10 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY (FOTO PERFIL INTELIGENTE + HISTORIAL OK)
-// 🔥 FIX: Reemplazada la foto grande por el widget 'FotoPerfilUsuario'.
-// 🔥 LOGIC: Mantiene toda la lógica de historial y pop-up intacta.
+// ✅ DETALLE DE MATCHY (CON BLOQUEO DE SEGURIDAD)
+// 🔥 FIX: Botón "NUEVA CITA CON TU MATCHY" ahora respeta el bloqueo.
+// 🔥 LOGIC: Lee 'userStatus' para bloquear el botón si es necesario.
+// 🔥 UI: Foto Perfil Inteligente + Historial intactos.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,7 +13,7 @@ import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/cita_nueva_screen.dart';
 import 'package:proyectos_matchy/screens/zona_de_descuentos_screen.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 IMPORTANTE: El nuevo widget
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 class MatchysDetalleScreen extends StatefulWidget {
   final MatchyData matchyData;
@@ -23,12 +25,89 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
 
+  // Variables para el bloqueo
+  bool _isUserBlocked = false;
+  int _userStrikes = 0;
+  bool _isLoadingStatus = true; // Empieza cargando
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 800), lowerBound: 0.95, upperBound: 1.05)..repeat(reverse: true);
     _scaleAnimation = _controller;
+
+    _verificarEstadoUsuario(); // 🔥 Chequeo de seguridad al iniciar
   }
+
+  // 🕵️ FUNCIÓN ESPÍA: Revisa si el usuario está bloqueado
+  Future<void> _verificarEstadoUsuario() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      if (mounted) setState(() => _isLoadingStatus = false);
+      return;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        final status = (data['userStatus'] ?? 'active').toString();
+        final strikes = (data['strikes'] as num?)?.toInt() ?? 0;
+        final bloqueadoHasta = data['bloqueadoHasta'] as Timestamp?;
+
+        bool bloqueado = false;
+        if (status == 'blocked') bloqueado = true;
+        if (bloqueadoHasta != null && bloqueadoHasta.toDate().isAfter(DateTime.now())) bloqueado = true;
+
+        setState(() {
+          _isUserBlocked = bloqueado;
+          _userStrikes = strikes;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error verificando bloqueo: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingStatus = false);
+    }
+  }
+
+  void _manejarClickNuevaCita() {
+    if (_isUserBlocked) {
+      // ⛔ ACCIÓN DENEGADA
+      final dias = _userStrikes * 5;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.lock_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(child: Text(
+                    "BLOQUEADO.\nTienes $_userStrikes strike(s). Resuelve tus pendientes.",
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                )),
+              ],
+            ),
+            backgroundColor: const Color(0xFFC62828),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(20),
+            duration: const Duration(seconds: 4),
+          )
+      );
+    } else {
+      // ✅ ACCIÓN PERMITIDA
+      Navigator.push(context, MaterialPageRoute(
+          builder: (_) => CitaNuevaScreen(
+            nombreUsuario: 'Yo',
+            nombreMatch: widget.matchyData.nombre,
+            fotoUsuario: '',
+            fotoMatch: widget.matchyData.fotoUrl,
+            matchyUidInvitado: widget.matchyData.uid,
+          )
+      ));
+    }
+  }
+
   @override void dispose() { _controller.dispose(); super.dispose(); }
 
   // ===========================================================================
@@ -40,17 +119,20 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   static const double kHistorialHeight = 250.0;
   static const Color kCapsulaColor = Color(0x33FFFFFF);
   static const Color kGoldColor = Color(0xFFFFC107);
+
   static const List<Color> kBtnNuevaCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
+  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color Bloqueado
+
   static const double kButtonRadius = 20.0;
   static const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
 
-  // 🔴 CHINCHES DEL POP-UP (ZOOM)
-  static const Color kPopUpBackground = Color(0xFF1A1A1A); // Fondo oscuro
-  static const double kPopUpRadius = 25.0; // Borde redondeado
-  static const double kPopUpTitleSize = 22.0; // Tamaño Nombre Sitio
-  static const double kPopUpDateSize = 16.0;  // Tamaño Fecha
-  static const Color kPopUpIconColor = Color(0xFFBEB3FF); // Color ícono calendario
-  static const double kPopUpFotoHeight = 250.0; // Altura foto zoom
+  // POP-UP
+  static const Color kPopUpBackground = Color(0xFF1A1A1A);
+  static const double kPopUpRadius = 25.0;
+  static const double kPopUpTitleSize = 22.0;
+  static const double kPopUpDateSize = 16.0;
+  static const Color kPopUpIconColor = Color(0xFFBEB3FF);
+  static const double kPopUpFotoHeight = 250.0;
 
   // ===========================================================================
 
@@ -72,7 +154,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // FOTO PERFIL GRANDE (USANDO EL WIDGET INTELIGENTE)
+                  // FOTO PERFIL GRANDE
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyData.uid))),
                     child: Container(
@@ -81,11 +163,10 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                       child: Stack(fit: StackFit.expand, children: [
                         ClipRRect(
                             borderRadius: BorderRadius.circular(28),
-                            // 🔥 AQUÍ ESTÁ EL CAMBIO: Usamos FotoPerfilUsuario
                             child: FotoPerfilUsuario(
                                 uid: widget.matchyData.uid,
                                 fit: BoxFit.cover,
-                                alignment: Alignment.topCenter // Mantiene el anti-corte
+                                alignment: Alignment.topCenter
                             )
                         ),
                         Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(28), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
@@ -102,21 +183,17 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   const Text("TU HISTORIAL CON TU MATCHY", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 6, offset: Offset(0, 3))])),
                   const SizedBox(height: 4),
 
-                  // 🔥 HISTORIAL FILTRADO
+                  // HISTORIAL
                   Container(
                     height: kHistorialHeight, padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(color: kCapsulaColor, borderRadius: BorderRadius.circular(25), border: Border.all(color: Colors.white10)),
                     child: StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('citas')
-                          .orderBy('updatedAt', descending: true)
-                          .snapshots(),
+                      stream: FirebaseFirestore.instance.collection('citas').orderBy('updatedAt', descending: true).snapshots(),
                       builder: (context, snapshot) {
                         if (snapshot.hasError) return const Icon(Icons.error, color: Colors.white);
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
                         final allDocs = snapshot.data?.docs ?? [];
-
                         final docs = allDocs.where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
                           final status = data['status'];
@@ -124,7 +201,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                           final matchyUid = data['matchyUid'];
 
                           if (status != 'finished') return false;
-
                           bool soyYoOwner = ownerUid == myUid;
                           bool soyYoMatchy = matchyUid == myUid;
                           bool esElMatchy = matchyUid == widget.matchyData.uid;
@@ -137,102 +213,38 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
                         return GridView.builder(
                           physics: const BouncingScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.3
-                          ),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.3),
                           itemCount: docs.length,
                           itemBuilder: (ctx, i) {
                             final d = docs[i].data() as Map<String, dynamic>;
                             final nombreLugar = (d['lugarNombre'] ?? 'Cita').toString();
                             final fotoLugar = (d['lugarFotoPortada'] ?? '').toString();
-
                             String fechaMostrable = "Fecha";
-                            if (d['fecha'] != null) {
-                              fechaMostrable = d['fecha'].toString();
-                            } else if (d['fechaHora'] != null) {
-                              fechaMostrable = d['fechaHora'].toString().split(' ').first;
-                            }
+                            if (d['fecha'] != null) fechaMostrable = d['fecha'].toString();
+                            else if (d['fechaHora'] != null) fechaMostrable = d['fechaHora'].toString().split(' ').first;
 
                             return GestureDetector(
-                              // 🔥 POP-UP CON CHINCHES Y TEXTO COMPACTO
                               onTap: () {
                                 showDialog(
                                   context: context,
                                   barrierDismissible: true,
                                   builder: (ctx) => Dialog(
-                                    backgroundColor: Colors.transparent,
-                                    insetPadding: const EdgeInsets.all(20),
+                                    backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(20),
                                     child: Stack(
                                       alignment: Alignment.topRight,
                                       children: [
                                         Container(
-                                          decoration: BoxDecoration(
-                                              color: kPopUpBackground,
-                                              borderRadius: BorderRadius.circular(kPopUpRadius),
-                                              border: Border.all(color: Colors.white12),
-                                              boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 15, offset: Offset(0, 5))]
-                                          ),
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                                            children: [
-                                              // FOTO POP-UP
-                                              ClipRRect(
-                                                borderRadius: const BorderRadius.vertical(top: Radius.circular(kPopUpRadius)),
-                                                child: SizedBox(
-                                                  height: kPopUpFotoHeight,
-                                                  child: Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54))),
-                                                ),
-                                              ),
-
-                                              // TEXTOS (FIX DE AIRE)
-                                              Padding(
-                                                padding: const EdgeInsets.all(20.0),
-                                                child: Column(
-                                                  children: [
-                                                    Text(
-                                                        nombreLugar.toUpperCase(),
-                                                        textAlign: TextAlign.center,
-                                                        maxLines: 2,
-                                                        overflow: TextOverflow.ellipsis,
-                                                        style: const TextStyle(
-                                                            color: Colors.white,
-                                                            fontWeight: FontWeight.w900,
-                                                            fontSize: kPopUpTitleSize,
-                                                            fontFamily: 'Poppins',
-                                                            height: 1.0
-                                                        )
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Row(
-                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                      children: [
-                                                        const Icon(Icons.calendar_today, color: kPopUpIconColor, size: 16),
-                                                        const SizedBox(width: 5),
-                                                        Text(
-                                                            "Fecha: $fechaMostrable",
-                                                            style: const TextStyle(
-                                                                color: Colors.white70,
-                                                                fontSize: kPopUpDateSize,
-                                                                height: 1.0
-                                                            )
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                          decoration: BoxDecoration(color: kPopUpBackground, borderRadius: BorderRadius.circular(kPopUpRadius), border: Border.all(color: Colors.white12), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 15, offset: Offset(0, 5))]),
+                                          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                            ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(kPopUpRadius)), child: SizedBox(height: kPopUpFotoHeight, child: Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54))))),
+                                            Padding(padding: const EdgeInsets.all(20.0), child: Column(children: [
+                                              Text(nombreLugar.toUpperCase(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kPopUpTitleSize, fontFamily: 'Poppins', height: 1.0)),
+                                              const SizedBox(height: 4),
+                                              Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.calendar_today, color: kPopUpIconColor, size: 16), const SizedBox(width: 5), Text("Fecha: $fechaMostrable", style: const TextStyle(color: Colors.white70, fontSize: kPopUpDateSize, height: 1.0))]),
+                                            ])),
+                                          ]),
                                         ),
-                                        Padding(
-                                          padding: const EdgeInsets.all(10.0),
-                                          child: GestureDetector(
-                                            onTap: () => Navigator.pop(ctx),
-                                            child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 20)),
-                                          ),
-                                        ),
+                                        Padding(padding: const EdgeInsets.all(10.0), child: GestureDetector(onTap: () => Navigator.pop(ctx), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 20)))),
                                       ],
                                     ),
                                   ),
@@ -240,24 +252,14 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                               },
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___)=>Container(color: Colors.grey[800])),
-                                    Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.5, 1.0]))),
-                                    Positioned(
-                                      bottom: 8, left: 8, right: 8,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(nombreLugar.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
-                                          Text(fechaMostrable, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
-                                    )
-                                  ],
-                                ),
+                                child: Stack(fit: StackFit.expand, children: [
+                                  Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___)=>Container(color: Colors.grey[800])),
+                                  Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.5, 1.0]))),
+                                  Positioned(bottom: 8, left: 8, right: 8, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                                    Text(nombreLugar.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                                    Text(fechaMostrable, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold)),
+                                  ]))
+                                ]),
                               ),
                             );
                           },
@@ -267,26 +269,44 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 25),
 
-                  // BOTÓN NUEVA CITA
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => CitaNuevaScreen(
-                            nombreUsuario: 'Yo',
-                            nombreMatch: widget.matchyData.nombre,
-                            fotoUsuario: '',
-                            fotoMatch: widget.matchyData.fotoUrl,
-                            matchyUidInvitado: widget.matchyData.uid,
+                  // 🔥 BOTÓN NUEVA CITA (PROTEGIDO)
+                  if (_isLoadingStatus)
+                    const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: Colors.white))
+                  else
+                    GestureDetector(
+                      onTap: _manejarClickNuevaCita, // 🔥 Lógica centralizada
+                      child: Container(
+                          width: double.infinity, height: 50,
+                          decoration: BoxDecoration(
+                            // Si está bloqueado -> Gris, Si no -> Lila
+                              gradient: LinearGradient(colors: _isUserBlocked ? kBtnBlockedGradient : kBtnNuevaCitaGradient),
+                              borderRadius: BorderRadius.circular(kButtonRadius),
+                              boxShadow: kButtonShadow,
+                              border: Border.all(color: Colors.white24, width: 0.5)
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              // Si está bloqueado -> Candado
+                              if (_isUserBlocked) ...[
+                                const Icon(Icons.lock, color: Colors.white54, size: 16),
+                                const SizedBox(width: 8),
+                              ],
+                              Text(
+                                  _isUserBlocked ? "CUENTA BLOQUEADA" : "NUEVA CITA CON TU MATCHY",
+                                  style: TextStyle(
+                                      color: _isUserBlocked ? Colors.white54 : Colors.black,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 14,
+                                      letterSpacing: 0.5
+                                  )
+                              ),
+                            ],
                           )
-                      ));
-                    },
-                    child: Container(
-                        width: double.infinity, height: 50,
-                        decoration: BoxDecoration(gradient: const LinearGradient(colors: kBtnNuevaCitaGradient), borderRadius: BorderRadius.circular(kButtonRadius), boxShadow: kButtonShadow, border: Border.all(color: Colors.white24, width: 0.5)),
-                        alignment: Alignment.center,
-                        child: const Text("NUEVA CITA CON TU MATCHY", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5))
+                      ),
                     ),
-                  ),
+
                   const SizedBox(height: 20),
 
                   // BOTÓN DESCUENTOS
