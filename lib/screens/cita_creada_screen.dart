@@ -1,8 +1,7 @@
 // 📂 lib/screens/cita_creada_screen.dart
 // ✅ CITA CREADA (DISEÑO PREMIUM)
-// 🔥 UI: Botones estilo Cápsula Premium.
-// 🔥 UI: Degradado inferior (Fade Out).
-// 🔥 LÓGICA: Cancelar (update status) y Navegación segura.
+// 🔥 UI: Botón "BORRAR TU CITA" (Rojo suave).
+// 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,8 +31,9 @@ class CitaCreadaScreen extends StatelessWidget {
   // ===========================================================================
 
   // Botones Premium (Gradiente + Sombra)
-  static const List<Color> kButtonGradientCancel = [Color(0xFFD32F2F), Color(0xFF8B0000)]; // Rojo Intenso
-  static const List<Color> kButtonGradientBack   = [Color(0xFF393975), Color(0xFF1A1A24)]; // Azul/Negro Premium (Igual Panel)
+  // 🔥 CAMBIO: Rojo suave para "Borrar" (No penaliza)
+  static const List<Color> kButtonGradientDelete = [Color(0xFFEF5350), Color(0xFFE57373)];
+  static const List<Color> kButtonGradientBack   = [Color(0xFF393975), Color(0xFF1A1A24)]; // Azul/Negro Premium
 
   static const double kButtonRadius = 18.0;
   static const BorderSide kButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
@@ -133,7 +133,7 @@ class CitaCreadaScreen extends StatelessWidget {
                             "TU CITA ESTÁ CREADA",
                             style: TextStyle(
                                 color: Colors.white,
-                                fontSize: 24,
+                                fontSize: 25,
                                 fontWeight: FontWeight.w900,
                                 fontFamily: 'Poppins',
                                 shadows: [Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 3))]
@@ -228,12 +228,14 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 40),
 
-                          // 8. BOTÓN CANCELAR (Premium)
+                          // 8. BOTÓN BORRAR (CAMBIO CLAVE)
                           _PremiumButton(
-                            text: "CANCELAR TU CITA",
-                            gradientColors: kButtonGradientCancel,
+                            text: "BORRAR TU CITA", // Texto actualizado
+                            gradientColors: kButtonGradientDelete, // Color suave
                             onTap: () async {
-                              await FirebaseFirestore.instance.collection('citas').doc(citaId).update({'status': 'canceled'});
+                              // 🔥 LÓGICA DE BORRADO FÍSICO (DELETE)
+                              await FirebaseFirestore.instance.collection('citas').doc(citaId).delete();
+
                               if (!context.mounted) return;
                               Navigator.of(context).pushAndRemoveUntil(
                                 MaterialPageRoute(builder: (_) => const PanelScreen()),
