@@ -1,8 +1,8 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS (MODO SEGURO - SIN AUTODESTRUCCIÓN)
-// 🔥 FIX: Desactivada la regla de ocultar citas > 2 horas. Ahora SIEMPRE se muestran.
-// 🔥 LÓGICA: Si la hora ya pasó -> Lista Abajo (ROJA). Si no -> Lista Arriba (NORMAL).
-// 🔥 PARSER: Lee exclusivamente los textos 'fecha' y 'hora' que editas en Firebase.
+// ✅ PANTALLA CITAS (FOTO PERFIL CUADRADA ESTILO PANEL)
+// 🔥 FIX: La foto del usuario ahora tiene un contenedor CUADRADO (125x125) exacto.
+// 🔥 UI: La foto del lugar se adapta al espacio restante (Panorámica).
+// 🔥 LOGIC: Intacta.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -40,8 +40,6 @@ class CitaItem {
   final bool isOwner;
   final String status;
   final String reproByUid;
-
-  // BANDERA ÚNICA: ¿YA PASÓ LA HORA?
   final bool esUrgente;
 
   const CitaItem({
@@ -79,15 +77,13 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
   // 🔥 PARSER MANUAL DE TEXTO
   DateTime parsearManual(String fStr, String hStr) {
     try {
-      // FECHA
       final parts = fStr.trim().split(RegExp(r'[/ -]'));
-      if (parts.length < 3) return DateTime(2099, 1, 1); // Futuro lejano si falla
+      if (parts.length < 3) return DateTime(2099, 1, 1);
 
       int d = int.parse(parts[0]);
       int m = int.parse(parts[1]);
       int y = int.parse(parts[2]);
 
-      // HORA
       String rawHora = hStr.toUpperCase().replaceAll('.', '').trim();
       bool esPM = rawHora.contains("PM");
 
@@ -113,7 +109,6 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
       try {
         final data = doc.data() as Map<String, dynamic>;
 
-        // Datos básicos
         final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
         final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
         final uidUI = soyOwner ? (data['matchyUid'] ?? '') : (data['ownerUid'] ?? '');
@@ -127,18 +122,14 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
         final String fTexto = (data['fecha'] ?? '').toString();
         final String hTexto = (data['hora'] ?? '').toString();
 
-        // 🕒 LEEMOS SOLO EL TEXTO (Ignoramos scheduledAt para evitar conflictos)
         DateTime fechaReal = parsearManual(fTexto, hTexto);
 
-        // 🚨 LÓGICA SIMPLIFICADA:
-        // Si la diferencia es positiva, YA PASÓ -> ES URGENTE.
-        // NO IMPORTA SI PASARON 2 HORAS O 10 DÍAS, SE MUESTRA.
         final diferencia = ahora.difference(fechaReal);
         bool urgente = false;
 
         if (data['status'] == 'matched') {
           if (diferencia.inMinutes > 0) {
-            urgente = true; // SE VA PARA ABAJO Y ROJO
+            urgente = true;
           }
         }
 
@@ -174,7 +165,6 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
     final map = {for (var e in [...listaOwner, ...listaMatchy]) e.id: e};
     final listaFinal = map.values.toList();
 
-    // Urgentes primero
     listaFinal.sort((a, b) {
       if (a.esUrgente && !b.esUrgente) return -1;
       if (!a.esUrgente && b.esUrgente) return 1;
@@ -267,12 +257,10 @@ class _CitasSplitLayout extends ConsumerWidget {
       error: (_, __) => const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white))),
       data: (todasLasCitas) {
 
-        // 1. ARRIBA: Matched FUTURAS
         final proximas = todasLasCitas.where((c) =>
         c.status == 'matched' && !c.esUrgente
         ).toList();
 
-        // 2. ABAJO: Pendientes, Reprogramaciones Y URGENTES (TODAS LAS VENCIDAS)
         final pendientes = todasLasCitas.where((c) =>
         c.status == 'reprogramming' ||
             c.status == 'pending_approval' ||
@@ -336,7 +324,6 @@ class _CitaCard extends StatelessWidget {
   }
 
   void _handleTap(BuildContext context) {
-    // 🚨 URGENTE -> REPORTE
     if (item.esUrgente) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ReporteInasistenciaScreen(citaId: item.id)));
       return;
@@ -378,7 +365,9 @@ class _CitaCard extends StatelessWidget {
     Color colorBoton = Colors.white;
     bool mostrarOverlay = false;
 
-    // SI ES URGENTE -> ROJO. SI NO -> NEGRO.
+    // 🔥 ALTURA FIJA 125 PARA LOGRAR CUADRADO PERFECTO
+    const double cardHeight = 125.0;
+
     final Color bgColor = item.esUrgente ? const Color(0xFFB71C1C).withOpacity(0.3) : const Color(0xFF1A1A1A);
     final Color borderColor = item.esUrgente ? const Color(0xFFFF5252) : Colors.transparent;
     final ColorFilter? imgFilter = item.esUrgente ? ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop) : null;
@@ -403,7 +392,8 @@ class _CitaCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => _handleTap(context),
       child: Container(
-        height: 120, margin: const EdgeInsets.only(bottom: 12),
+        height: cardHeight, // Altura fija
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(20),
@@ -414,86 +404,102 @@ class _CitaCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Expanded(flex: 5, child: Stack(fit: StackFit.expand, children: [
-              ClipRRect(
-                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
-                  child: item.fotoLugar.isNotEmpty && _isNet(item.fotoLugar)
-                      ? ColorFiltered(
+            // 🔹 LADO IZQUIERDO: LUGAR (Se expande para llenar lo que sobre)
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
+                      child: item.fotoLugar.isNotEmpty && _isNet(item.fotoLugar)
+                          ? ColorFiltered(
+                          colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+                          child: Image.network(item.fotoLugar, fit: BoxFit.cover)
+                      )
+                          : Container(color: Colors.grey[900], child: const Icon(Icons.store, color: Colors.white24))
+                  ),
+                  Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
+
+                  Positioned(
+                    bottom: 10, left: 10, right: 5,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                              item.lugarNombre.toUpperCase(),
+                              maxLines: 1,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins')
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _fechaAmigable(item.fechaSort),
+                          style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                        )
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // 🔹 LADO DERECHO: USUARIO (CUADRADO FIJO 125x125)
+            SizedBox(
+              width: cardHeight, // Ancho = Altura = CUADRADO
+              height: cardHeight,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
+                    child: ColorFiltered(
                       colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                      child: Image.network(item.fotoLugar, fit: BoxFit.cover)
+                      // 🔥 FOTO ALINEADA ARRIBA Y EN CUADRADO
+                      child: FotoPerfilUsuario(
+                        uid: item.matchyUid,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                      ),
+                    ),
+                  ),
+
+                  // SELLO SIN CONFIRMAR
+                  if (item.esUrgente)
+                    Container(
+                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
+                      child: Center(
+                        child: Transform.rotate(
+                          angle: -0.2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.white, width: 2),
+                                borderRadius: BorderRadius.circular(8),
+                                color: Colors.red.withOpacity(0.8)
+                            ),
+                            child: const Text(
+                              "SIN CONFIRMAR",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  if (mostrarOverlay) Container(
+                    decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
+                    child: Center(
+                        child: _PulsingText(text: textoBoton, color: colorBoton)
+                    ),
                   )
-                      : Container(color: Colors.grey[900], child: const Icon(Icons.store, color: Colors.white24))
+                ],
               ),
-              Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
-
-              Positioned(
-                bottom: 10, left: 10, right: 5,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                          item.lugarNombre.toUpperCase(),
-                          maxLines: 1,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins')
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _fechaAmigable(item.fechaSort),
-                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
-                    )
-                  ],
-                ),
-              ),
-            ])),
-            Expanded(flex: 4, child: Stack(fit: StackFit.expand, children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
-                child: ColorFiltered(
-                  colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                  child: FotoPerfilUsuario(
-                    uid: item.matchyUid,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                  ),
-                ),
-              ),
-
-              // 🔥 SELLO "SIN CONFIRMAR" (Solo Urgente)
-              if (item.esUrgente)
-                Container(
-                  decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
-                  child: Center(
-                    child: Transform.rotate(
-                      angle: -0.2,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white, width: 2),
-                            borderRadius: BorderRadius.circular(8),
-                            color: Colors.red.withOpacity(0.8)
-                        ),
-                        child: const Text(
-                          "SIN CONFIRMAR",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-              if (mostrarOverlay) Container(
-                decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
-                child: Center(
-                    child: _PulsingText(text: textoBoton, color: colorBoton)
-                ),
-              )
-            ])),
+            ),
           ],
         ),
       ),

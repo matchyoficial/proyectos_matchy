@@ -1,8 +1,8 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY (CON BLOQUEO DE SEGURIDAD)
-// 🔥 FIX: Botón "NUEVA CITA CON TU MATCHY" ahora respeta el bloqueo.
-// 🔥 LOGIC: Lee 'userStatus' para bloquear el botón si es necesario.
-// 🔥 UI: Foto Perfil Inteligente + Historial intactos.
+// ✅ DETALLE DE MATCHY (DISEÑO UNIFICADO TIPO PANEL)
+// 🔥 FIX: Cabecera cambiada a "Cápsula Horizontal": Foto cuadrada (110x110) izquierda + Info derecha.
+// 🔥 UI: Foto alineada al TopCenter para no cortar cabezas.
+// 🔥 LOGIC: Bloqueo de usuario y botones intactos.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -28,7 +28,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   // Variables para el bloqueo
   bool _isUserBlocked = false;
   int _userStrikes = 0;
-  bool _isLoadingStatus = true; // Empieza cargando
+  bool _isLoadingStatus = true;
 
   @override
   void initState() {
@@ -36,10 +36,9 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 800), lowerBound: 0.95, upperBound: 1.05)..repeat(reverse: true);
     _scaleAnimation = _controller;
 
-    _verificarEstadoUsuario(); // 🔥 Chequeo de seguridad al iniciar
+    _verificarEstadoUsuario();
   }
 
-  // 🕵️ FUNCIÓN ESPÍA: Revisa si el usuario está bloqueado
   Future<void> _verificarEstadoUsuario() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -73,7 +72,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
   void _manejarClickNuevaCita() {
     if (_isUserBlocked) {
-      // ⛔ ACCIÓN DENEGADA
       final dias = _userStrikes * 5;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -95,7 +93,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
           )
       );
     } else {
-      // ✅ ACCIÓN PERMITIDA
       Navigator.push(context, MaterialPageRoute(
           builder: (_) => CitaNuevaScreen(
             nombreUsuario: 'Yo',
@@ -114,14 +111,16 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ===========================================================================
 
-  // GENERAL
-  static const double kFotoPerfilHeight = 350.0;
+  // DIMENSIONES ESTILO PANEL
+  static const double kFotoSize = 110.0; // Foto cuadrada
+  static const double kCardBorderRadius = 25.0;
+
   static const double kHistorialHeight = 250.0;
   static const Color kCapsulaColor = Color(0x33FFFFFF);
   static const Color kGoldColor = Color(0xFFFFC107);
 
   static const List<Color> kBtnNuevaCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
-  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color Bloqueado
+  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)];
 
   static const double kButtonRadius = 20.0;
   static const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
@@ -154,29 +153,64 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // FOTO PERFIL GRANDE
+
+                  // 🔥 CAMBIO PRINCIPAL: CÁPSULA ESTILO PANEL (ROW)
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyData.uid))),
                     child: Container(
-                      width: double.infinity, height: kFotoPerfilHeight,
-                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))], border: Border.all(color: Colors.white24, width: 2)),
-                      child: Stack(fit: StackFit.expand, children: [
-                        ClipRRect(
-                            borderRadius: BorderRadius.circular(28),
-                            child: FotoPerfilUsuario(
-                                uid: widget.matchyData.uid,
-                                fit: BoxFit.cover,
-                                alignment: Alignment.topCenter
-                            )
-                        ),
-                        Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(28), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
-                        Positioned(bottom: 15, left: 0, right: 0, child: Column(children: [
-                          Text(widget.matchyData.nombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 4))])),
-                          Text("${widget.matchyData.edad} AÑOS", style: const TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))])),
-                        ])),
-                      ]),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(kCardBorderRadius),
+                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        children: [
+                          // 🟦 FOTO CUADRADA IZQUIERDA (110x110)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: SizedBox(
+                              width: kFotoSize,
+                              height: kFotoSize,
+                              // 🔥 Alineación TopCenter para la cara
+                              child: FotoPerfilUsuario(
+                                  uid: widget.matchyData.uid,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+
+                          // 📝 INFO LATERAL DERECHA
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  widget.matchyData.nombre.toUpperCase(),
+                                  style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "${widget.matchyData.edad} AÑOS",
+                                  style: const TextStyle(color: Colors.white70, fontSize: 16.0, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 8),
+                                const Text("Ver perfil completo >", style: TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right, color: Colors.white24),
+                        ],
+                      ),
                     ),
                   ),
+
                   const SizedBox(height: 25),
 
                   // TÍTULO
@@ -274,11 +308,10 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                     const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: Colors.white))
                   else
                     GestureDetector(
-                      onTap: _manejarClickNuevaCita, // 🔥 Lógica centralizada
+                      onTap: _manejarClickNuevaCita,
                       child: Container(
                           width: double.infinity, height: 50,
                           decoration: BoxDecoration(
-                            // Si está bloqueado -> Gris, Si no -> Lila
                               gradient: LinearGradient(colors: _isUserBlocked ? kBtnBlockedGradient : kBtnNuevaCitaGradient),
                               borderRadius: BorderRadius.circular(kButtonRadius),
                               boxShadow: kButtonShadow,
@@ -288,7 +321,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Si está bloqueado -> Candado
                               if (_isUserBlocked) ...[
                                 const Icon(Icons.lock, color: Colors.white54, size: 16),
                                 const SizedBox(width: 8),

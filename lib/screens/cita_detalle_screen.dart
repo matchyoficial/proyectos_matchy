@@ -1,8 +1,8 @@
 // 📂 lib/screens/cita_detalle_screen.dart
-// ✅ DETALLE DE CITA (FECHA SIN "DE")
-// 🔥 FIX: Formato de fecha ajustado a "Domingo 25 Octubre".
-// 🔥 CHINCHE: 'kDateFontSize' controla el tamaño de esa letra.
-// 🔥 LOGIC: Código original intacto.
+// ✅ DETALLE DE CITA (FOTOS ESTILO PANEL)
+// 🔥 FIX: Las tarjetas ahora usan el diseño "Row" (Foto Cuadrada + Info lateral) igual que el Panel.
+// 🔥 FIX: Alineación 'topCenter' para evitar cortes en la cabeza.
+// 🔥 UI: Diseño limpio y consistente.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -22,17 +22,15 @@ import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 // 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
 // =============================================================================
 
-// 1. TEXTOS LUGAR
-const double kLugarTitleSize     = 28.0;
-const double kLugarAddressSize   = 20.0;
-const double kLugarTextGap       = 2.0;
+// 1. TEXTOS LUGAR (Ajustados para el nuevo diseño lateral)
+const double kCardTitleSize      = 20.0;
+const double kCardSubtitleSize   = 14.0;
 
 // 🔥 CHINCHE PARA TAMAÑO LETRA FECHA
 const double kDateFontSize       = 17.0;
 
-// 2. TARJETAS
-const double kCardLugarHeight    = 180.0;
-const double kCardMatchyHeight   = 280.0;
+// 2. DIMENSIONES
+const double kFotoSize           = 110.0; // Igual que en Panel
 const double kCardBorderRadius   = 25.0;
 
 // 3. CÓDIGO
@@ -101,7 +99,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   @override
   void initState() {
     super.initState();
-    // LISTENER: Escucha en tiempo real si la cita cambia a 'finished'
     _citaSubscription = FirebaseFirestore.instance
         .collection('citas')
         .doc(widget.citaId)
@@ -109,7 +106,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         .listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data() as Map<String, dynamic>;
-        // Si el status cambia a 'finished' y yo aún estoy aquí, navego automáticamente
         if (data['status'] == 'finished' && !_navegandoExito && mounted) {
           if (Navigator.canPop(context)) {
             // Cierra diálogo si está abierto
@@ -134,14 +130,12 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     return diferencia.inHours >= 12;
   }
 
-  // 🔥 HELPER: FECHA LIMPIA (Domingo 25 Octubre)
   String _getFechaAmigable() {
     try {
       DateTime fechaReal;
       if (widget.citaDateTime != null) {
         fechaReal = widget.citaDateTime!;
       } else {
-        // Intenta parsear string dd/mm/yyyy
         final partes = widget.fecha.trim().split(RegExp(r'[/ -]'));
         if (partes.length >= 3) {
           int dia = int.parse(partes[0]);
@@ -159,14 +153,12 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       String diaSemana = dias[fechaReal.weekday - 1];
       String mes = meses[fechaReal.month - 1];
 
-      // Formato solicitado: "Domingo 25 Octubre" (SIN "de")
       return "$diaSemana ${fechaReal.day} $mes";
     } catch (e) {
-      return widget.fecha; // Si falla, retorna original
+      return widget.fecha;
     }
   }
 
-  // HELPER: Navegación centralizada al éxito
   Future<void> _procesarExito() async {
     if (_navegandoExito) return;
     setState(() => _navegandoExito = true);
@@ -197,9 +189,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // 🔥 LÓGICA DE VALIDACIÓN DOBLE + POP-UP
-  // -------------------------------------------------------------------------
   Future<void> _validarYConfirmar() async {
     if (_procesandoValidacion || _navegandoExito) return;
 
@@ -246,7 +235,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
           return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
         });
 
-        // Casting explícito
         final Map<String, dynamic> resultMap = result as Map<String, dynamic>;
         bool isFinished = resultMap['finished'] as bool;
         String otherName = resultMap['otherName'] as String;
@@ -309,7 +297,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     }
   }
 
-  // 🔴 GESTIÓN CANCELACIÓN
   void _gestionarCancelacion() {
     Navigator.push(
       context,
@@ -322,10 +309,83 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     );
   }
 
+  // 🔥 WIDGET: TARJETA ESTILO PANEL (FOTO CUADRADA + INFO)
+  Widget _buildPanelStyleCard({
+    required Widget image,
+    required String title,
+    required String subtitle,
+    String? extraTitle,
+    String? footerText,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(kCardBorderRadius),
+          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          children: [
+            // 🟦 FOTO CUADRADA (ESTILO PANEL)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: SizedBox(
+                width: kFotoSize,
+                height: kFotoSize,
+                child: image,
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // 📝 INFO LATERAL
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (extraTitle != null) ...[
+                        const SizedBox(width: 6),
+                        Text(extraTitle, style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+                      ]
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(color: Colors.white70, fontSize: kCardSubtitleSize, fontWeight: FontWeight.w500),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (footerText != null) ...[
+                    const SizedBox(height: 8),
+                    Text(footerText, style: const TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ]
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white24),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    const double lugarFotoY = -0.5;
-
     return Scaffold(
       body: Stack(
         children: [
@@ -340,14 +400,15 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
               width: double.infinity,
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 120), // 🔥 Espacio para Fade Out
+                padding: const EdgeInsets.only(bottom: 120),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 🔵 1. TARJETA LUGAR
-                      GestureDetector(
+
+                      // 🔵 1. TARJETA LUGAR (ESTILO PANEL)
+                      _buildPanelStyleCard(
                         onTap: () {
                           final lugarTemp = LugarData(
                             id: widget.citaId,
@@ -362,85 +423,28 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                           );
                           Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugarTemp)));
                         },
-                        child: Container(
-                          height: kCardLugarHeight,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(kCardBorderRadius), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))]),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                child: widget.lugarFotoPortada.isNotEmpty
-                                    ? Image.network(widget.lugarFotoPortada, fit: BoxFit.cover, alignment: const Alignment(0.0, lugarFotoY))
-                                    : Container(color: Colors.white10),
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.4, 1.0]),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 15, left: 15, right: 15,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown, alignment: Alignment.centerLeft,
-                                      child: Text(widget.lugarNombre.toUpperCase(), maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: kLugarTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))])),
-                                    ),
-                                    const SizedBox(height: kLugarTextGap),
-                                    Text(widget.lugarDireccion, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: kLugarAddressSize, fontWeight: FontWeight.bold, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))])),
-                                  ],
-                                ),
-                              )
-                            ],
-                          ),
-                        ),
+                        image: widget.lugarFotoPortada.isNotEmpty
+                            ? Image.network(widget.lugarFotoPortada, fit: BoxFit.cover, alignment: Alignment.topCenter)
+                            : Container(color: Colors.white10),
+                        title: widget.lugarNombre,
+                        subtitle: widget.lugarDireccion,
                       ),
 
                       const SizedBox(height: 20),
 
-                      // 🔵 2. TARJETA CANDIDATO (FOTO INTELIGENTE)
-                      GestureDetector(
+                      // 🔵 2. TARJETA CANDIDATO (ESTILO PANEL)
+                      _buildPanelStyleCard(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
-                        child: Container(
-                          height: kCardMatchyHeight,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(kCardBorderRadius), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))]),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                child: FotoPerfilUsuario(
-                                    uid: widget.matchyUid,
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment.topCenter
-                                ),
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(kCardBorderRadius),
-                                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.8)], stops: const [0.4, 1.0]),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 12, left: 15, right: 15,
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(widget.matchyNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))])),
-                                    const SizedBox(width: 8),
-                                    Text("${widget.matchyEdad}", style: const TextStyle(color: Colors.white70, fontSize: 25, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))])),
-                                    const Spacer(),
-                                    const Text("Ver perfil >", style: TextStyle(color: Colors.white70, fontSize: 0))
-                                  ],
-                                ),
-                              )
-                            ],
-                          ),
+                        // 🔥 AQUÍ SE USA EL ALIGNMENT PARA QUE LA CARA SE VEA BIEN
+                        image: FotoPerfilUsuario(
+                            uid: widget.matchyUid,
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter
                         ),
+                        title: widget.matchyNombre,
+                        extraTitle: "${widget.matchyEdad}",
+                        subtitle: "Ver perfil completo",
+                        footerText: "Toca para ver detalles >",
                       ),
 
                       const SizedBox(height: 20),
@@ -448,9 +452,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                       // 🔵 3. GRILLA DATOS
                       Column(
                         children: [
-                          // 🔥 AQUÍ SE APLICA EL CAMBIO DE FECHA
                           Row(children: [
-                            Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), // 🔥 CHINCHE LETRA
+                            Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)),
                             const SizedBox(width: 12),
                             Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))
                           ]),
@@ -472,7 +475,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                             _buildInputCode(),
                             const SizedBox(height: 20),
 
-                            // 🔥 BOTÓN CONFIRMAR
                             _PremiumButton(
                               text: _procesandoValidacion ? "VALIDANDO..." : "CONFIRMA TU CITA",
                               gradient: kBtnConfirmGradient,
@@ -520,7 +522,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             ),
           ),
 
-          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          // 2. FADE OUT
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -537,7 +539,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             ),
           ),
 
-          // 3. 🔥 BOTÓN ATRÁS
+          // 3. BOTÓN ATRÁS
           Positioned(
             top: 50, left: 16,
             child: GestureDetector(
@@ -554,7 +556,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     );
   }
 
-  // 🔥 WIDGET CÁPSULA (MEJORADO CON FITTEDBOX PARA FECHAS LARGAS)
   Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10),
@@ -568,7 +569,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                 child: Text(
                     text.toUpperCase(),
                     textAlign: TextAlign.center,
-                    // 🔥 USA EL TAMAÑO DE LETRA VARIABLE
                     style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)
                 )
             )
@@ -596,7 +596,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   }
 }
 
-// 🔥 WIDGET BOTÓN PREMIUM (RESTAURADO ORIGINAL)
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
