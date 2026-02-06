@@ -5,8 +5,8 @@
         <shape>
             <gradient
                 android:angle="270"
-                android:startColor="#512DA8"
-                android:centerColor="#311B92"
+                android:startColor="#7B1FA2"
+                android:centerColor="#74148C"
                 android:endColor="#000000"
                 android:type="linear" />
         </shape>
@@ -15,12 +15,11 @@
     <item>
         <scale
             android:gravity="center"
-            android:scaleWidth="15%"
-            android:scaleHeight="15%">
-
+            android:scaleWidth="20%"
+            android:scaleHeight="20%">
             <bitmap
                 android:gravity="center"
-                android:src="@drawable/launch_image" />
+                android:src="@drawable/logo_matchy" />
         </scale>
     </item>
 

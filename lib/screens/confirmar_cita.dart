@@ -1,18 +1,13 @@
 // 📂 lib/screens/confirmar_cita.dart
-// ✅ PANTALLA ÉXITO (FIX CONSTRUCTOR + CONFETI + PULSO)
-// 🔥 FIX: Parámetros opcionales para evitar errores de compilación en otras pantallas.
-// 🔥 UI: Confeti dorado programático infinito.
-// 🔥 UI: Textos dorados con pulso infinito y control total.
-// 🔥 UI: Cápsulas de fotos limpias.
-// 🔥 NAV: Bloqueo de botón atrás (WillPopScope / PopScope).
+// ✅ PANTALLA ÉXITO (FIX: FOTOS CUADRADAS + ANTI-MOCHA CABEZAS)
+// 🔥 FIX GEOMETRÍA: width: 130, height: 130 (Cuadrado perfecto).
+// 🔥 FIX FOTO: alignment: Alignment.topCenter (Para que no corte la cabeza).
 
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 
 class ConfirmarCitaScreen extends StatefulWidget {
-  // ✅ FIX: Ya no son 'required' para que no rompa tu otro archivo.
-  // Si no se pasan datos, usa los valores por defecto (= ...).
   final String ownerNombre;
   final String ownerFoto;
   final String matchyNombre;
@@ -21,7 +16,7 @@ class ConfirmarCitaScreen extends StatefulWidget {
   const ConfirmarCitaScreen({
     super.key,
     this.ownerNombre = 'Tú',
-    this.ownerFoto = '', // Se manejará con placeholder si llega vacía
+    this.ownerFoto = '',
     this.matchyNombre = 'Tu Match',
     this.matchyFoto = '',
   });
@@ -32,44 +27,36 @@ class ConfirmarCitaScreen extends StatefulWidget {
 
 class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerProviderStateMixin {
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONTROL TOTAL) 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ===========================================================================
 
-  // 1. LOGO
   static const double kLogoHeight = 45.0;
   static const double kLogoTopSpace = 35.0;
 
-  // 2. TEXTOS Y TÍTULOS
-  static const double kSizeTitulo1 = 29.0;      // "CITA CONFIRMADA CON"
-  static const double kSizeTitulo2 = 45.0;      // "ÉXITO"
-  static const double kSizeSubtitulo = 29.0;    // "DISFRUTEN SU CITA"
-  static const double kSizeNombres = 15.0;      // Nombres bajo fotos
-  static const double kSizeTips = 14.0;         // Texto de los tips
-  static const double kSizeBtnText = 16.0;      // Texto botón
+  static const double kSizeTitulo1 = 29.0;
+  static const double kSizeTitulo2 = 45.0;
+  static const double kSizeSubtitulo = 29.0;
+  static const double kSizeNombres = 15.0;
+  static const double kSizeTips = 14.0;
+  static const double kSizeBtnText = 16.0;
 
-  // 3. FOTOS
-  static const double kFotoRadius = 18.0;       // Redondeo fotos
-  static const double kFotoSize = 160.0;        // Tamaño cuadrado fotos
-  static const double kFotoLabelSize = 0.0;    // "TÚ" / "TU MATCH"
+  // 🔥 TAMAÑO FIJO CUADRADO (Igual que en Panel)
+  static const double kFotoSize = 130.0;
+  static const double kFotoRadius = 24.0; // Bordes bien redondeados
+  static const double kFotoLabelSize = 0.0;
 
-  // 4. ANIMACIONES (PULSO)
   static const double kPulseMin = 1.0;
   static const double kPulseMax = 1.05;
   static const int kPulseDurationMs = 1000;
 
-  // 5. COLORES Y ESTILOS
   static const List<Color> kGoldColors = [Color(0xFFFFD700), Color(0xFFFFB300), Color(0xFFFFE082)];
   static const List<Color> kBtnGradient = [Color(0xF7292993), Color(0xFF1A1A24)];
   static const Color kConfettiColor1 = Color(0xFFFFD700);
   static const Color kConfettiColor2 = Color(0xFFFFC107);
   static const Color kConfettiColor3 = Color(0xFFFFF59D);
 
-  // ===========================================================================
-
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-
-  // Confeti
   late AnimationController _confettiController;
   final List<_Particle> _particles = [];
   final Random _rnd = Random();
@@ -77,18 +64,15 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
   @override
   void initState() {
     super.initState();
-
-    // 1. Animación Pulso Infinito
     _pulseController = AnimationController(vsync: this, duration: const Duration(milliseconds: kPulseDurationMs));
     _pulseAnimation = Tween<double>(begin: kPulseMin, end: kPulseMax).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     _pulseController.repeat(reverse: true);
 
-    // 2. Confeti Infinito
-    _confettiController = AnimationController(vsync: this, duration: const Duration(seconds: 10)); // Duración base para ticks
+    _confettiController = AnimationController(vsync: this, duration: const Duration(seconds: 10));
     _initConfetti();
-    _confettiController.repeat(); // Loop infinito
+    _confettiController.repeat();
     _confettiController.addListener(() {
       if (mounted) setState(() { for (var p in _particles) p.update(); });
     });
@@ -116,24 +100,18 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
   @override
   Widget build(BuildContext context) {
-    // Bloquear botón atrás físico de Android
     return PopScope(
-      canPop: false, // Bloquea el gesto de volver
+      canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        // Opcional: Mostrar mensaje o simplemente no hacer nada
       },
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // 1. FONDO
             Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
-
-            // 2. CONFETI (Detrás del contenido pero sobre el fondo)
             Positioned.fill(child: CustomPaint(painter: _ConfettiPainter(particles: _particles))),
 
-            // 3. CONTENIDO
             Column(
               children: [
                 SizedBox(height: kLogoTopSpace),
@@ -147,7 +125,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
                       children: [
                         const SizedBox(height: 15),
 
-                        // 🔥 TÍTULOS DORADOS PULSANTES
                         ScaleTransition(
                           scale: _pulseAnimation,
                           child: Column(
@@ -158,29 +135,28 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
                           ),
                         ),
 
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 15),
 
-                        // 🔥 CÁPSULAS FOTOS (LIMPIAS)
+                        // 🔥 ROW SIN EXPANDED (Tamaños fijos para garantizar cuadrados)
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildFotoCapsula(widget.ownerNombre, widget.ownerFoto, "TÚ"),
-                            const SizedBox(width: 19),
-                            _buildFotoCapsula(widget.matchyNombre, widget.matchyFoto, "TU MATCH"),
+                            _buildFotoFija(widget.ownerNombre, widget.ownerFoto, "TÚ"),
+                            const SizedBox(width: 30), // Buen espacio entre fotos
+                            _buildFotoFija(widget.matchyNombre, widget.matchyFoto, "TU MATCH"),
                           ],
                         ),
 
-                        const SizedBox(height: 9),
+                        const SizedBox(height: 15),
 
                         ScaleTransition(
                           scale: _pulseAnimation,
                           child: const _GoldText(text: "¡DISFRUTEN SU CITA!", fontSize: kSizeSubtitulo),
                         ),
 
-                        const SizedBox(height: 13),
+                        const SizedBox(height: 18),
 
-                        // 🔥 TIPS DE SEGURIDAD
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
@@ -212,7 +188,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
                         const SizedBox(height: 21),
 
-                        // BOTÓN VOLVER (ÚNICA SALIDA)
                         _PremiumButton(text: "VOLVER AL PANEL", onTap: _irAlPanel),
 
                         const SizedBox(height: 100),
@@ -223,7 +198,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
               ],
             ),
 
-            // 4. FADE OUT
             Positioned(
               bottom: 0, left: 0, right: 0, height: 100,
               child: IgnorePointer(
@@ -244,32 +218,59 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
     );
   }
 
-  // ... (Helpers visuales) ...
-  Widget _buildFotoCapsula(String nombre, String assetOrUrl, String label) {
+  // 🔥 HELPER FOTO FIJA (EL SECRETO: ALIGNMENT TOP CENTER)
+  Widget _buildFotoFija(String nombre, String assetOrUrl, String label) {
     return Column(
       children: [
+        if (kFotoLabelSize > 0)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
+            child: Text(label, style: const TextStyle(color: Colors.white, fontSize: kFotoLabelSize, fontWeight: FontWeight.bold)),
+          ),
+
+        // CONTENEDOR 130x130 (CUADRADO DE HIERRO)
         Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
-          child: Text(label, style: const TextStyle(color: Colors.white, fontSize: _ConfirmarCitaScreenState.kFotoLabelSize, fontWeight: FontWeight.bold)),
-        ),
-        Container(
-          width: kFotoSize, height: kFotoSize,
+          width: kFotoSize,
+          height: kFotoSize,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(kFotoRadius),
             border: Border.all(color: Colors.white24, width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
+            color: Colors.black26,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(kFotoRadius - 2),
             child: assetOrUrl.startsWith('http')
-                ? Image.network(assetOrUrl, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover))
-                : Image.asset(assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)),
+            // 🛑 AQUÍ ESTÁ EL TRUCO: alignment: Alignment.topCenter
+                ? Image.network(
+                assetOrUrl,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter, // <--- ESTO EVITA CORTAR LA CABEZA
+                errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)
+            )
+                : Image.asset(
+                assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter, // <--- ESTO EVITA CORTAR LA CABEZA
+                errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)
+            ),
           ),
         ),
+
         const SizedBox(height: 12),
-        Text(nombre, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: kSizeNombres, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+
+        SizedBox(
+          width: kFotoSize + 20,
+          child: Text(
+              nombre,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: kSizeNombres, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+          ),
+        ),
       ],
     );
   }
@@ -298,7 +299,6 @@ class _PremiumButton extends StatelessWidget {
   }
 }
 
-// Confeti Classes (Reciclaje infinito)
 class _Particle {
   double x=0, y=0, speed=0, theta=0, radius=0; Color color=Colors.yellow;
   final Random random;
@@ -310,6 +310,7 @@ class _Particle {
   }
   void update() { y += speed; theta += 0.1; x += sin(theta) * 0.5; if (y > 950) reset(); }
 }
+
 class _ConfettiPainter extends CustomPainter {
   final List<_Particle> particles; _ConfettiPainter({required this.particles});
   @override void paint(Canvas canvas, Size size) { final paint = Paint(); for (var p in particles) { paint.color = p.color; canvas.drawCircle(Offset(p.x, p.y), p.radius, paint); } }
