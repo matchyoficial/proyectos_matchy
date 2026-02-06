@@ -1,8 +1,8 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
-// ✅ PANTALLA REPROGRAMAR (FECHAS TEXTO EN TODAS PARTES)
-// 🔥 FIX: Ahora la fecha de la cápsula superior TAMBIÉN muestra el día (Ej: Sábado/03/05/2026).
-// 🔥 UI: Diseño Premium intacto.
-// 🔥 LÓGICA: WriteBatch y Notificaciones intactos.
+// ✅ PANTALLA REPROGRAMAR (CON ALERTA VISUAL ROJA)
+// 🔥 FIX: Reemplazado SnackBar por alerta fija debajo del botón.
+// 🔥 UI: Diseño Premium intacto + Nube de error roja.
+// 🔥 LÓGICA: Bloqueo de botón si ya se reprogramó.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -40,6 +40,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
 
   // 🔥 ESTILO PREMIUM BOTÓN
   static const List<Color> kBtnSendGradient = [Color(0xFF6B4EE6), Color(0xFF4527A0)];
+  static const List<Color> kBtnDisabledGradient = [Color(0xFF424242), Color(0xFF212121)]; // Gris deshabilitado
   static const double kButtonRadius = 18.0;
   static const List<BoxShadow> kButtonShadow = [
     BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))
@@ -134,30 +135,24 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
       const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
       String diaSemana = dias[dt.weekday - 1];
 
-      // Aseguramos ceros a la izquierda para mantener uniformidad (03/05/2026)
       String d = day.toString().padLeft(2, '0');
       String m = month.toString().padLeft(2, '0');
 
       return "$diaSemana/$d/$m/$year";
     } catch (_) {
-      return dateStr; // Si falla el parseo, retorna original
+      return dateStr;
     }
   }
 
   Future<void> _enviarReprogramacion() async {
+    // Validación de conteo (Doble check por seguridad)
+    final int currentCount = (_citaData?['repro_count'] ?? 0) as int;
+    if (currentCount >= 1) return; // Ya no mostramos SnackBar, el botón estará bloqueado
+
     if (_opciones.contains(null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text("⚠️ DEBES SELECCIONAR LAS 3 OPCIONES"),
         backgroundColor: Colors.orange,
-      ));
-      return;
-    }
-
-    final int currentCount = (_citaData?['repro_count'] ?? 0) as int;
-    if (currentCount >= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("⛔ ESTA CITA YA FUE REPROGRAMADA UNA VEZ."),
-        backgroundColor: Colors.red,
       ));
       return;
     }
@@ -247,17 +242,20 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     final String fechaActual = _citaData!['fecha'] ?? '--/--';
     final String horaActual = _citaData!['hora'] ?? '--:--';
 
-    // Determinar UID de la otra persona para el Widget Inteligente
+    // Determinar UID
     final user = FirebaseAuth.instance.currentUser;
     final String myUid = user?.uid ?? '';
     final String ownerUid = (_citaData?['ownerUid'] ?? '').toString();
     final String candUid = (_citaData?['matchyUid'] ?? _citaData?['candidatoUid'] ?? '').toString();
     final String uidToShow = (myUid == ownerUid) ? candUid : ownerUid;
 
+    // 🔥 VERIFICACIÓN DE LÍMITE DE REPROGRAMACIÓN
+    final int reproCount = (_citaData?['repro_count'] ?? 0) as int;
+    final bool limitReached = reproCount >= 1;
+
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Contenido
           MatchyPageLayout(
             backgroundAsset: 'assets/images/fondo.jpg',
             logoAsset: 'assets/images/logomatchyplano.png',
@@ -268,6 +266,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 0),
               child: Column(
                 children: [
+                  // TARJETA DE CITA (IGUAL)
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     height: kCardHeight,
@@ -303,8 +302,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                               ),
                             ),
                           ),
-
-                          // 🔥 FOTO MATCHY (WIDGET INTELIGENTE)
                           Positioned(
                             bottom: kUserPhotoMargin,
                             right: kUserPhotoMargin,
@@ -334,6 +331,8 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                   const SizedBox(height: 25),
                   const Text("REPROGRAMAR CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))])),
                   const SizedBox(height: 15),
+
+                  // INFO CAPSULA
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     padding: const EdgeInsets.all(20),
@@ -344,7 +343,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         const SizedBox(height: 10),
                         _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
                         const SizedBox(height: 10),
-                        // 🔥 AQUÍ SE APLICA EL CAMBIO A LA CÁPSULA SUPERIOR
                         _buildInfoRow(Icons.calendar_month_rounded, "${_formatStoredDate(fechaActual)} - $horaActual".toUpperCase(), isAccent: true),
                       ],
                     ),
@@ -394,16 +392,20 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                   ),
                   const SizedBox(height: 30),
 
-                  // 🔥 BOTÓN PREMIUM
+                  // 🔥 BOTÓN PREMIUM (Se deshabilita si limitReached)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     child: GestureDetector(
-                      onTap: _sending ? null : _enviarReprogramacion,
+                      onTap: (_sending || limitReached) ? null : _enviarReprogramacion,
                       child: Container(
                         width: double.infinity,
                         height: 55,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kBtnSendGradient),
+                          gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: limitReached ? kBtnDisabledGradient : kBtnSendGradient
+                          ),
                           borderRadius: BorderRadius.circular(kButtonRadius),
                           boxShadow: kButtonShadow,
                           border: Border.all(color: Colors.white24, width: 1),
@@ -411,18 +413,56 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         alignment: Alignment.center,
                         child: _sending
                             ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text("ENVIAR REPROGRAMACIÓN", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', letterSpacing: 0.5)),
+                            : Text(
+                            limitReached ? "OPCIÓN NO DISPONIBLE" : "ENVIAR REPROGRAMACIÓN",
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', letterSpacing: 0.5)
+                        ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 120), // Espacio para fade out
+                  // 🔥 AQUÍ ESTÁ EL CAMBIO: ALERTA ROJA FIJA
+                  if (limitReached)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 20, left: kCardMarginH, right: kCardMarginH),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD32F2F).withOpacity(0.9), // Rojo intenso semitransparente
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFFF5252), width: 1.5),
+                          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Icon(Icons.no_accounts_rounded, color: Colors.white, size: 32), // Simbolo de bloqueo
+                            SizedBox(width: 15),
+                            Expanded(
+                              child: Text(
+                                "ESTA CITA YA FUE REPROGRAMADA UNA VEZ, NO PUEDES VOLVER A REPROGRAMARLA",
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Poppins',
+                                    height: 1.3
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 120),
                 ],
               ),
             ),
           ),
 
-          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT)
+          // 2. FADE OUT
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -477,7 +517,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
               child: Center(child: Text("${index + 1}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
             ),
             const SizedBox(width: 15),
-            // 🔥 AQUÍ USO EL NUEVO FORMATO PARA LOS SELECTORES
             Expanded(child: Text(isSelected ? _formatDateWithDay(date) : "SELECCIONAR OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600, fontSize: 14, fontFamily: 'Poppins'))),
             Icon(Icons.calendar_today_rounded, color: isSelected ? kAccentColor : Colors.white24, size: 20),
           ],

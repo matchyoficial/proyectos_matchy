@@ -1,6 +1,7 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
-// ✅ CREAR CITA PRIVADA (CON NOTIFICACIÓN)
-// 🔥 FIX: Ahora envía una notificación real a Firebase para que le suene la campana al invitado.
+// ✅ CREAR CITA PRIVADA (FADE OUT + NUBE ESTILIZADA)
+// 🔥 UI FIX: Agregado degradado negro inferior (Fade Out).
+// 🔥 UI FIX: Nube informativa con estilo idéntico a 'Reprogramar' y texto justificado ordenado.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -35,7 +36,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
   static const double kTituloPantallaSize = 16.0;
   static const double kTextoBotonSize = 14.0;
   static const double kAlturaBoton = 52.0;
-  static const double kNotaPieSize = 19.0;
 
   String _fecha = '';
   String _hora = '';
@@ -174,7 +174,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'body': '$ownerNombre te ha invitado a una cita en ${lugar.nombre}.',
       'citaId': citaId,
       'senderUid': user.uid,
-      'senderFoto': ownerFoto, // Para mostrar la carita en la notif
+      'senderFoto': ownerFoto,
       'createdAt': FieldValue.serverTimestamp(),
       'read': false,
     });
@@ -224,8 +224,10 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // FONDO
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
           const MatchyBackButton(top: 10, left: 16),
+
           Column(
             children: [
               const SizedBox(height: espacioBarraLogo),
@@ -387,14 +389,36 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         onTap: _sending ? null : _onEnviarInvitacion,
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 30),
 
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 36),
-                        child: Text(
-                          'Tu matchy recibirá una notificación para aceptar esta cita.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white54, fontSize: kNotaPieSize, fontWeight: FontWeight.w400),
+                      // 🔥 NUBE INFORMATIVA ESTILIZADA (Estilo Reprogramar + Justify)
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: Colors.white24, width: 1),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start, // Alineado arriba
+                          children: [
+                            Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 28),
+                            SizedBox(width: 15),
+                            Expanded(
+                              child: Text(
+                                "Se enviará una notificación a tu Matchy. Hablen por chat antes de fijar la cita para evitar cancelaciones y penalizaciones.",
+                                textAlign: TextAlign.justify, // 🔥 JUSTIFICADO
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800, // Bold fuerte como en reprogramar
+                                    fontSize: 14.9,
+                                    fontFamily: 'Poppins',
+                                    height: 1.3
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -402,6 +426,23 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                 ),
               ),
             ],
+          ),
+
+          // 🔥 FADE OUT INFERIOR
+          Positioned(
+            bottom: 0, left: 0, right: 0, height: 90,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
