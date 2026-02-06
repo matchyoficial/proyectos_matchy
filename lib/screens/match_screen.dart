@@ -1,8 +1,8 @@
 // 📂 lib/screens/match_screen.dart
-// ✅ MATCH SCREEN (CORREGIDO: NO SE CIERRA SOLA)
-// 🔥 FIX CRÍTICO: Eliminado 'consumeEvent' del Timer. Ahora la pantalla espera al usuario.
-// 🔥 LOGIC: El evento solo se borra al hundir "Iniciar Chat" o "Ir a Citas".
-// 🔥 UI: Foto inteligente y diseño intactos.
+// ✅ MATCH SCREEN (CORRECCIÓN FINAL: NO AUTO-CLOSE + INDEX CITAS)
+// 🔥 FIX 1: Eliminado el auto-consumo en el Timer. La pantalla espera al usuario.
+// 🔥 FIX 2: Botón 'Ir a Citas' ahora apunta al index: 1 (Citas).
+// 🔥 LÓGICA: Owner crea evento / Matchy solo consume.
 
 import 'dart:async';
 import 'dart:io';
@@ -17,7 +17,7 @@ import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET FOTO
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 class MatchScreen extends ConsumerStatefulWidget {
   final String candidatoId;
@@ -32,6 +32,9 @@ class MatchScreen extends ConsumerStatefulWidget {
 
   final Future<void> Function()? onMatchAnimationFinished;
 
+  // 🔥 OBLIGATORIO
+  final bool soyElOwner;
+
   const MatchScreen({
     super.key,
     required this.candidatoId,
@@ -42,6 +45,7 @@ class MatchScreen extends ConsumerStatefulWidget {
     this.lugarFoto = '',
     this.citaId,
     this.onMatchAnimationFinished,
+    required this.soyElOwner,
   });
 
   @override
@@ -51,9 +55,6 @@ class MatchScreen extends ConsumerStatefulWidget {
 class _MatchScreenState extends ConsumerState<MatchScreen>
     with TickerProviderStateMixin {
 
-  // ==============================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
-  // ==============================================================================
   static const double kTitleOffsetY = 11.0;
   static const double kTitleScale   = 1.0;
   static const double kMatchOffsetY = -5.0;
@@ -64,7 +65,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   static const double kLugarHeight  = 160.0;
   static const double kButtonsOffsetY = -29.0;
   static const double kButtonsScale   = 0.9;
-  // ==============================================================================
 
   late final AnimationController _titleCtrl;
   late final AnimationController _cardsCtrl;
@@ -88,6 +88,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
   static const String kUsersCollection = 'users';
   static const String kEventsSubcollection = 'events';
+
   bool _creatingEvent = false;
   bool _eventCreated = false;
   bool _navigating = false;
@@ -96,6 +97,9 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   static const Color matchyLilac = Color(0xFFE0D4FF);
   static const Color matchyYellow = Color(0xFFFFC107);
   static const Color noteRed = Color(0xFFFF5252);
+
+  static const Color matchyBlue = Color(0xFF29B6F6);
+  static const Color matchyGreen = Color(0xFF66BB6A);
 
   @override
   void initState() {
@@ -111,30 +115,13 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       await _hydratePeopleFromFirestore();
     });
 
-    // 🔥 TIMER: SOLO HABILITA LOS BOTONES. NO CIERRA LA PANTALLA.
-    _finishTimer = Timer(_finishDelay, () async {
+    // 🛑 CAMBIO CRÍTICO: El timer YA NO CONSUME EL EVENTO.
+    // Solo habilita los botones (_guardadoOk = true).
+    _finishTimer = Timer(_finishDelay, () {
       if (!mounted) return;
       if (_finishCalled) return;
       _finishCalled = true;
-
-      // ⚠️ ELIMINADO: await HomeShell.consumeEvent();
-      // Al quitar esto, la pantalla NO se cierra sola.
-
-      if (widget.onMatchAnimationFinished == null) {
-        setState(() => _guardadoOk = true);
-        return;
-      }
-      setState(() => _guardando = true);
-      try {
-        await widget.onMatchAnimationFinished!.call();
-        if (!mounted) return;
-        setState(() => _guardadoOk = true);
-      } catch (_) {
-        if (!mounted) return;
-        setState(() => _guardadoOk = false);
-      } finally {
-        if (mounted) setState(() => _guardando = false);
-      }
+      setState(() => _guardadoOk = true);
     });
   }
 
@@ -184,13 +171,19 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) {} finally { if (mounted) setState(() => _hydratingPeople = false); }
   }
 
+  // ---------------------------------------------------------------------------
+  // 🔥 LÓGICA DE CREACIÓN (SOLO OWNER)
+  // ---------------------------------------------------------------------------
   Future<void> _createCandidateEventOnce({required String action}) async {
+    if (!widget.soyElOwner) return; // Cortafuegos
+
     if (_eventCreated || _creatingEvent) return;
     _creatingEvent = true;
     try {
       final me = FirebaseAuth.instance.currentUser;
       final myUid = me?.uid ?? '';
       final peerUid = widget.candidatoId.trim();
+
       if (myUid.isNotEmpty && peerUid.isNotEmpty) {
         final profile = ref.read(profileFormProvider);
         final String ownerFotoCandidate = _stableMyFoto.trim().isNotEmpty ? _stableMyFoto : _pickMyPhoto(profile);
@@ -212,61 +205,83 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
         });
         _eventCreated = true;
       }
-    } catch (_) {} finally { _creatingEvent = false; }
+    } catch (_) {
+    } finally {
+      _creatingEvent = false;
+    }
   }
 
-  // 🔴 BOTÓN 1: INICIAR CHAT
-  Future<void> _startChat() async {
+  // ---------------------------------------------------------------------------
+  // 🟣 🟡 OWNER (CREAN EVENTOS)
+  // ---------------------------------------------------------------------------
+  Future<void> _startChatOwner() async {
     if (_navigating) return;
     setState(() => _navigating = true);
 
-    // 🔥 AQUÍ SÍ CONSUMIMOS EL EVENTO (AL TOCAR EL BOTÓN)
-    await HomeShell.consumeEvent();
-
-    await _createCandidateEventOnce(action: 'chat');
-
-    final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
-    final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
-
     try {
+      await HomeShell.consumeEvent();
+      await _createCandidateEventOnce(action: 'chat'); // 🔥 Crea Evento
+
+      final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
+      final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
       final tId = await ChatActions.upsertThread(
-          peerUid: widget.candidatoId,
-          peerNombre: suN,
-          peerEdad: 0,
-          peerFoto: suF,
-          myNombre: 'Yo',
-          myEdad: 0,
-          myFoto: ''
+          peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: ''
       );
 
       if (!mounted) return;
-
-      Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-              builder: (_) => ChatDetalleScreen(
-                  id: tId,
-                  otherUid: widget.candidatoId,
-                  nombre: suN,
-                  edad: '',
-                  foto: suF
-              )
-          )
-      );
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
     } catch (_) { if(mounted) setState(() => _navigating = false); }
   }
 
-  // 🔴 BOTÓN 2: IR A CITAS
-  Future<void> _irACitas() async {
+  Future<void> _irACitasOwner() async {
     if (_navigating) return;
     setState(() => _navigating = true);
 
-    // 🔥 AQUÍ SÍ CONSUMIMOS EL EVENTO (AL TOCAR EL BOTÓN)
-    await HomeShell.consumeEvent();
+    try {
+      await HomeShell.consumeEvent();
+      await _createCandidateEventOnce(action: 'citas'); // 🔥 Crea Evento
+    } catch (_) {}
+    finally {
+      // 🔥 INDEX 1: CITAS
+      if (mounted) HomeShell.go(context, index: 1);
+    }
+  }
 
-    await _createCandidateEventOnce(action: 'citas');
+  // ---------------------------------------------------------------------------
+  // 🟢 🔵 MATCHY (SOLO CONSUMEN)
+  // ---------------------------------------------------------------------------
+  Future<void> _startChatMatchy() async {
+    if (_navigating) return;
+    setState(() => _navigating = true);
 
-    if (!mounted) return;
-    HomeShell.go(context, index: 1);
+    try {
+      // 1. Marcar como visto (Borrar alerta visual)
+      await HomeShell.consumeEvent();
+
+      // 2. Crear hilo de chat (Necesario para que el chat exista)
+      final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
+      final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
+      final tId = await ChatActions.upsertThread(
+          peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: ''
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
+    } catch (_) { if(mounted) setState(() => _navigating = false); }
+  }
+
+  Future<void> _irACitasMatchy() async {
+    if (_navigating) return;
+    setState(() => _navigating = true);
+
+    try {
+      // 1. Marcar como visto (Borrar alerta visual)
+      await HomeShell.consumeEvent();
+    } catch (_) {}
+    finally {
+      // 🔥 INDEX 1: CITAS
+      if (mounted) HomeShell.go(context, index: 1);
+    }
   }
 
   @override
@@ -278,7 +293,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     final suNombre = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
     final suEdad = _stablePeerEdad > 0 ? _stablePeerEdad : widget.candidatoEdad;
     final suFoto = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
-
     final String nombreLugar = widget.lugarNombre.isNotEmpty ? widget.lugarNombre : 'LUGAR DE CITA';
     final String fotoLugar = widget.lugarFoto;
 
@@ -305,78 +319,23 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                       Transform.translate(offset: const Offset(0, kTitleOffsetY), child: Transform.scale(scale: kTitleScale, child: AnimatedBuilder(animation: _titleCtrl, builder: (_, __) => Column(children: [_AnimatedGradientTitle(text: 'TENEMOS UN', fontSize: 34.0, t: _titleCtrl.value), const SizedBox(height: 2.0), _AnimatedGradientTitle(text: 'MATCHY', fontSize: 44.0, t: _titleCtrl.value)])))),
                       const SizedBox(height: 15),
 
-                      // 2. MATCH (TARJETAS FLOTANTES)
-                      Transform.translate(
-                        offset: const Offset(0, kMatchOffsetY),
-                        child: Transform.scale(
-                          scale: kMatchScale,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                height: 230.0,
-                                child: LayoutBuilder(builder: (context, constraints) {
-                                  final double cardW = ((constraints.maxWidth - 14.0) / 2.0).clamp(145.0, 190.0);
-
-                                  // 🔥 FOTO ESTABLE: Creadas fuera del builder
-                                  final matchyCard = _MatchPhotoCard(
-                                      width: cardW,
-                                      height: 230.0,
-                                      label: 'TU MATCHY',
-                                      // 🔥 WIDGET FOTO INTELIGENTE
-                                      image: FotoPerfilUsuario(
-                                        uid: widget.candidatoId,
-                                        fit: BoxFit.cover,
-                                        alignment: Alignment.topCenter,
-                                      ),
-                                      glowColor: matchyYellow
-                                  );
-
-                                  final myCard = _MatchPhotoCard(
-                                      width: cardW,
-                                      height: 230.0,
-                                      label: 'TÚ',
-                                      image: _imageSmart(miFoto, 'assets/images/perfil1.jpg'),
-                                      glowColor: matchyLilac
-                                  );
-
-                                  return AnimatedBuilder(
-                                    animation: _cardsCtrl,
-                                    builder: (context, child) {
-                                      final double wiggle = math.sin(_cardsCtrl.value * math.pi * 2.0) * kCardsWiggleIntensity;
-
-                                      return Center(
-                                        child: SizedBox(
-                                          width: (cardW * 2.0) + 14.0,
-                                          height: 230.0,
-                                          child: Stack(
-                                            alignment: Alignment.center,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Transform.translate(offset: Offset(0.0, -wiggle), child: matchyCard),
-                                                  Transform.translate(offset: Offset(0.0, wiggle), child: myCard),
-                                                ],
-                                              ),
-                                              Transform.scale(
-                                                scale: 1.0 + (math.sin(_cardsCtrl.value * math.pi) * 0.06),
-                                                child: Container(width: 74.0, height: 74.0, decoration: BoxDecoration(color: Colors.black.withOpacity(0.25), shape: BoxShape.circle, border: Border.all(color: matchyLilac.withOpacity(0.9), width: 2.0)), child: const Icon(Icons.favorite, color: Color(0xFFFF4D6D), size: 36.0)),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                }),
-                              ),
-                              const SizedBox(height: 12.0),
-                              Row(children: [Expanded(child: _NameLine(name: suNombre, age: suEdad)), const SizedBox(width: 14.0), Expanded(child: _NameLine(name: miNombre, age: miEdad))]),
-                            ],
-                          ),
-                        ),
-                      ),
+                      // 2. MATCH
+                      Transform.translate(offset: const Offset(0, kMatchOffsetY), child: Transform.scale(scale: kMatchScale, child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        SizedBox(height: 230.0, child: LayoutBuilder(builder: (context, constraints) {
+                          final double cardW = ((constraints.maxWidth - 14.0) / 2.0).clamp(145.0, 190.0);
+                          final matchyCard = _MatchPhotoCard(width: cardW, height: 230.0, label: 'TU MATCHY', image: FotoPerfilUsuario(uid: widget.candidatoId, fit: BoxFit.cover, alignment: Alignment.topCenter), glowColor: matchyYellow);
+                          final myCard = _MatchPhotoCard(width: cardW, height: 230.0, label: 'TÚ', image: _imageSmart(miFoto, 'assets/images/perfil1.jpg'), glowColor: matchyLilac);
+                          return AnimatedBuilder(animation: _cardsCtrl, builder: (context, child) {
+                            final double wiggle = math.sin(_cardsCtrl.value * math.pi * 2.0) * kCardsWiggleIntensity;
+                            return Center(child: SizedBox(width: (cardW * 2.0) + 14.0, height: 230.0, child: Stack(alignment: Alignment.center, children: [
+                              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Transform.translate(offset: Offset(0.0, -wiggle), child: matchyCard), Transform.translate(offset: Offset(0.0, wiggle), child: myCard)]),
+                              Transform.scale(scale: 1.0 + (math.sin(_cardsCtrl.value * math.pi) * 0.06), child: Container(width: 74.0, height: 74.0, decoration: BoxDecoration(color: Colors.black.withOpacity(0.25), shape: BoxShape.circle, border: Border.all(color: matchyLilac.withOpacity(0.9), width: 2.0)), child: const Icon(Icons.favorite, color: Color(0xFFFF4D6D), size: 36.0))),
+                            ])));
+                          });
+                        })),
+                        const SizedBox(height: 12.0),
+                        Row(children: [Expanded(child: _NameLine(name: suNombre, age: suEdad)), const SizedBox(width: 14.0), Expanded(child: _NameLine(name: miNombre, age: miEdad))]),
+                      ]))),
 
                       const SizedBox(height: 20),
 
@@ -393,14 +352,45 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
 
                       const SizedBox(height: 20),
 
-                      // 4. BOTONES
+                      // 4. BOTONES (DUAL INTERFACE)
                       Transform.translate(offset: const Offset(0, kButtonsOffsetY), child: Transform.scale(scale: kButtonsScale, child: Column(children: [
-                        AnimatedBuilder(animation: _buttonPulseCtrl, builder: (_, __) {
-                          final pulse = 1.0 + (math.sin(_buttonPulseCtrl.value * math.pi) * 0.02);
-                          return Transform.scale(scale: pulse, child: SizedBox(width: double.infinity, height: 52.0, child: ElevatedButton(onPressed: (_navigating) ? null : _startChat, style: ElevatedButton.styleFrom(backgroundColor: matchyPurple, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 8.0), child: const Text('INICIAR CHAT CON TU MATCHY', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.4)))));
-                        }),
-                        const SizedBox(height: 10),
-                        SizedBox(width: double.infinity, height: 48, child: ElevatedButton(onPressed: (_guardadoOk && !_guardando && !_navigating) ? _irACitas : null, style: ElevatedButton.styleFrom(backgroundColor: matchyYellow, disabledBackgroundColor: matchyYellow.withOpacity(0.35), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 6.0), child: _guardando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_guardadoOk ? 'IR A CITAS' : 'GUARDANDO CITA...', style: const TextStyle(color: Colors.black, fontSize: 13.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.3)))),
+
+                        // 🟣 CASO OWNER
+                        if (widget.soyElOwner) ...[
+                          AnimatedBuilder(animation: _buttonPulseCtrl, builder: (_, __) {
+                            final pulse = 1.0 + (math.sin(_buttonPulseCtrl.value * math.pi) * 0.02);
+                            return Transform.scale(scale: pulse, child: SizedBox(width: double.infinity, height: 52.0, child: ElevatedButton(
+                                onPressed: (_navigating) ? null : _startChatOwner,
+                                style: ElevatedButton.styleFrom(backgroundColor: matchyPurple, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 8.0),
+                                child: const Text('INICIAR CHAT CON TU MATCHY', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.4))
+                            )));
+                          }),
+                          const SizedBox(height: 10),
+                          SizedBox(width: double.infinity, height: 48, child: ElevatedButton(
+                              onPressed: (_guardadoOk && !_guardando && !_navigating) ? _irACitasOwner : null,
+                              style: ElevatedButton.styleFrom(backgroundColor: matchyYellow, disabledBackgroundColor: matchyYellow.withOpacity(0.35), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 6.0),
+                              child: _guardando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_guardadoOk ? 'IR A CITAS' : 'GUARDANDO CITA...', style: const TextStyle(color: Colors.black, fontSize: 13.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.3))
+                          )),
+                        ]
+
+                        // 🟢 CASO MATCHY
+                        else ...[
+                          AnimatedBuilder(animation: _buttonPulseCtrl, builder: (_, __) {
+                            final pulse = 1.0 + (math.sin(_buttonPulseCtrl.value * math.pi) * 0.02);
+                            return Transform.scale(scale: pulse, child: SizedBox(width: double.infinity, height: 52.0, child: ElevatedButton(
+                                onPressed: (_navigating) ? null : _startChatMatchy,
+                                style: ElevatedButton.styleFrom(backgroundColor: matchyGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 8.0),
+                                child: const Text('HABLAR CON MI MATCHY', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.4))
+                            )));
+                          }),
+                          const SizedBox(height: 10),
+                          SizedBox(width: double.infinity, height: 48, child: ElevatedButton(
+                              onPressed: (_guardadoOk && !_guardando && !_navigating) ? _irACitasMatchy : null,
+                              style: ElevatedButton.styleFrom(backgroundColor: matchyBlue, disabledBackgroundColor: matchyBlue.withOpacity(0.35), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 6.0),
+                              child: _guardando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(_guardadoOk ? 'VER EN MIS CITAS' : 'CARGANDO...', style: const TextStyle(color: Colors.white, fontSize: 13.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.3))
+                          )),
+                        ],
+
                         const SizedBox(height: 14.0),
                         Text('BUENA SUERTE CON TU CITA', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 15.0, fontFamily: 'Poppins', fontWeight: FontWeight.w900, height: 1.15, shadows: [Shadow(blurRadius: 10.0, color: Colors.black.withOpacity(0.45), offset: const Offset(0.0, 2.0))])),
                         const SizedBox(height: 6.0),

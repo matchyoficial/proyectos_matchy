@@ -1,7 +1,7 @@
 // 📂 lib/screens/home_shell.dart
-// ✅ Shell principal (FINAL - NAVEGACIÓN ROBUSTA)
-// 🔥 FIX: Usa 'PopScope' para garantizar que el botón Atrás no saque de la app
-// salvo que estés en el Panel.
+// ✅ Shell principal (CORREGIDO PARA MATCHY)
+// 🔥 FIX: Al detectar un evento entrante, pasamos 'soyElOwner: false' a MatchScreen.
+// 🔥 ESTO EVITA QUE EL RECEPTOR CREE UN NUEVO EVENTO Y GENERE EL BUCLE.
 
 import 'dart:async';
 
@@ -161,6 +161,13 @@ class _HomeShellState extends State<HomeShell> {
           lugarNombre: nombreLugar,
           lugarFoto: fotoLugar,
           citaId: citaId,
+
+          // 🔥 CALLBACK PARA QUE EL MATCHY CIERRE EL EVENTO VISUALMENTE
+          onMatchAnimationFinished: HomeShell.consumeEvent,
+
+          // 🛑🛑🛑 AQUÍ ESTÁ LA SOLUCIÓN DEL BUCLE 🛑🛑🛑
+          // Como estoy recibiendo un evento, NO SOY EL OWNER.
+          soyElOwner: false,
         ),
         doc.reference,
       );
@@ -176,16 +183,10 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    // 🔥 PopScope: La forma moderna de interceptar el botón Atrás
     return PopScope(
-      canPop: _index == 2, // Solo permite salir si estamos en PANEL (2)
+      canPop: _index == 2,
       onPopInvoked: (didPop) {
-        if (didPop) {
-          // Si didPop es true, Android ya gestionó la salida (estábamos en el Panel)
-          return;
-        }
-        // Si estamos aquí, canPop fue false (estábamos en otra pestaña).
-        // Así que forzamos el cambio al Panel.
+        if (didPop) return;
         setState(() => _index = 2);
       },
       child: ValueListenableBuilder<Widget?>(
