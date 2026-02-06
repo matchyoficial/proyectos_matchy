@@ -1,8 +1,8 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (CORREGIDO - LECTURA REAL DE BLOQUEO)
-// 🔥 FIX: Ahora lee 'userStatus: blocked' y 'strikes' directamente.
-// 🔥 LOGIC: Si userStatus == 'blocked', activa el modo castigo inmediatamente.
-// 🔥 UI: Botones con CANDADO 🔒 visual si hay bloqueo.
+// ✅ PANEL CENTRAL (BUSCADOR MEJORADO + UI PULIDA)
+// 🔥 FIX: Navegación del buscador lleva a pantalla CON botón de agendar.
+// 🔥 UI: Fondo del buscador unificado con notificaciones.
+// 🔥 UI: Resultados de búsqueda más grandes y legibles.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/screens/splash_screen.dart';
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
+import 'package:proyectos_matchy/models/lugar_data.dart';
 
 // 🔹 WIDGET TERMÓMETRO
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
@@ -27,6 +28,8 @@ import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
+// 🔥 CAMBIO IMPORTANTE: Usamos la pantalla CON BOTÓN para agendar
+import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 // =============================================================================
 // 🔔 LÓGICA DE NOTIFICACIONES
@@ -109,7 +112,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   static const List<BoxShadow> kCardShadow = [BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 5))];
 
   static const List<Color> kPremiumButtonGradient = [Color(0xFF7E208E), Color(0xFC4B3F60)];
-  static const List<Color> kDisabledButtonGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color gris para bloqueado
+  static const List<Color> kDisabledButtonGradient = [Color(0xFF424242), Color(0xFF212121)];
+  static const List<Color> kBtnPublishedGradient = [Color(0xFF145977), Color(0xFF0277BD)];
 
   static const double kPremiumButtonRadius = 18.0;
   static const BorderSide kPremiumButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
@@ -169,6 +173,13 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     );
   }
 
+  void _abrirBuscador() {
+    showSearch(
+      context: context,
+      delegate: _LugarSearchDelegate(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -183,7 +194,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
 
           Column(
             children: [
-              // HEADER
               SafeArea(
                 bottom: false,
                 child: Padding(
@@ -191,7 +201,15 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(width: 40),
+                      GestureDetector(
+                        onTap: _abrirBuscador,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                          child: const Icon(Icons.search, color: Colors.white, size: 28),
+                        ),
+                      ),
+
                       Image.asset('assets/images/logomatchyplano.png', height: 45),
 
                       GestureDetector(
@@ -246,10 +264,9 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                       final localPhoto = (data?['profilePhotoLocalPath'] ?? '').toString();
                       final fotoFinal = profilePhotoUrl.isNotEmpty ? profilePhotoUrl : (localPhoto.isNotEmpty ? localPhoto : 'assets/images/perfil1.jpg');
 
-                      // 🟢 RECOLECCIÓN DE DATOS DE BLOQUEO
                       final puntaje = (data?['confiabilidad'] as num?)?.toInt() ?? 100;
-                      final userStatus = (data?['userStatus'] ?? 'active').toString(); // 🔥 Leemos el Status
-                      final strikes = (data?['strikes'] as num?)?.toInt() ?? 0;        // 🔥 Leemos Strikes
+                      final userStatus = (data?['userStatus'] ?? 'active').toString();
+                      final strikes = (data?['strikes'] as num?)?.toInt() ?? 0;
                       final bloqueadoHastaTimestamp = data?['bloqueadoHasta'] as Timestamp?;
 
                       return _PanelContent(
@@ -259,8 +276,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                         ubicacion: ubicacion,
                         fotoWidget: _buildFotoWidget(fotoFinal),
                         puntaje: puntaje,
-                        userStatus: userStatus, // Pasamos al widget hijo
-                        strikes: strikes,       // Pasamos al widget hijo
+                        userStatus: userStatus,
+                        strikes: strikes,
                         bloqueadoHasta: bloqueadoHastaTimestamp?.toDate(),
                       );
                     },
@@ -270,7 +287,6 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
             ],
           ),
 
-          // DEGRADADO INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 80,
             child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)]))),
@@ -282,7 +298,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   }
 }
 
-// ... _NotificacionesSheet (Igual) ...
+// ... _NotificacionesSheet ...
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
@@ -307,7 +323,6 @@ class _NotificacionesSheet extends ConsumerWidget {
   }
 }
 
-// 🟢 LÓGICA DE BLOQUEO ACTUALIZADA
 class _PanelContent extends StatelessWidget {
   final TextTheme textTheme;
   final String nombre;
@@ -331,28 +346,21 @@ class _PanelContent extends StatelessWidget {
     this.bloqueadoHasta,
   });
 
-  // 🔥 DETECTOR MAESTRO DE BLOQUEO
   bool get _estaBloqueado {
-    if (userStatus == 'blocked') return true; // Bloqueo manual o por sistema
-    if (bloqueadoHasta != null && bloqueadoHasta!.isAfter(DateTime.now())) return true; // Bloqueo por fecha
+    if (userStatus == 'blocked') return true;
+    if (bloqueadoHasta != null && bloqueadoHasta!.isAfter(DateTime.now())) return true;
     return false;
   }
 
-  // 🔥 CALCULAR FECHA SI NO EXISTE (AUTO-CORRECCIÓN VISUAL)
   DateTime? get _fechaParaTermometro {
     if (!_estaBloqueado) return null;
     if (bloqueadoHasta != null) return bloqueadoHasta;
-
-    // Si está bloqueado pero no hay fecha, calculamos una teórica basada en strikes
-    // Regla: 1 strike = 5 días, 2 = 10, etc.
     final diasCastigo = strikes * 5;
-    // Asumimos que se bloqueó hoy para mostrar algo coherente
     return DateTime.now().add(Duration(days: diasCastigo > 0 ? diasCastigo : 1));
   }
 
   void _ejecutarAccion(BuildContext context, VoidCallback accion) {
     if (_estaBloqueado) {
-      // ⛔ BLOQUEADO: Mostrar Alerta
       final dias = strikes * 5;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -380,7 +388,6 @@ class _PanelContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🔒 Variable local para saber si mostramos candados
     final bool bloqueado = _estaBloqueado;
 
     return Column(
@@ -404,7 +411,7 @@ class _PanelContent extends StatelessWidget {
           ]),
         ),
 
-        // 🔥 TERMÓMETRO INTELIGENTE (Ahora recibe la fecha calculada si es null)
+        // TERMÓMETRO
         TermometroConfiabilidad(
           puntaje: puntaje,
           fechaDesbloqueo: _fechaParaTermometro,
@@ -422,30 +429,29 @@ class _PanelContent extends StatelessWidget {
             const SizedBox(width: 22),
             Expanded(child: Column(children: [
 
-              // 1. CREAR CITA (🔒 PROTEGIDO)
               _BotonPanelPremium(
                   texto: "CREAR UNA CITA",
-                  bloqueado: bloqueado, // 🔥 Muestra candado si true
+                  bloqueado: bloqueado,
                   onTap: () => _ejecutarAccion(context, () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => CrearCitaPanelScreen(nombreUsuario: nombre)));
                   })
               ),
               const SizedBox(height: 12),
 
-              // 2. BUSCAR CITA (🔒 PROTEGIDO)
               _BotonPanelPremium(
                   texto: "BUSCAR UNA CITA",
-                  bloqueado: bloqueado, // 🔥 Muestra candado si true
+                  bloqueado: bloqueado,
                   onTap: () => _ejecutarAccion(context, () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitaBuscarScreen()));
                   })
               ),
               const SizedBox(height: 12),
 
-              // 3. CITAS PUBLICADAS (✅ SIEMPRE LIBRE)
+              // 🔥 BOTÓN CITAS PUBLICADAS (CYAN)
               _BotonPanelPremium(
                   texto: "CITAS PUBLICADAS",
-                  bloqueado: false, // Siempre libre
+                  bloqueado: false,
+                  customGradient: _PanelScreenState.kBtnPublishedGradient,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CitasPendientesScreen()))
               ),
             ]))
@@ -481,26 +487,34 @@ class _PanelContent extends StatelessWidget {
 class _BotonPanelPremium extends StatelessWidget {
   final String texto;
   final VoidCallback onTap;
-  final bool bloqueado; // Nuevo parámetro
+  final bool bloqueado;
+  final List<Color>? customGradient;
 
   const _BotonPanelPremium({
     required this.texto,
     required this.onTap,
     this.bloqueado = false,
+    this.customGradient,
   });
 
   @override
   Widget build(BuildContext context) {
+    List<Color> gradientColors;
+    if (bloqueado) {
+      gradientColors = _PanelScreenState.kDisabledButtonGradient;
+    } else {
+      gradientColors = customGradient ?? _PanelScreenState.kPremiumButtonGradient;
+    }
+
     return GestureDetector(
         onTap: onTap,
         child: Container(
             height: 44,
             decoration: BoxDecoration(
-              // Si está bloqueado usa gris, si no, usa el morado
                 gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: bloqueado ? _PanelScreenState.kDisabledButtonGradient : _PanelScreenState.kPremiumButtonGradient
+                    colors: gradientColors
                 ),
                 borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius),
                 border: Border.fromBorderSide(_PanelScreenState.kPremiumButtonBorder),
@@ -518,7 +532,7 @@ class _BotonPanelPremium extends StatelessWidget {
                     texto,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: bloqueado ? Colors.white54 : Colors.white, // Texto más apagado si está bloqueado
+                        color: bloqueado ? Colors.white54 : Colors.white,
                         fontWeight: FontWeight.w800,
                         fontSize: 13,
                         letterSpacing: 0.5
@@ -579,6 +593,174 @@ class _CategoriaPanelCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 🔥 CLASE DEL BUSCADOR (SEARCH DELEGATE)
+class _LugarSearchDelegate extends SearchDelegate {
+  @override
+  ThemeData appBarTheme(BuildContext context) {
+    final theme = Theme.of(context);
+    return theme.copyWith(
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.black,
+        iconTheme: IconThemeData(color: Colors.white),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        hintStyle: TextStyle(color: Colors.white54),
+        border: InputBorder.none,
+      ),
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(color: Colors.white, fontSize: 18),
+      ),
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: Color(0xFF00B0FF),
+        selectionColor: Color(0xFF7E208E),
+      ),
+    );
+  }
+
+  @override
+  List<Widget>? buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () => query = '',
+        )
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    return _buildResultsList(context, query);
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    if (query.length < 3) {
+      return Container(
+        color: const Color(0xFF2E1A47), // 🔥 FONDO UNIFICADO (Notificaciones)
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.search, size: 60, color: Colors.white24),
+              SizedBox(height: 10),
+              Text("Busca tus lugares favoritos...", style: TextStyle(color: Colors.white54)),
+            ],
+          ),
+        ),
+      );
+    }
+    return _buildResultsList(context, query);
+  }
+
+  Widget _buildResultsList(BuildContext context, String searchQuery) {
+    final term = searchQuery.toLowerCase().trim();
+
+    return Container(
+      color: const Color(0xFF2E1A47), // 🔥 FONDO UNIFICADO
+      child: FutureBuilder<QuerySnapshot>(
+        future: FirebaseFirestore.instance.collection('lugares').get(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+
+          final docs = snapshot.data!.docs;
+
+          final exactos = docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final nombre = (data['nombre'] ?? '').toString().toLowerCase();
+            return nombre.contains(term);
+          }).toList();
+
+          List<QueryDocumentSnapshot> similares = [];
+          if (exactos.isEmpty) {
+            similares = docs.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final tipos = List.from(data['tipos'] ?? []);
+              return tipos.any((t) => t.toString().toLowerCase().contains(term));
+            }).toList();
+          }
+
+          final resultados = exactos.isNotEmpty ? exactos : similares;
+          final esRecomendacion = exactos.isEmpty && similares.isNotEmpty;
+
+          if (resultados.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.sentiment_dissatisfied, size: 60, color: Colors.white24),
+                  const SizedBox(height: 10),
+                  Text('No encontramos "$searchQuery"', style: const TextStyle(color: Colors.white)),
+                ],
+              ),
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (esRecomendacion)
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    "No encontramos '$searchQuery', pero mira estos similares:",
+                    style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: resultados.length,
+                  itemBuilder: (context, index) {
+                    final doc = resultados[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final lugar = LugarData.fromMap(id: doc.id, data: data);
+
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          lugar.fotoPortada,
+                          width: 60, // 🔥 MÁS GRANDE
+                          height: 60, // 🔥 MÁS GRANDE
+                          fit: BoxFit.cover,
+                          errorBuilder: (_,__,___) => Container(width: 60, height: 60, color: Colors.grey),
+                        ),
+                      ),
+                      title: Text(
+                          lugar.nombre,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16) // 🔥 MÁS GRANDE
+                      ),
+                      subtitle: Text(
+                          lugar.direccion,
+                          style: const TextStyle(color: Colors.white54, fontSize: 13),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis
+                      ),
+                      onTap: () {
+                        // 🔥 NAVEGACIÓN A PANTALLA CON BOTÓN DE AGENDAR
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaScreen(lugar: lugar)));
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
