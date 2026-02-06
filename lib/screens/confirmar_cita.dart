@@ -1,7 +1,7 @@
 // 📂 lib/screens/confirmar_cita.dart
-// ✅ PANTALLA ÉXITO (FIX: FOTOS CUADRADAS + ANTI-MOCHA CABEZAS)
-// 🔥 FIX GEOMETRÍA: width: 130, height: 130 (Cuadrado perfecto).
-// 🔥 FIX FOTO: alignment: Alignment.topCenter (Para que no corte la cabeza).
+// ✅ PANTALLA ÉXITO (GAMIFICACIÓN + FOTOS CUADRADAS + ANTI-MOCHA CABEZAS)
+// 🔥 UI: Muestra mensaje de premio (+20 puntos) o mensaje motivacional (faltan X citas).
+// 🔥 UI: Fotos 130x130 fijas con alineación superior.
 
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -13,12 +13,18 @@ class ConfirmarCitaScreen extends StatefulWidget {
   final String matchyNombre;
   final String matchyFoto;
 
+  // 🆕 VARIABLES PARA EL PREMIO
+  final bool ganaronPuntos; // ¿Ganaron los 20 puntos hoy?
+  final int citasFaltantes; // ¿Cuántas faltan para el premio?
+
   const ConfirmarCitaScreen({
     super.key,
     this.ownerNombre = 'Tú',
     this.ownerFoto = '',
     this.matchyNombre = 'Tu Match',
     this.matchyFoto = '',
+    this.ganaronPuntos = false, // Por defecto false
+    this.citasFaltantes = 0,    // Por defecto 0
   });
 
   @override
@@ -40,20 +46,23 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
   static const double kSizeTips = 14.0;
   static const double kSizeBtnText = 16.0;
 
-  // 🔥 TAMAÑO FIJO CUADRADO (Igual que en Panel)
+  // 🔥 FOTOS
   static const double kFotoSize = 130.0;
-  static const double kFotoRadius = 24.0; // Bordes bien redondeados
+  static const double kFotoRadius = 24.0;
   static const double kFotoLabelSize = 0.0;
 
+  // 🔥 ANIMACIONES
   static const double kPulseMin = 1.0;
   static const double kPulseMax = 1.05;
   static const int kPulseDurationMs = 1000;
 
+  // 🔥 COLORES
   static const List<Color> kGoldColors = [Color(0xFFFFD700), Color(0xFFFFB300), Color(0xFFFFE082)];
   static const List<Color> kBtnGradient = [Color(0xF7292993), Color(0xFF1A1A24)];
   static const Color kConfettiColor1 = Color(0xFFFFD700);
   static const Color kConfettiColor2 = Color(0xFFFFC107);
   static const Color kConfettiColor3 = Color(0xFFFFF59D);
+  static const Color kCyanNeon = Color(0xFF00E5FF); // Nuevo color para mensaje motivacional
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -137,16 +146,51 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
                         const SizedBox(height: 15),
 
-                        // 🔥 ROW SIN EXPANDED (Tamaños fijos para garantizar cuadrados)
+                        // 🔥 FOTOS CUADRADAS
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _buildFotoFija(widget.ownerNombre, widget.ownerFoto, "TÚ"),
-                            const SizedBox(width: 30), // Buen espacio entre fotos
+                            const SizedBox(width: 30),
                             _buildFotoFija(widget.matchyNombre, widget.matchyFoto, "TU MATCH"),
                           ],
                         ),
+
+                        const SizedBox(height: 15),
+
+                        // 🆕 MENSAJE DE RECOMPENSA O MOTIVACIÓN
+                        if (widget.ganaronPuntos)
+                        // CASO 1: ¡PREMIO!
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.amber, width: 1),
+                            ),
+                            child: const Text(
+                              "🌟 ¡HAS GANADO +20 PUNTOS DE CONFIABILIDAD! 🌟",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins', letterSpacing: 0.5),
+                            ),
+                          )
+                        else if (widget.citasFaltantes > 0)
+                        // CASO 2: MOTIVACIÓN
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.cyan.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: kCyanNeon.withOpacity(0.5), width: 1),
+                            ),
+                            child: Text(
+                              "¡BIEN HECHO! COMPLETA ${widget.citasFaltantes} ${widget.citasFaltantes == 1 ? 'CITA MÁS' : 'CITAS MÁS'} SEGUIDAS PARA GANAR PUNTOS.",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: kCyanNeon, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins', letterSpacing: 0.5),
+                            ),
+                          ),
 
                         const SizedBox(height: 15),
 
@@ -218,7 +262,7 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
     );
   }
 
-  // 🔥 HELPER FOTO FIJA (EL SECRETO: ALIGNMENT TOP CENTER)
+  // 🔥 HELPER FOTO FIJA (ANTI-MOCHA CABEZAS)
   Widget _buildFotoFija(String nombre, String assetOrUrl, String label) {
     return Column(
       children: [
@@ -230,7 +274,7 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
             child: Text(label, style: const TextStyle(color: Colors.white, fontSize: kFotoLabelSize, fontWeight: FontWeight.bold)),
           ),
 
-        // CONTENEDOR 130x130 (CUADRADO DE HIERRO)
+        // CONTENEDOR 130x130
         Container(
           width: kFotoSize,
           height: kFotoSize,
@@ -243,19 +287,9 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
           child: ClipRRect(
             borderRadius: BorderRadius.circular(kFotoRadius - 2),
             child: assetOrUrl.startsWith('http')
-            // 🛑 AQUÍ ESTÁ EL TRUCO: alignment: Alignment.topCenter
-                ? Image.network(
-                assetOrUrl,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter, // <--- ESTO EVITA CORTAR LA CABEZA
-                errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)
-            )
-                : Image.asset(
-                assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter, // <--- ESTO EVITA CORTAR LA CABEZA
-                errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)
-            ),
+            // 🛑 alignment: Alignment.topCenter ES LA CLAVE
+                ? Image.network(assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter))
+                : Image.asset(assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)),
           ),
         ),
 
