@@ -1,7 +1,8 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (DISEÑO RADICAL - FOTO 3)
-// 🔥 FIX: Eliminada ubicación. Rachas y Editar Perfil ahora son barras gemelas apiladas.
-// 🔥 UI: Simetría perfecta en ancho, alto y sombras.
+// ✅ PANEL CENTRAL (FINAL)
+// 🔥 LAYOUT: Logo a la izquierda, Botones a la derecha (Info > Buscar > Alertas).
+// 🔥 UI: Paneles desplegables más altos.
+// 🔥 CONTENT: Tabla de penalización detallada con 5to Strike dramático.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -171,6 +172,16 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     );
   }
 
+  // 🔥 PANTALLA INFORMATIVA
+  void _mostrarInfo(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => const _InfoSheet(),
+    );
+  }
+
   void _abrirBuscador() {
     showSearch(
       context: context,
@@ -195,42 +206,62 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
               SafeArea(
                 bottom: false,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 10),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      GestureDetector(
-                        onTap: _abrirBuscador,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
-                          child: const Icon(Icons.search, color: Colors.white, size: 28),
-                        ),
-                      ),
-
+                      // 1. LOGO A LA IZQUIERDA
                       Image.asset('assets/images/logomatchyplano.png', height: 45),
 
-                      GestureDetector(
-                        onTap: () => _mostrarNotificaciones(context),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 32),
-                            if (unreadCount > 0)
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(color: Color(0xFFFF4D6D), shape: BoxShape.circle),
-                                  child: Text(
-                                    unreadCount > 9 ? '9+' : '$unreadCount',
-                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      // 2. BOTONES A LA DERECHA (Info -> Buscar -> Alertas)
+                      Row(
+                        children: [
+                          // ℹ️ INFO
+                          GestureDetector(
+                            onTap: () => _mostrarInfo(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                              child: const Icon(Icons.info_outline, color: Colors.white, size: 28),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // 🔍 BUSCAR
+                          GestureDetector(
+                            onTap: _abrirBuscador,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+                              child: const Icon(Icons.search, color: Colors.white, size: 28),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // 🔔 NOTIFICACIONES
+                          GestureDetector(
+                            onTap: () => _mostrarNotificaciones(context),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 32),
+                                if (unreadCount > 0)
+                                  Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(color: Color(0xFFFF4D6D), shape: BoxShape.circle),
+                                      child: Text(
+                                        unreadCount > 9 ? '9+' : '$unreadCount',
+                                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                          ],
-                        ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -298,14 +329,185 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   }
 }
 
-// ... _NotificacionesSheet ... (IGUAL QUE ANTES)
+// 🔥 CLASE: HOJA DE INFORMACIÓN
+class _InfoSheet extends StatelessWidget {
+  const _InfoSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      // 🔥 MÁS ALTURA PARA QUE EMPIECE ARRIBA
+      height: MediaQuery.of(context).size.height * 0.92,
+      decoration: BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_PanelScreenState.kSheetTopColor, _PanelScreenState.kSheetBottomColor]),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, -5))]
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 15),
+          Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
+          const SizedBox(height: 20),
+          const Text("CÓMO FUNCIONA MATCHY", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0)),
+          const SizedBox(height: 15),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+
+                  // 🔥 TARJETA 1: RACHAS
+                  _buildInfoCard(
+                      icon: Icons.local_fire_department,
+                      iconColor: Colors.orangeAccent,
+                      title: "PRENDE TU RACHA",
+                      gradient: [const Color(0xFFEF6C00).withOpacity(0.2), Colors.black45],
+                      borderColor: Colors.orangeAccent,
+                      content: [
+                        _buildBullet("Asiste y Confirma: Completa tus citas y asegúrate de validar el código con tu Matchy."),
+                        _buildBullet("Suma Fuegos:\n   Cita 1: 🔥 (Vas bien)\n   Cita 2: 🔥🔥 (¡Casi lo tienes!)\n   Cita 3: 🔥🔥🔥 (¡VICTORIA!)"),
+                        _buildBullet("El Premio: Al completar la 3ra cita consecutiva, ganas automáticamente +20 Puntos de Puntualidad y tu racha se reinicia."),
+                      ]
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 🚫 TARJETA 2: CASTIGOS (LISTA DETALLADA)
+                  _buildInfoCard(
+                      icon: Icons.block,
+                      iconColor: Colors.redAccent,
+                      title: "NO TE CONGELES",
+                      gradient: [const Color(0xFFB71C1C).withOpacity(0.2), Colors.black45],
+                      borderColor: Colors.redAccent,
+                      content: [
+                        _buildBullet("Si cancelas una cita faltando menos de 12 horas o dejas plantado a tu Matchy, recibes un Strike ❌."),
+                        const SizedBox(height: 10),
+                        // LISTA DE PENALIZACIONES
+                        _buildStrikeRow("1 Strike", "5 Días de Bloqueo"),
+                        _buildStrikeRow("2 Strikes", "10 Días de Bloqueo"),
+                        _buildStrikeRow("3 Strikes", "15 Días de Bloqueo"),
+                        _buildStrikeRow("4 Strikes", "20 Días de Bloqueo"),
+                        const SizedBox(height: 8),
+                        // DRAMÁTICO FINAL
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                          decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.redAccent)),
+                          child: const Text("💀 5 STRIKES = BLOQUEO DEFINITIVO DE LA APP", textAlign: TextAlign.center, style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w900, fontSize: 13)),
+                        ),
+                      ]
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 🛡️ TARJETA 3: SEGURIDAD
+                  _buildInfoCard(
+                      icon: Icons.security,
+                      iconColor: Colors.cyanAccent,
+                      title: "TU SEGURIDAD PRIMERO",
+                      gradient: [const Color(0xFF0097A7).withOpacity(0.2), Colors.black45],
+                      borderColor: Colors.cyanAccent,
+                      content: [
+                        _buildBullet("Lugar Público: Mantén tu primera cita siempre en sitios concurridos."),
+                        _buildBullet("Comparte: Avísale a un amigo o familiar dónde estarás."),
+                        _buildBullet("El Código: Nunca des tu 'Código de Cita' por chat. Solo entrégalo en persona."),
+                        _buildBullet("Instinto: Si algo no se siente bien, puedes irte, ponerte en contacto con el personal de seguridad del sitio o comunicarte a la linea de emergencia #123. No estás obligado a quedarte."),
+                      ]
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // 💰 SLOGAN FINAL
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: const Text(
+                      "RECUERDA QUE EN MATCHY,\nEL QUE INVITA PAGA",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: Color(0xFFBEB3FF),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          letterSpacing: 1.0,
+                          fontFamily: 'Poppins'
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({required IconData icon, required Color iconColor, required String title, required List<Color> gradient, required Color borderColor, required List<Widget> content}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient),
+          border: Border.all(color: borderColor.withOpacity(0.5), width: 1.5)
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: iconColor, size: 28),
+              const SizedBox(width: 10),
+              Text(title, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...content,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("• ", style: TextStyle(color: Colors.white54, fontSize: 16)),
+          Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStrikeRow(String strike, String penalty) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4.0, left: 10),
+      child: Row(
+        children: [
+          Text(strike, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+          const Text(" = ", style: TextStyle(color: Colors.white54)),
+          Text(penalty, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+}
+
+// ... _NotificacionesSheet ...
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificacionesAsync = ref.watch(notificationsListProvider);
     return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
+      // 🔥 MÁS ALTURA (0.85) PARA LAS NOTIFICACIONES
+      height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_PanelScreenState.kSheetTopColor, _PanelScreenState.kSheetBottomColor]), borderRadius: const BorderRadius.vertical(top: Radius.circular(30)), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, -5))]),
       child: Column(
         children: [

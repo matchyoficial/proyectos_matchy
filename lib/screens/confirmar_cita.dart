@@ -1,6 +1,6 @@
 // 📂 lib/screens/confirmar_cita.dart
-// ✅ PANTALLA ÉXITO (GAMIFICACIÓN + FOTOS CUADRADAS + ANTI-MOCHA CABEZAS)
-// 🔥 UI: Muestra mensaje de premio (+20 puntos) o mensaje motivacional (faltan X citas).
+// ✅ PANTALLA ÉXITO (TEXTOS ACTUALIZADOS A "PUNTUALIDAD")
+// 🔥 UI: Muestra mensaje de premio (+20 puntos) o mensaje motivacional.
 // 🔥 UI: Fotos 130x130 fijas con alineación superior.
 
 import 'dart:math';
@@ -161,22 +161,22 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
                         // 🆕 MENSAJE DE RECOMPENSA O MOTIVACIÓN
                         if (widget.ganaronPuntos)
-                        // CASO 1: ¡PREMIO!
+                        // CASO 1: ¡PREMIO DE FUEGO! 🔥 (TEXTO ACTUALIZADO)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                             decoration: BoxDecoration(
-                              color: Colors.amber.withOpacity(0.2),
+                              color: Colors.orange.withOpacity(0.2), // Fondo Naranja Fuego
                               borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.amber, width: 1),
+                              border: Border.all(color: Colors.orangeAccent, width: 1), // Borde Fuego
                             ),
                             child: const Text(
-                              "🌟 ¡HAS GANADO +20 PUNTOS DE CONFIABILIDAD! 🌟",
+                              "🔥🔥🔥 ¡RACHA COMPLETADA! +20 PUNTOS DE PUNTUALIDAD 🔥🔥🔥",
                               textAlign: TextAlign.center,
-                              style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins', letterSpacing: 0.5),
+                              style: TextStyle(color: Color(0xFFFF6D00), fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins', letterSpacing: 0.5),
                             ),
                           )
                         else if (widget.citasFaltantes > 0)
-                        // CASO 2: MOTIVACIÓN
+                        // CASO 2: MOTIVACIÓN (TEXTO ACTUALIZADO)
                           Container(
                             margin: const EdgeInsets.symmetric(horizontal: 10),
                             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
@@ -186,7 +186,7 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
                               border: Border.all(color: kCyanNeon.withOpacity(0.5), width: 1),
                             ),
                             child: Text(
-                              "¡BIEN HECHO! COMPLETA ${widget.citasFaltantes} ${widget.citasFaltantes == 1 ? 'CITA MÁS' : 'CITAS MÁS'} SEGUIDAS PARA GANAR PUNTOS.",
+                              "¡BIEN HECHO! COMPLETA ${widget.citasFaltantes} ${widget.citasFaltantes == 1 ? 'CITA MÁS' : 'CITAS MÁS'} SEGUIDAS PARA GANAR PUNTOS DE PUNTUALIDAD.",
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: kCyanNeon, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins', letterSpacing: 0.5),
                             ),
