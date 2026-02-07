@@ -1,8 +1,8 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS (CORREGIDO CRASH AL ENTRAR)
-// 🔥 FIX: Error "path must be non-empty". Ahora se asegura un ID válido antes de navegar.
-// 🔥 LOGIC: Si es match nuevo, busca/crea el ID del hilo al vuelo con 'upsertThread'.
-// 🔥 UI: Diseño Pro intacto.
+// ✅ LISTA DE CHATS BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Título estandarizado a 20pt y nombres protegidos con FittedBox.
+// 🔥 FIX: Mantiene lógica de 'upsertThread' para evitar crash en hilos nuevos.
+// 🔥 UI: Diseño Pro con colores sagrados intactos.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -44,7 +44,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
 
   // ===========================================================================
-  // 🔴🔴 CHINCHES MAESTROS 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   // ===========================================================================
   static const double kTopSpacing   = 35.0;
   static const double kLogoHeight   = 45.0;
@@ -123,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ));
       } else {
         result.add(ChatThreadUI(
-          id: '', // Vacío: Indica que hay que buscarlo al hacer click
+          id: '',
           otherUid: otherUid,
           nombre: nombre,
           foto: foto,
@@ -159,8 +159,23 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(height: kTopSpacing),
               Center(child: SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png'))),
               const SizedBox(height: 20),
-              const Center(
-                child: Text('CHATS', style: TextStyle(color: Colors.white, fontSize: 24, fontFamily: 'Poppins', fontWeight: FontWeight.w900, letterSpacing: 1.0, shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))])),
+
+              // BLINDAJE: Título estandarizado a 20pt
+              Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: const Text(
+                      'CHATS',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.0,
+                          shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))]
+                      )
+                  ),
+                ),
               ),
               const SizedBox(height: 15),
 
@@ -203,32 +218,28 @@ class _ChatScreenState extends State<ChatScreen> {
                           itemBuilder: (ctx, i) {
                             final t = uiList[i];
                             return GestureDetector(
-                              // 🔥 CORRECCIÓN DEL CRASH AQUÍ
                               onTap: () async {
                                 String threadId = t.id;
-
-                                // Si no tenemos ID (es nuevo), lo obtenemos primero
                                 if (threadId.isEmpty) {
                                   try {
-                                    // UpsertThread busca si existe o crea uno nuevo y devuelve el ID
                                     threadId = await ChatActions.upsertThread(
                                         peerUid: t.otherUid,
                                         peerNombre: t.nombre,
                                         peerEdad: 0,
                                         peerFoto: t.foto,
-                                        myNombre: 'Yo', // Se actualiza en backend
+                                        myNombre: 'Yo',
                                         myEdad: 0,
                                         myFoto: ''
                                     );
                                   } catch (e) {
                                     debugPrint("Error obteniendo thread: $e");
-                                    return; // Evita navegar si falló
+                                    return;
                                   }
                                 }
 
                                 if (context.mounted) {
                                   Navigator.push(context, MaterialPageRoute(builder: (_) => ChatDetalleScreen(
-                                    id: threadId, // ¡Ahora siempre enviamos un ID válido!
+                                    id: threadId,
                                     otherUid: t.otherUid,
                                     nombre: t.nombre,
                                     edad: '',
@@ -260,18 +271,31 @@ class _ChatScreenState extends State<ChatScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Text(t.nombre, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')),
+                                          // BLINDAJE: Nombre de Matchy adaptativo
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                                t.nombre,
+                                                maxLines: 1,
+                                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')
+                                            ),
+                                          ),
                                           const SizedBox(height: 4),
-                                          Text(
-                                              t.lastText,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                  color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
-                                                  fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
-                                                  fontSize: 13,
-                                                  fontFamily: 'Poppins'
-                                              )
+                                          // BLINDAJE: Previsualización de mensaje adaptativa
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                                t.lastText,
+                                                maxLines: 1,
+                                                style: TextStyle(
+                                                    color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
+                                                    fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
+                                                    fontSize: 13,
+                                                    fontFamily: 'Poppins'
+                                                )
+                                            ),
                                           ),
                                         ],
                                       ),

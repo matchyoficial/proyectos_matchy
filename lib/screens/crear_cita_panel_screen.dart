@@ -1,7 +1,7 @@
 // 📂 lib/screens/crear_cita_panel_screen.dart
-// ✅ PANEL CREAR CITA (DISEÑO PREMIUM)
-// 🔥 UI: Degradado inferior Fade Out.
-// 🔥 UI: Botones y textos con sombras y gradientes.
+// ✅ PANEL CREAR CITA BLINDADO (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables elásticos.
+// 🔥 UI: Diseño Premium original con degradado Fade Out intacto.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -32,7 +32,7 @@ class CrearCitaPanelScreen extends StatelessWidget {
     const double espacioBarraLogo = 35;
     const double alturaLogo = 50;
     const double espacioLogoScroll = 15;
-    const double margenInferiorPantalla = 120; // Aumentado para el fade out
+    const double margenInferiorPantalla = 120;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -88,17 +88,17 @@ class CrearCitaPanelScreen extends StatelessWidget {
 }
 
 // ===============================================================
-// CONTENIDO
+// CONTENIDO BLINDADO
 // ===============================================================
 class _CrearCitaContent extends StatelessWidget {
   final String nombreUsuario;
 
   const _CrearCitaContent({required this.nombreUsuario});
 
-  // Estilos de texto premium
+  // Estilos de texto premium blindados
   static const TextStyle kTitleStyle = TextStyle(
     color: Colors.white,
-    fontSize: 28,
+    fontSize: 28, // Tamaño original para el saludo grande
     fontWeight: FontWeight.w900,
     fontFamily: 'Poppins',
     shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))],
@@ -106,29 +106,46 @@ class _CrearCitaContent extends StatelessWidget {
 
   static const TextStyle kSubtitleStyle = TextStyle(
     color: Colors.white70,
-    fontSize: 16,
+    fontSize: 15, // Ajustado levemente para consistencia
     fontWeight: FontWeight.w600,
     fontFamily: 'Poppins',
     shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
   );
 
+  // Regla de Oro: Títulos de sección a 20pt
+  static const TextStyle kSectionTitleStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 20,
+    fontWeight: FontWeight.w900,
+    fontFamily: 'Poppins',
+    shadows: [Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 3))],
+  );
+
   @override
   Widget build(BuildContext context) {
     const double alturaCategoria = 112;
-    const double radioCategoria = 18; // Más redondeado
+    const double radioCategoria = 18;
     const double alturaLugarPopular = 150;
 
     return Column(
       children: [
-        // SALUDO
+        // SALUDO BLINDADO
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: FittedBox(
+            fit: BoxFit.scaleDown,
             child: Text('HOLA ${nombreUsuario.toUpperCase()}', style: kTitleStyle),
           ),
         ),
         const SizedBox(height: 4),
-        const Text('¿A DÓNDE QUIERES IR CON TU CITA?', style: kSubtitleStyle),
+        // SUBTÍTULO BLINDADO
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: const Text('¿A DÓNDE QUIERES IR CON TU CITA?', style: kSubtitleStyle),
+          ),
+        ),
         const SizedBox(height: 17),
 
         // GRID CATEGORÍAS
@@ -157,15 +174,15 @@ class _CrearCitaContent extends StatelessWidget {
 
         const SizedBox(height: 30),
 
-        // TÍTULO SECCIÓN POPULARES
-        const Text(
-          "LUGARES MÁS POPULARES",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 25,
-            fontWeight: FontWeight.w900,
-            fontFamily: 'Poppins',
-            shadows: [Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 3))],
+        // TÍTULO SECCIÓN POPULARES (Regla de Oro: 20pt)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: const Text(
+              "LUGARES MÁS POPULARES",
+              style: kSectionTitleStyle,
+            ),
           ),
         ),
 
@@ -208,7 +225,7 @@ class _CrearCitaContent extends StatelessWidget {
 }
 
 // ===============================================================
-// CATEGORÍA CARD (MEJORADO - TÍTULO ENCIMA + SOMBRA)
+// CATEGORÍA CARD BLINDADA
 // ===============================================================
 class _CategoriaCard extends StatelessWidget {
   final String titulo;
@@ -232,7 +249,6 @@ class _CategoriaCard extends StatelessWidget {
       child: Stack(
         alignment: Alignment.bottomCenter,
         children: [
-          // Imagen de fondo
           Container(
             height: altura,
             decoration: BoxDecoration(
@@ -245,7 +261,6 @@ class _CategoriaCard extends StatelessWidget {
             ),
           ),
 
-          // Gradiente inferior para legibilidad
           Container(
             height: altura,
             decoration: BoxDecoration(
@@ -259,18 +274,20 @@ class _CategoriaCard extends StatelessWidget {
             ),
           ),
 
-          // Título encima
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              titulo,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                fontFamily: 'Poppins',
-                letterSpacing: 0.5,
-                shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                titulo,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Poppins',
+                  letterSpacing: 0.5,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+                ),
               ),
             ),
           ),

@@ -1,7 +1,7 @@
 // 📂 lib/screens/matchys_screen.dart
-// ✅ MATCHYS SCREEN (CON SISTEMA DE BLOQUEO)
-// 🔥 FIX: Ahora lee 'userStatus' del usuario actual para bloquear 'CREAR NUEVA CITA'.
-// 🔥 UI: Botón con Candado 🔒 si está bloqueado. 'TU HISTORIAL' sigue libre.
+// ✅ MATCHYS SCREEN BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 FIX: Nombres y botones adaptativos que nunca desbordan.
+// 🔥 UI: Títulos estandarizados a 20pt.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +15,7 @@ import 'package:proyectos_matchy/screens/matchys_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
-// 🔵 MODELO DE DATOS MATCHY
+// 🔵 MODELO DE DATOS MATCHY (MANTENIDO)
 class MatchyData {
   final String uid;
   final String nombre;
@@ -32,7 +32,7 @@ class MatchyData {
   });
 }
 
-// 🔵 PROVIDER 1: LISTA DE MATCHYS
+// 🔵 PROVIDERS (MANTENIDOS)
 final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -57,7 +57,6 @@ final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
   });
 });
 
-// 🔵 PROVIDER 2: ESTADO DEL USUARIO ACTUAL (EL ESPÍA)
 final currentUserStatusProvider = StreamProvider<Map<String, dynamic>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -71,7 +70,7 @@ final currentUserStatusProvider = StreamProvider<Map<String, dynamic>>((ref) {
     return {
       'userStatus': data?['userStatus'] ?? 'active',
       'strikes': data?['strikes'] ?? 0,
-      'bloqueadoHasta': data?['bloqueadoHasta'], // Timestamp
+      'bloqueadoHasta': data?['bloqueadoHasta'],
     };
   });
 });
@@ -82,16 +81,16 @@ class MatchysScreen extends ConsumerWidget {
   const MatchysScreen({super.key, this.showBottomNav = true});
 
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (BLINDADA)
   // ===========================================================================
   static const double kSpacePhotoToButtons = 8.0;
   static const double kSpaceBetweenButtons = 6.0;
-  static const double kButtonFontSize = 14.0;
+  static const double kButtonFontSize = 13.0; // Reducido 1pt para blindaje preventivo
   static const double kButtonHeight = 34.0;
 
   static const List<Color> kBtnNewCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
   static const List<Color> kBtnHistorialGradient = [Color(0xFF7A43BF), Color(0xFF4A238F)];
-  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)]; // 🔥 Color Bloqueado
+  static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)];
 
   static const double kButtonRadius = 18.0;
   static const List<BoxShadow> kButtonShadow = [
@@ -102,9 +101,8 @@ class MatchysScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncMatchys = ref.watch(myMatchysProvider);
-    final asyncStatus = ref.watch(currentUserStatusProvider); // 🔥 Escuchamos estado
+    final asyncStatus = ref.watch(currentUserStatusProvider);
 
-    // Determinamos si está bloqueado globalmente
     bool isBlocked = false;
     int strikes = 0;
 
@@ -120,7 +118,6 @@ class MatchysScreen extends ConsumerWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Contenido Principal
           MatchyPageLayout(
             backgroundAsset: 'assets/images/fondo.jpg',
             logoAsset: 'assets/images/logomatchyplano.png',
@@ -132,16 +129,20 @@ class MatchysScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text(
-                    'MIS MATCHYS',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Poppins',
-                      letterSpacing: 1.0,
-                      shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                  // BLINDAJE TÍTULO: Adaptativo + Fuente 20pt (Regla de Oro)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: const Text(
+                      'MIS MATCHYS',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20, // Estandarizado
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Poppins',
+                        letterSpacing: 1.0,
+                        shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                      ),
                     ),
                   ),
 
@@ -159,9 +160,9 @@ class MatchysScreen extends ConsumerWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: 12, // Ajustado ligeramente para aire
                         fontWeight: FontWeight.w900,
-                        height: 1.4,
+                        height: 1.3,
                         shadows: [Shadow(color: Colors.black, blurRadius: 2, offset: Offset(0, 1))],
                       ),
                     ),
@@ -192,13 +193,13 @@ class MatchysScreen extends ConsumerWidget {
                           crossAxisCount: 2,
                           crossAxisSpacing: 15,
                           mainAxisSpacing: 20,
-                          childAspectRatio: 0.55,
+                          childAspectRatio: 0.52, // Ajustado ligeramente para dar espacio a botones adaptativos
                         ),
                         itemCount: matchys.length,
                         itemBuilder: (context, index) {
                           return _MatchyCard(
                               data: matchys[index],
-                              isBlocked: isBlocked, // 🔥 Pasamos el estado
+                              isBlocked: isBlocked,
                               strikes: strikes
                           );
                         },
@@ -210,7 +211,6 @@ class MatchysScreen extends ConsumerWidget {
             ),
           ),
 
-          // 2. FADE OUT
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -228,7 +228,6 @@ class MatchysScreen extends ConsumerWidget {
           ),
         ],
       ),
-      bottomNavigationBar: null,
     );
   }
 }
@@ -320,18 +319,21 @@ class _MatchyCard extends StatelessWidget {
                     ),
                   ),
                   Positioned(
-                    bottom: 12, left: 0, right: 0,
+                    bottom: 12, left: 8, right: 8,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          data.nombre.toUpperCase(),
-                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Poppins'),
-                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                        // BLINDAJE NOMBRE: Adaptativo para que no rompa la foto
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            data.nombre.toUpperCase(),
+                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900, fontFamily: 'Poppins'),
+                          ),
                         ),
                         Text(
                           "${data.edad} AÑOS",
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -344,14 +346,11 @@ class _MatchyCard extends StatelessWidget {
 
         const SizedBox(height: MatchysScreen.kSpacePhotoToButtons),
 
-        // 2. BOTÓN "CREAR NUEVA CITA" (BLOQUEABLE)
         _PremiumButton(
           text: "CREAR NUEVA CITA",
-          // Si está bloqueado -> Gris, Si no -> Lila
           gradient: isBlocked ? MatchysScreen.kBtnBlockedGradient : MatchysScreen.kBtnNewCitaGradient,
-          // Si está bloqueado -> Candado, Si no -> Nada
           icon: isBlocked ? Icons.lock : null,
-          textColor: isBlocked ? Colors.white54 : Colors.black, // Gris si bloqueado
+          textColor: isBlocked ? Colors.white54 : Colors.black,
           fontSize: MatchysScreen.kButtonFontSize,
           height: MatchysScreen.kButtonHeight,
           onTap: () => _manejarClickCrearCita(context),
@@ -359,7 +358,6 @@ class _MatchyCard extends StatelessWidget {
 
         const SizedBox(height: MatchysScreen.kSpaceBetweenButtons),
 
-        // 3. BOTÓN "TU HISTORIAL" (SIEMPRE LIBRE)
         _PremiumButton(
           text: "TU HISTORIAL",
           gradient: MatchysScreen.kBtnHistorialGradient,
@@ -387,7 +385,7 @@ class _PremiumButton extends StatelessWidget {
   final VoidCallback onTap;
   final double fontSize;
   final double height;
-  final IconData? icon; // 🔥 Nuevo soporte para ícono
+  final IconData? icon;
 
   const _PremiumButton({
     required this.text,
@@ -413,23 +411,28 @@ class _PremiumButton extends StatelessWidget {
           border: Border.all(color: Colors.white24, width: 0.5),
         ),
         alignment: Alignment.center,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, color: textColor, size: 14),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              text,
-              style: TextStyle(
-                  color: textColor,
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        // BLINDAJE BOTÓN: Texto adaptativo (Nunca se sale del botón)
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: textColor, size: 12),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                text,
+                style: TextStyle(
+                    color: textColor,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.5
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

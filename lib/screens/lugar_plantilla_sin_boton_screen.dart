@@ -1,9 +1,8 @@
 // 📂 lib/screens/lugar_plantilla_sin_boton_screen.dart
-// 🔥 PANTALLA SITIO (SOLO LECTURA - DISEÑO PREMIUM PRO)
-// 🔥 UI: Galería Pro (Zoom + Dots + Volumen).
-// 🔥 UI: Textos centrados con sombra, Bio justificada.
-// 🔥 UI: Botón Web Premium + Fade Out inferior + Chevron flotante.
-// ✅ LOGIC: Carga datos extra de Firebase (Bio/Fotos) si es necesario.
+// 🔥 PANTALLA SITIO BLINDADA (SOLO LECTURA - DISEÑO PREMIUM PRO)
+// 🔥 UI: Galería Pro con Zoom adaptativo y fondo degradado Notificaciones.
+// 🔥 UI: Títulos +2 puntos de tamaño y blindaje contra desbordamientos.
+// ✅ LOGIC: Carga datos extra de Firebase (Bio/Fotos) intacta.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -12,16 +11,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 
 // =============================================================================
-// 🔴🔴 ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
+// 🛡️ ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN VISUAL BLINDADA)
 // =============================================================================
 
 // 1. LOGO
 const double kLogoHeight = 50.0;
 const double kLogoTopSpace = 40.0;
 
-// 2. TEXTOS
-const double kLugarTituloFontSize = 28;
-const double kLugarDireccionFontSize = 16;
+// 2. TEXTOS (Blindaje: +2 puntos de tamaño respecto a la versión anterior)
+const double kLugarTituloFontSize = 30.0; // Subió de 28 a 30
+const double kLugarDireccionFontSize = 18.0; // Subió de 16 a 18
 const double kLugarGapNombreDireccion = 6;
 const double kLugarGapDireccionBio = 20;
 
@@ -34,7 +33,10 @@ const double kButtonRadius = 18.0;
 const List<BoxShadow> kButtonShadow = [
   BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 5))
 ];
-const List<Color> kBtnWebGradient = [Color(0xFF007BFF), Color(0xFF0056B3)]; // Azul Web
+const List<Color> kBtnWebGradient = [Color(0xFF007BFF), Color(0xFF0056B3)];
+
+// Colores de fondo para el Zoom (Mismos de Notificaciones)
+const List<Color> kNotifGradient = [Color(0xFF4A3B75), Color(0xFF1F1F1F)];
 
 // =============================================================================
 
@@ -58,7 +60,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
   @override
   void initState() {
     super.initState();
-    // Inicializar fotos
     _fotosCarrusel = List.from(widget.lugar.fotos);
     if (_fotosCarrusel.isEmpty && widget.lugar.fotoPortada.isNotEmpty) {
       _fotosCarrusel.add(widget.lugar.fotoPortada);
@@ -66,7 +67,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
 
     _firebaseDataFuture = _fetchDataFromFirebase();
 
-    // Auto-scroll suave
     _timer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!mounted) return;
       if (_fotosCarrusel.length < 2) return;
@@ -122,33 +122,51 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
     super.dispose();
   }
 
-  // 🔥 Fullscreen con Zoom
+  // 🔥 Fullscreen con Zoom y fondo degradado de Notificaciones
   void _openFullscreen(BuildContext context, String imageUrl) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          body: Stack(
-            children: [
-              Center(
-                child: InteractiveViewer(
-                  child: Image.network(imageUrl, fit: BoxFit.contain),
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: kNotifGradient,
                 ),
               ),
-              Positioned(
-                top: 50, right: 20,
-                child: GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
-                    child: const Icon(Icons.close, color: Colors.white, size: 24),
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Center(
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (_, child, progress) => progress == null ? child : const CircularProgressIndicator(color: Colors.white),
+                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white54, size: 50),
                   ),
                 ),
-              )
-            ],
-          ),
+              ),
+            ),
+            Positioned(
+              top: 50, right: 20,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                  child: const Icon(Icons.close, color: Colors.white, size: 28),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -162,15 +180,13 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. FONDO
           Positioned.fill(
             child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
           ),
 
-          // 2. CONTENIDO SCROLLABLE
           Column(
             children: [
-              SizedBox(height: kLogoTopSpace),
+              const SizedBox(height: kLogoTopSpace),
               SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png')),
               const SizedBox(height: 16),
 
@@ -179,46 +195,51 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 120),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center, // Centrado general
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
 
-                      // 🔥 GALERÍA PRO (Zoom + Volumen + Dots)
+                      // 🔥 GALERÍA PRO (Zoom adaptativo)
                       _buildProGallery(),
 
                       const SizedBox(height: 20),
 
-                      // NOMBRE (Centrado + Sombra)
-                      Text(
-                        lugar.nombre.toUpperCase(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: kLugarTituloFontSize,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: 'Poppins',
-                            height: 1.1,
-                            shadows: kTextShadow
+                      // NOMBRE (Blindaje Adaptativo + Título Grande)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          lugar.nombre.toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: kLugarTituloFontSize,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'Poppins',
+                              height: 1.1,
+                              shadows: kTextShadow
+                          ),
                         ),
                       ),
 
                       const SizedBox(height: kLugarGapNombreDireccion),
 
-                      // DIRECCIÓN (Centrada + Sombra)
-                      Text(
-                        lugar.direccion,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: kLugarDireccionFontSize,
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w500,
-                          shadows: kTextShadow,
+                      // DIRECCIÓN (Blindaje Adaptativo + Texto Grande)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          lugar.direccion,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: kLugarDireccionFontSize,
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w500,
+                            shadows: kTextShadow,
+                          ),
                         ),
                       ),
 
                       const SizedBox(height: kLugarGapDireccionBio),
 
-                      // BIO (Justificada + Caja Semitransparente)
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
@@ -239,7 +260,7 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
                             }
                             return Text(
                               textoMostrar,
-                              textAlign: TextAlign.justify, // Justificado
+                              textAlign: TextAlign.justify,
                               style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5, fontFamily: 'Poppins'),
                             );
                           },
@@ -248,7 +269,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
 
                       const SizedBox(height: 30),
 
-                      // BOTÓN SITIO WEB (Premium)
                       if (lugar.hasSitioWeb)
                         _PremiumButton(
                           text: "VISITAR SITIO WEB",
@@ -270,7 +290,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
             ],
           ),
 
-          // 3. FADE OUT INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 100,
             child: IgnorePointer(
@@ -287,7 +306,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
             ),
           ),
 
-          // 4. BOTÓN CHEVRON FLOTANTE
           Positioned(
             top: 50,
             left: 16,
@@ -296,7 +314,7 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
               child: Container(
                 width: 42, height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6), // Más oscuro para legibilidad
+                  color: Colors.black.withOpacity(0.6),
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white24, width: 1),
                 ),
@@ -309,9 +327,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
     );
   }
 
-  // ===============================================================
-  // WIDGET: GALERÍA PRO
-  // ===============================================================
   Widget _buildProGallery() {
     return Column(
       children: [
@@ -333,19 +348,16 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
                       final url = _fotosCarrusel[i];
                       return GestureDetector(
                         onTap: () => _openFullscreen(context, url),
-                        child: InteractiveViewer(
-                          child: Image.network(
-                            url,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (_, child, progress) => progress == null ? child : Container(color: Colors.white10, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
-                            errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54)),
-                          ),
+                        child: Image.network(
+                          url,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (_, child, progress) => progress == null ? child : Container(color: Colors.white10, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                          errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54)),
                         ),
                       );
                     }
                 ),
 
-                // Gradiente interno para que se vean los dots
                 Positioned(
                   bottom: 0, left: 0, right: 0, height: 60,
                   child: Container(
@@ -361,10 +373,7 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
             ),
           ),
         ),
-
         const SizedBox(height: 12),
-
-        // DOTS INDICATORS
         if (_fotosCarrusel.length > 1)
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -387,7 +396,6 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
   }
 }
 
-// 🔥 WIDGET BOTÓN PREMIUM REUTILIZABLE
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradient;
@@ -414,15 +422,19 @@ class _PremiumButton extends StatelessWidget {
           boxShadow: kButtonShadow,
           border: Border.all(color: Colors.white24, width: 1),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 10)],
-            Text(
-              text,
-              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5),
-            ),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 10)],
+              Text(
+                text,
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5),
+              ),
+            ],
+          ),
         ),
       ),
     );

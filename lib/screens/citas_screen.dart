@@ -1,8 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS (FOTO PERFIL CUADRADA ESTILO PANEL)
-// 🔥 FIX: La foto del usuario ahora tiene un contenedor CUADRADO (125x125) exacto.
-// 🔥 UI: La foto del lugar se adapta al espacio restante (Panorámica).
-// 🔥 LOGIC: Intacta.
+// ✅ PANTALLA CITAS BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Títulos de sección a 20pt. Nombres de lugares elásticos.
+// 🔥 UI: Foto usuario CUADRADA (125x125) y lugar Panorámica.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -65,7 +64,7 @@ class CitaItem {
   });
 }
 
-// 🔵 SECCIÓN 2: PROVIDER
+// 🔵 SECCIÓN 2: PROVIDER (LÓGICA INTACTA)
 final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -74,7 +73,6 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
   List<CitaItem> listaOwner = [];
   List<CitaItem> listaMatchy = [];
 
-  // 🔥 PARSER MANUAL DE TEXTO
   DateTime parsearManual(String fStr, String hStr) {
     try {
       final parts = fStr.trim().split(RegExp(r'[/ -]'));
@@ -154,9 +152,7 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
           reproByUid: (data['repro_by_uid'] ?? '').toString(),
           esUrgente: urgente,
         ));
-      } catch (e) {
-        // Error
-      }
+      } catch (e) {}
     }
     return lista;
   }
@@ -244,7 +240,6 @@ class CitasScreen extends ConsumerWidget {
   }
 }
 
-// 🔥 DISTRIBUCIÓN
 class _CitasSplitLayout extends ConsumerWidget {
   const _CitasSplitLayout();
 
@@ -256,16 +251,8 @@ class _CitasSplitLayout extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
       error: (_, __) => const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white))),
       data: (todasLasCitas) {
-
-        final proximas = todasLasCitas.where((c) =>
-        c.status == 'matched' && !c.esUrgente
-        ).toList();
-
-        final pendientes = todasLasCitas.where((c) =>
-        c.status == 'reprogramming' ||
-            c.status == 'pending_approval' ||
-            c.esUrgente == true
-        ).toList();
+        final proximas = todasLasCitas.where((c) => c.status == 'matched' && !c.esUrgente).toList();
+        final pendientes = todasLasCitas.where((c) => c.status == 'reprogramming' || c.status == 'pending_approval' || c.esUrgente == true).toList();
 
         return Column(
           children: [
@@ -297,11 +284,21 @@ class _SeccionCitas extends StatelessWidget {
       decoration: BoxDecoration(color: colorFondo, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
       child: Column(
         children: [
-          Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))])),
+          // BLINDAJE: Título estandarizado a 20pt
+          FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))]))
+          ),
           const SizedBox(height: 12),
           Expanded(
             child: citas.isEmpty
-                ? Center(child: Text(esPendiente ? "No hay solicitudes pendientes." : "No tienes citas próximas.", style: const TextStyle(color: Colors.white54, fontFamily: 'Poppins')))
+                ? Center(
+                child: Text(
+                    esPendiente ? "No hay solicitudes pendientes." : "No tienes citas próximas.",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontFamily: 'Poppins', fontSize: 14)
+                )
+            )
                 : ListView.builder(padding: const EdgeInsets.only(bottom: 20), physics: const BouncingScrollPhysics(), itemCount: citas.length, itemBuilder: (ctx, i) => _CitaCard(item: citas[i], esPendiente: esPendiente)),
           ),
         ],
@@ -328,7 +325,6 @@ class _CitaCard extends StatelessWidget {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ReporteInasistenciaScreen(citaId: item.id)));
       return;
     }
-
     if (!esPendiente) {
       final codigoParaMostrar = item.isOwner ? item.codigoOwner : item.codigoMatchy;
       final codigoParaValidar = item.isOwner ? item.codigoMatchy : item.codigoOwner;
@@ -337,7 +333,6 @@ class _CitaCard extends StatelessWidget {
       )));
       return;
     }
-
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     if (item.status == 'pending_approval') {
       if (item.isOwner) {
@@ -365,7 +360,6 @@ class _CitaCard extends StatelessWidget {
     Color colorBoton = Colors.white;
     bool mostrarOverlay = false;
 
-    // 🔥 ALTURA FIJA 125 PARA LOGRAR CUADRADO PERFECTO
     const double cardHeight = 125.0;
 
     final Color bgColor = item.esUrgente ? const Color(0xFFB71C1C).withOpacity(0.3) : const Color(0xFF1A1A1A);
@@ -392,7 +386,7 @@ class _CitaCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => _handleTap(context),
       child: Container(
-        height: cardHeight, // Altura fija
+        height: cardHeight,
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: bgColor,
@@ -404,7 +398,7 @@ class _CitaCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // 🔹 LADO IZQUIERDO: LUGAR (Se expande para llenar lo que sobre)
+            // 🔹 LADO IZQUIERDO: LUGAR
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
@@ -426,6 +420,7 @@ class _CitaCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // BLINDAJE: Nombre de lugar adaptativo
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
@@ -436,9 +431,14 @@ class _CitaCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          _fechaAmigable(item.fechaSort),
-                          style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                        // BLINDAJE: Fecha adaptativa
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _fechaAmigable(item.fechaSort),
+                            style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                          ),
                         )
                       ],
                     ),
@@ -449,7 +449,7 @@ class _CitaCard extends StatelessWidget {
 
             // 🔹 LADO DERECHO: USUARIO (CUADRADO FIJO 125x125)
             SizedBox(
-              width: cardHeight, // Ancho = Altura = CUADRADO
+              width: cardHeight,
               height: cardHeight,
               child: Stack(
                 fit: StackFit.expand,
@@ -458,7 +458,6 @@ class _CitaCard extends StatelessWidget {
                     borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
                     child: ColorFiltered(
                       colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                      // 🔥 FOTO ALINEADA ARRIBA Y EN CUADRADO
                       child: FotoPerfilUsuario(
                         uid: item.matchyUid,
                         fit: BoxFit.cover,
@@ -467,7 +466,6 @@ class _CitaCard extends StatelessWidget {
                     ),
                   ),
 
-                  // SELLO SIN CONFIRMAR
                   if (item.esUrgente)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
@@ -481,10 +479,13 @@ class _CitaCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                                 color: Colors.red.withOpacity(0.8)
                             ),
-                            child: const Text(
-                              "SIN CONFIRMAR",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                "SIN CONFIRMAR",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                              ),
                             ),
                           ),
                         ),
@@ -537,16 +538,22 @@ class _PulsingTextState extends State<_PulsingText> with SingleTickerProviderSta
   Widget build(BuildContext context) {
     return ScaleTransition(
       scale: _scaleAnimation,
-      child: Text(
-        widget.text,
-        textAlign: TextAlign.center,
-        style: TextStyle(
-            color: widget.color,
-            fontWeight: FontWeight.w900,
-            fontSize: 12,
-            shadows: [
-              Shadow(color: widget.color.withOpacity(0.6), blurRadius: 10, offset: Offset(0, 0))
-            ]
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            widget.text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: widget.color,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+                shadows: [
+                  Shadow(color: widget.color.withOpacity(0.6), blurRadius: 10, offset: Offset(0, 0))
+                ]
+            ),
+          ),
         ),
       ),
     );

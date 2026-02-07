@@ -1,10 +1,9 @@
 // 📂 lib/screens/home_shell.dart
-// ✅ Shell principal (CORREGIDO PARA MATCHY)
-// 🔥 FIX: Al detectar un evento entrante, pasamos 'soyElOwner: false' a MatchScreen.
-// 🔥 ESTO EVITA QUE EL RECEPTOR CREE UN NUEVO EVENTO Y GENERE EL BUCLE.
+// ✅ Shell principal BLINDADO (RESTAURADO Y CORREGIDO)
+// 🔥 FIX: Títulos de navegación restaurados y visibles.
+// 🔥 BLINDAJE: MediaQuery lock para evitar deformación por fuentes del sistema.
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,23 +23,14 @@ class HomeShell extends StatefulWidget {
     this.initialIndex = 2,
   });
 
-  // ================================================================
-  // 🔹 EVENTO GLOBAL ACTIVO (MATCHY)
-  // ================================================================
-  static final ValueNotifier<Widget?> activeEventOverlay =
-  ValueNotifier<Widget?>(null);
-
+  static final ValueNotifier<Widget?> activeEventOverlay = ValueNotifier<Widget?>(null);
   static DocumentReference<Map<String, dynamic>>? _activeEventRef;
 
-  static void showMatchy(
-      MatchScreen screen,
-      DocumentReference<Map<String, dynamic>> eventRef,
-      ) {
+  static void showMatchy(MatchScreen screen, DocumentReference<Map<String, dynamic>> eventRef) {
     _activeEventRef = eventRef;
     activeEventOverlay.value = screen;
   }
 
-  /// 🔥 Consumir evento (SOLO llamado desde MatchScreen)
   static Future<void> consumeEvent() async {
     try {
       final ref = _activeEventRef;
@@ -50,9 +40,8 @@ class HomeShell extends StatefulWidget {
           'seenAt': FieldValue.serverTimestamp(),
         });
       }
-    } catch (_) {
-      // Silencioso: no bloquea UX
-    } finally {
+    } catch (_) {}
+    finally {
       _activeEventRef = null;
       activeEventOverlay.value = null;
     }
@@ -61,9 +50,7 @@ class HomeShell extends StatefulWidget {
   static void go(BuildContext context, {int index = 2}) {
     final safeIndex = index.clamp(0, 4);
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => HomeShell(initialIndex: safeIndex),
-      ),
+      MaterialPageRoute(builder: (_) => HomeShell(initialIndex: safeIndex)),
           (route) => false,
     );
   }
@@ -88,7 +75,6 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void initState() {
     super.initState();
-
     _index = widget.initialIndex.clamp(0, 4);
 
     _screens = const [
@@ -99,7 +85,6 @@ class _HomeShellState extends State<HomeShell> {
       ChatScreen(showBottomNav: false),
     ];
 
-    // 🔥 Cuando el overlay se limpia, liberamos el lock interno
     HomeShell.activeEventOverlay.addListener(() {
       if (HomeShell.activeEventOverlay.value == null) {
         _overlayActivo = false;
@@ -109,7 +94,6 @@ class _HomeShellState extends State<HomeShell> {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted || user == null) return;
       if (_listeningUid == user.uid) return;
-
       _listeningUid = user.uid;
       _eventSub?.cancel();
       _attachEvents(user.uid);
@@ -128,9 +112,7 @@ class _HomeShellState extends State<HomeShell> {
         .limit(1)
         .snapshots()
         .listen((snap) {
-      if (!mounted) return;
-      if (_overlayActivo) return;
-      if (snap.docs.isEmpty) return;
+      if (!mounted || _overlayActivo || snap.docs.isEmpty) return;
 
       final doc = snap.docs.first;
       final data = doc.data();
@@ -140,33 +122,18 @@ class _HomeShellState extends State<HomeShell> {
           : (data['ownerUid'] ?? '').toString();
 
       if (peerUid.isEmpty) return;
-
       _overlayActivo = true;
-
-      // 🟢 Lectura robusta de datos del evento
-      final String nombreLugar = (data['lugarNombre'] ?? '').toString();
-      final String fotoLugar = (data['lugarFoto'] ?? '').toString();
-      final String citaId = (data['citaId'] ?? '').toString();
 
       HomeShell.showMatchy(
         MatchScreen(
           candidatoId: peerUid,
           candidatoNombre: (data['ownerNombre'] ?? 'Matchy').toString(),
-          candidatoEdad:
-          int.tryParse((data['ownerEdad'] ?? '0').toString()) ?? 0,
-          candidatoFotoAsset:
-          (data['ownerFoto'] ?? 'assets/images/perfil1.jpg').toString(),
-
-          // 🔥 PASAMOS LOS DATOS DEL LUGAR AL MATCHSCREEN
-          lugarNombre: nombreLugar,
-          lugarFoto: fotoLugar,
-          citaId: citaId,
-
-          // 🔥 CALLBACK PARA QUE EL MATCHY CIERRE EL EVENTO VISUALMENTE
+          candidatoEdad: int.tryParse((data['ownerEdad'] ?? '0').toString()) ?? 0,
+          candidatoFotoAsset: (data['ownerFoto'] ?? 'assets/images/perfil1.jpg').toString(),
+          lugarNombre: (data['lugarNombre'] ?? '').toString(),
+          lugarFoto: (data['lugarFoto'] ?? '').toString(),
+          citaId: (data['citaId'] ?? '').toString(),
           onMatchAnimationFinished: HomeShell.consumeEvent,
-
-          // 🛑🛑🛑 AQUÍ ESTÁ LA SOLUCIÓN DEL BUCLE 🛑🛑🛑
-          // Como estoy recibiendo un evento, NO SOY EL OWNER.
           soyElOwner: false,
         ),
         doc.reference,
@@ -193,12 +160,10 @@ class _HomeShellState extends State<HomeShell> {
         valueListenable: HomeShell.activeEventOverlay,
         builder: (_, overlay, __) {
           return Scaffold(
+            backgroundColor: Colors.black,
             body: Stack(
               children: [
-                IndexedStack(
-                  index: _index,
-                  children: _screens,
-                ),
+                IndexedStack(index: _index, children: _screens),
                 if (overlay != null) Positioned.fill(child: overlay),
               ],
             ),
@@ -222,30 +187,31 @@ class _MatchyBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  const _MatchyBottomNav({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _MatchyBottomNav({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      backgroundColor: Colors.black,
-      type: BottomNavigationBarType.fixed,
-      currentIndex: currentIndex,
-      selectedItemColor: const Color(0xFFE0D4FF),
-      unselectedItemColor: Colors.white54,
-      selectedFontSize: 10,
-      unselectedFontSize: 10,
-      showUnselectedLabels: true,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'PERFIL'),
-        BottomNavigationBarItem(icon: Icon(Icons.event), label: 'CITAS'),
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'PANEL'),
-        BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'MATCHY'),
-        BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'CHAT'),
-      ],
-      onTap: onTap,
+    // 🛡️ BLINDAJE SUPREMO: MediaQuery.copyWith bloquea el escalado de texto del sistema
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      child: BottomNavigationBar(
+        backgroundColor: Colors.black,
+        type: BottomNavigationBarType.fixed,
+        currentIndex: currentIndex,
+        selectedItemColor: const Color(0xFFE0D4FF),
+        unselectedItemColor: Colors.white54,
+        selectedFontSize: 10,
+        unselectedFontSize: 10,
+        showUnselectedLabels: true,
+        onTap: onTap,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'PERFIL'),
+          BottomNavigationBarItem(icon: Icon(Icons.event), label: 'CITAS'),
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'PANEL'),
+          BottomNavigationBarItem(icon: Icon(Icons.favorite), label: 'MATCHYS'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'CHAT'),
+        ],
+      ),
     );
   }
 }

@@ -1,7 +1,6 @@
 // 📂 lib/screens/citas_pendientes_screen.dart
-// ✅ CITAS PUBLICADAS (DISEÑO PREMIUM)
-// 🔥 HEADER: Cápsula Premium con botón Chevron integrado.
-// 🔥 FOOTER: Degradado negro (Fade Out).
+// ✅ CITAS PUBLICADAS BLINDADA (DISEÑO PREMIUM ORIGINAL)
+// 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
 // 🔥 LÓGICA: Riverpod y Firestore intactos.
 
 import 'dart:async';
@@ -27,12 +26,10 @@ const String kFechaField = 'fecha';
 const String kHoraField = 'hora';
 const String kUpdatedAtField = 'updatedAt';
 
-// FORMATO NUEVO
 const String kLugarMap = "lugar";
 const String kLugarNombre = "nombre";
 const String kLugarFotoPortada = "fotoPortada";
 
-// FORMATO VIEJO
 const String kLugarNombreOld = "lugarNombre";
 const String kLugarFotoPortadaOld = "lugarFotoPortada";
 const String kLugarFotosOld = "lugarFotos";
@@ -181,7 +178,6 @@ StateNotifierProvider<CitasPendientesNotifier, List<CitaPendiente>>(
 class CitasPendientesScreen extends ConsumerWidget {
   const CitasPendientesScreen({super.key});
 
-  // 🔴🔴 CHINCHES MAESTROS (DISEÑO PREMIUM) 🔴🔴
   static const List<Color> kCapsulaGradient = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
   static const Color kBorderColor = Colors.white12;
   static const double kCapsulaRadius = 24.0;
@@ -194,7 +190,6 @@ class CitasPendientesScreen extends ConsumerWidget {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. FONDO
           Positioned.fill(
             child: Image.asset("assets/images/fondo.jpg", fit: BoxFit.cover),
           ),
@@ -208,7 +203,6 @@ class CitasPendientesScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 15),
 
-              // 2. HEADER CÁPSULA PREMIUM
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
@@ -227,7 +221,6 @@ class CitasPendientesScreen extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      // Botón Atrás Integrado
                       GestureDetector(
                         onTap: () => Navigator.pop(context),
                         child: Container(
@@ -240,22 +233,27 @@ class CitasPendientesScreen extends ConsumerWidget {
                         ),
                       ),
 
-                      // Título Centrado
+                      // BLINDAJE: Título estandarizado
                       const Expanded(
-                        child: Text(
-                          "CITAS PUBLICADAS",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: "Poppins",
-                            letterSpacing: 1.0,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              "CITAS PUBLICADAS",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16, // Tamaño original
+                                fontWeight: FontWeight.w900,
+                                fontFamily: "Poppins",
+                                letterSpacing: 1.0,
+                              ),
+                            ),
                           ),
                         ),
                       ),
 
-                      // Espacio para equilibrar
                       const SizedBox(width: 40),
                     ],
                   ),
@@ -264,7 +262,6 @@ class CitasPendientesScreen extends ConsumerWidget {
 
               const SizedBox(height: 10),
 
-              // 3. LISTA
               Expanded(
                 child: citas.isEmpty
                     ? const SizedBox(
@@ -276,7 +273,7 @@ class CitasPendientesScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(
                     left: 16,
                     right: 16,
-                    bottom: 120, // Espacio para el fade out
+                    bottom: 120,
                   ),
                   itemCount: citas.length,
                   itemBuilder: (_, i) => _CitaCard(cita: citas[i]),
@@ -285,7 +282,6 @@ class CitasPendientesScreen extends ConsumerWidget {
             ],
           ),
 
-          // 4. DEGRADADO NEGRO INFERIOR (FADE OUT)
           Positioned(
             bottom: 0, left: 0, right: 0,
             height: 80,
@@ -308,9 +304,6 @@ class CitasPendientesScreen extends ConsumerWidget {
   }
 }
 
-// ================================================================
-// EMPTY — MISMO DISEÑO QUE CITAS_SCREEN
-// ================================================================
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -331,14 +324,17 @@ class _EmptyState extends StatelessWidget {
           color: const Color(0x22FFFFFF),
           borderRadius: BorderRadius.circular(18),
         ),
-        child: const Text(
-          'Aún no tienes citas publicadas.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-            fontFamily: 'Poppins',
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Aún no tienes citas publicadas.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16, // Tamaño original
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Poppins',
+            ),
           ),
         ),
       ),
@@ -346,9 +342,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ================================================================
-// CARD (INTACTA)
-// ================================================================
 class _CitaCard extends StatelessWidget {
   final CitaPendiente cita;
   const _CitaCard({required this.cita});
@@ -404,35 +397,46 @@ class _CitaCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          cita.nombreLugar,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            fontFamily: "Poppins",
+                        // BLINDAJE: Nombre del lugar
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            cita.nombreLugar.toUpperCase(),
+                            maxLines: 1,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20, // Tamaño original
+                              fontWeight: FontWeight.w900,
+                              fontFamily: "Poppins",
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          "📅  ${cita.fecha}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "Poppins",
+                        // BLINDAJE: Fecha
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            "📅  ${cita.fecha}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18, // Tamaño original
+                              fontWeight: FontWeight.w600,
+                              fontFamily: "Poppins",
+                            ),
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          "🕒  ${cita.hora}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: "Poppins",
+                        // BLINDAJE: Hora
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            "🕒  ${cita.hora}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18, // Tamaño original
+                              fontWeight: FontWeight.w600,
+                              fontFamily: "Poppins",
+                            ),
                           ),
                         ),
                       ],

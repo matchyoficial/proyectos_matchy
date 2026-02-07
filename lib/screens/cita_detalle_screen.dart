@@ -1,8 +1,7 @@
 // 📂 lib/screens/cita_detalle_screen.dart
 // ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
-// 🔥 LOGIC: Cobra puntos automáticamente tanto si eres el que espera (Stream) como el que confirma (Manual).
-// 🔥 PERMISOS: Solo edita el usuario propio para evitar errores de Firebase.
-// 🔥 UI: Fotos cuadradas (110px) con alineación superior (Anti-mocha cabezas).
+// 🔥 BLINDAJE REAL: Textos informativos con tamaño fijo (16pt/19pt) y salto de línea.
+// 🔥 UI: Nombres variables protegidos contra desbordamiento lateral.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -19,27 +18,24 @@ import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 
 // =============================================================================
-// 🔴🔴 CHINCHES MAESTROS (CONFIGURACIÓN VISUAL) 🔴🔴
+// 🛡️ CHINCHES MAESTROS (CONFIGURACIÓN VISUAL ORIGINAL)
 // =============================================================================
 
 const double kCardTitleSize      = 20.0;
 const double kCardSubtitleSize   = 14.0;
 const double kDateFontSize       = 17.0;
 
-// 2. DIMENSIONES
-const double kFotoSize           = 110.0; // Cuadrado perfecto estilo Panel
+const double kFotoSize           = 110.0;
 const double kCardBorderRadius   = 25.0;
 
-// 3. CÓDIGO
 const double kCodeFontSize       = 24.0;
 const double kCapsulaRadius      = 25.0;
 
-// 4. BOTONES PREMIUM
 const double kButtonRadius = 18.0;
 const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))];
-const List<Color> kBtnConfirmGradient   = [Color(0xFF00C853), Color(0xFF007E33)]; // Verde
-const List<Color> kBtnReproGradient     = [Color(0xFF4FC3F7), Color(0xFF0288D1)]; // Azul
-const List<Color> kBtnCancelGradient    = [Color(0xFFFF4B4B), Color(0xFFB71C1C)]; // Rojo
+const List<Color> kBtnConfirmGradient   = [Color(0xFF00C853), Color(0xFF007E33)];
+const List<Color> kBtnReproGradient     = [Color(0xFF4FC3F7), Color(0xFF0288D1)];
+const List<Color> kBtnCancelGradient    = [Color(0xFFFF4B4B), Color(0xFFB71C1C)];
 
 // =============================================================================
 
@@ -88,16 +84,12 @@ class CitaDetalleScreen extends StatefulWidget {
 class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   final TextEditingController _codigoMatchyController = TextEditingController();
   bool _procesandoValidacion = false;
-
-  // VARIABLES DE SINCRONIZACIÓN
   bool _navegandoExito = false;
   StreamSubscription<DocumentSnapshot>? _citaSubscription;
 
   @override
   void initState() {
     super.initState();
-    // 👁️ EL VIGILANTE (STREAM)
-    // Detecta si el otro usuario confirmó la cita mientras yo esperaba.
     _citaSubscription = FirebaseFirestore.instance
         .collection('citas')
         .doc(widget.citaId)
@@ -105,14 +97,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         .listen((snapshot) async {
       if (snapshot.exists) {
         final data = snapshot.data() as Map<String, dynamic>;
-
-        // SI LA CITA PASÓ A 'FINISHED' Y YO NO HE NAVEGADO AÚN:
         if (data['status'] == 'finished' && !_navegandoExito && mounted) {
-
-          // 1. ¡ALTO! Primero cobro mis puntos.
-          // Esto asegura que el usuario que esperaba con la ruedita también reciba su premio.
           final resultados = await _distribuirPuntosDeRedencion();
-
           if (mounted) {
             _procesarExito(
                 ganaronPuntos: resultados['gano'] ?? false,
@@ -164,84 +150,50 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     }
   }
 
-  // 🔥 LÓGICA DE REDENCIÓN (SOLO YO - SIN PERMISOS AJENOS)
   Future<Map<String, dynamic>> _distribuirPuntosDeRedencion() async {
     bool ganoPuntos = false;
     int faltantes = 0;
-
     final myUid = FirebaseAuth.instance.currentUser?.uid;
-    // Si no hay usuario logueado, retornamos valores neutros
     if (myUid == null) return {'gano': false, 'faltan': 0};
 
     try {
       final userRef = FirebaseFirestore.instance.collection('users').doc(myUid);
-
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final snap = await tx.get(userRef);
         if (!snap.exists) return;
-
         final d = snap.data()!;
         int confiabilidad = (d['confiabilidad'] as num?)?.toInt() ?? 100;
-        // Si el campo no existe, asumimos 0
         int racha = (d['citas_consecutivas_exitosas'] as num?)?.toInt() ?? 0;
-
-        // 1. Aumentamos MI racha
         racha++;
-
-        // 2. Verificamos SI YO gané
         if (racha >= 3) {
           confiabilidad += 20;
-          if (confiabilidad > 100) confiabilidad = 100; // Tope máximo 100
-          racha = 0; // Reinicio racha para la próxima vuelta
+          if (confiabilidad > 100) confiabilidad = 100;
+          racha = 0;
           ganoPuntos = true;
         }
-
-        // 3. Calculamos datos visuales
-        // Si gané, faltan 0 (para reiniciar ciclo). Si no, faltan (3 - racha actual).
         faltantes = ganoPuntos ? 0 : (3 - racha);
-
-        // 4. Guardamos SOLO MIS datos
         tx.update(userRef, {
           'confiabilidad': confiabilidad,
           'citas_consecutivas_exitosas': racha,
         });
       });
-
-    } catch (e) {
-      debugPrint("Error al sumar mis puntos: $e");
-    }
-
-    return {
-      'gano': ganoPuntos,
-      'faltan': faltantes
-    };
+    } catch (e) { debugPrint("Error: $e"); }
+    return {'gano': ganoPuntos, 'faltan': faltantes};
   }
 
-  // 🔥 PROCESAR ÉXITO (Recibe los datos de gamificación)
   Future<void> _procesarExito({bool ganaronPuntos = false, int citasFaltantes = 0}) async {
     if (_navegandoExito) return;
     setState(() => _navegandoExito = true);
-
-    // Cerrar cualquier diálogo abierto (como el de espera)
-    if (Navigator.canPop(context)) {
-      // Intentamos cerrar diálogos modales si existen
-      // Nota: A veces es mejor usar popUntil, pero aquí un control simple basta
-      // Navigator.pop(context);
-    }
-
     final user = FirebaseAuth.instance.currentUser;
     String myName = "Tú";
     String myPhoto = "";
-
     if (user != null) {
       final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       final d = snap.data() ?? {};
       myName = d['nombre'] ?? 'Tú';
       myPhoto = d['profilePhotoUrl'] ?? '';
     }
-
     if (!mounted) return;
-
     Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -250,7 +202,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
               ownerFoto: myPhoto,
               matchyNombre: widget.matchyNombre,
               matchyFoto: widget.matchyFoto,
-              // 🚀 PASAMOS LOS DATOS CALCULADOS
               ganaronPuntos: ganaronPuntos,
               citasFaltantes: citasFaltantes,
             )
@@ -260,7 +211,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   Future<void> _validarYConfirmar() async {
     if (_procesandoValidacion || _navegandoExito) return;
-
     final codigoIngresado = _codigoMatchyController.text.trim().toUpperCase();
     final codigoCorrecto = widget.codigoDelOtro.trim().toUpperCase();
 
@@ -271,36 +221,22 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
     if (codigoIngresado == codigoCorrecto) {
       setState(() => _procesandoValidacion = true);
-
       try {
         final result = await FirebaseFirestore.instance.runTransaction((transaction) async {
           DocumentSnapshot snapshot = await transaction.get(FirebaseFirestore.instance.collection('citas').doc(widget.citaId));
-
           if (!snapshot.exists) throw Exception("Error: Cita no encontrada");
           final data = snapshot.data() as Map<String, dynamic>;
-
           String miCampo = widget.isOwner ? 'ownerConfirmado' : 'matchyConfirmado';
           String otroCampo = widget.isOwner ? 'matchyConfirmado' : 'ownerConfirmado';
-
-          String nombreOtro = widget.isOwner
-              ? (data['matchyNombre'] ?? 'tu matchy')
-              : (data['ownerNombre'] ?? 'tu matchy');
-
+          String nombreOtro = widget.isOwner ? (data['matchyNombre'] ?? 'tu matchy') : (data['ownerNombre'] ?? 'tu matchy');
           bool elOtroYaConfirmo = data[otroCampo] == true;
-
-          Map<String, dynamic> updates = {
-            miCampo: true,
-            'updatedAt': FieldValue.serverTimestamp(),
-          };
-
+          Map<String, dynamic> updates = { miCampo: true, 'updatedAt': FieldValue.serverTimestamp() };
           if (elOtroYaConfirmo) {
             updates['status'] = 'finished';
             updates['citaExitosa'] = true;
             updates['finalizedAt'] = FieldValue.serverTimestamp();
           }
-
           transaction.update(snapshot.reference, updates);
-
           return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
         });
 
@@ -309,19 +245,11 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         String otherName = resultMap['otherName'] as String;
 
         if (isFinished) {
-          // 🎉 CASO MANUAL: Yo soy el segundo, yo cierro la cita.
-          // Cobro mis puntos AQUÍ antes de irme.
           final resultadoGamificacion = await _distribuirPuntosDeRedencion();
-
-          _procesarExito(
-              ganaronPuntos: resultadoGamificacion['gano'] ?? false,
-              citasFaltantes: resultadoGamificacion['faltan'] ?? 0
-          );
+          _procesarExito(ganaronPuntos: resultadoGamificacion['gano'] ?? false, citasFaltantes: resultadoGamificacion['faltan'] ?? 0);
         } else {
-          // CASO ESPERA: Soy el primero, muestro diálogo y espero al Stream.
           setState(() => _procesandoValidacion = false);
           if (!mounted) return;
-
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -334,32 +262,19 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                 children: [
                   const Text("¡TU CÓDIGO ES CORRECTO!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
                   const SizedBox(height: 20),
-                  Text(
-                    "DILE A ${otherName.toUpperCase()} QUE PONGA SU CÓDIGO PARA COMPLETAR LA CITA.",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4),
-                  ),
+                  Text("DILE A ${otherName.toUpperCase()} QUE PONGA SU CÓDIGO PARA COMPLETAR LA CITA.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4)),
                   const SizedBox(height: 20),
                   const LinearProgressIndicator(color: Color(0xFFBEB3FF), backgroundColor: Colors.white10),
                   const SizedBox(height: 10),
                   const Text("Esperando confirmación del otro...", style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic)),
                 ],
               ),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white))
-                )
-              ],
+              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white)))],
             ),
           );
         }
-
       } catch (e) {
-        if (mounted) {
-          setState(() => _procesandoValidacion = false);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-        }
+        if (mounted) { setState(() => _procesandoValidacion = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
       }
     } else {
       showDialog(
@@ -386,20 +301,27 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(kCardBorderRadius), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))], border: Border.all(color: Colors.white12)),
         child: Row(
           children: [
-            // 🟦 FOTO CUADRADA 110x110
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: SizedBox(width: kFotoSize, height: kFotoSize, child: image),
-            ),
+            ClipRRect(borderRadius: BorderRadius.circular(20), child: SizedBox(width: kFotoSize, height: kFotoSize, child: image)),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(children: [Flexible(child: Text(title.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0), maxLines: 2, overflow: TextOverflow.ellipsis)), if (extraTitle != null) ...[const SizedBox(width: 6), Text(extraTitle, style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))]]),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(children: [
+                      Text(title.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0)),
+                      if (extraTitle != null) ...[const SizedBox(width: 6), Text(extraTitle, style: const TextStyle(color: Colors.white, fontSize: kCardTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))]
+                    ]),
+                  ),
                   const SizedBox(height: 6),
-                  Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: kCardSubtitleSize, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: kCardSubtitleSize, fontWeight: FontWeight.w500))
+                  ),
                   if (footerText != null) ...[const SizedBox(height: 8), Text(footerText, style: const TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold))]
                 ],
               ),
@@ -427,7 +349,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 1. TARJETA LUGAR
                       _buildPanelStyleCard(
                         onTap: () {
                           final lugarTemp = LugarData(id: widget.citaId, nombre: widget.lugarNombre, direccion: widget.lugarDireccion, fotoPortada: widget.lugarFotoPortada, fotos: [widget.lugarFotoPortada], bio: '', sitioWeb: '', sedes: [], orden: 0);
@@ -440,30 +361,44 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                         subtitle: widget.lugarDireccion,
                       ),
                       const SizedBox(height: 20),
-
-                      // 2. TARJETA CANDIDATO (Anti-mocha cabezas ACTIVADO)
                       _buildPanelStyleCard(
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
-                        // 🔥 ANTI-MOCHA CABEZAS
                         image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter),
                         title: widget.matchyNombre, extraTitle: "${widget.matchyEdad}", subtitle: "Ver perfil completo", footerText: "Toca para ver detalles >",
                       ),
                       const SizedBox(height: 20),
-
                       Column(children: [Row(children: [Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))]), const SizedBox(height: 12), Row(children: [Expanded(child: _buildVividCapsule(Icons.star, widget.intencion)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.favorite, widget.preferencia))])]),
                       const SizedBox(height: 25),
-
                       Container(
                         padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFF1A1A1A).withOpacity(0.95), borderRadius: BorderRadius.circular(kCapsulaRadius), border: Border.all(color: Colors.white10)),
-                        child: Column(children: [_buildDisplayCode(widget.miCodigoCita), const SizedBox(height: 15), _buildInputCode(), const SizedBox(height: 20), _PremiumButton(text: _procesandoValidacion ? "VALIDANDO..." : "CONFIRMA TU CITA", gradient: kBtnConfirmGradient, onTap: _validarYConfirmar), const SizedBox(height: 12), const Text("POR TU SEGURIDAD SOLO DALE A TU MATCHY TU CÓDIGO EN EL LUGAR DE LA CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold))]),
+                        child: Column(children: [
+                          _buildDisplayCode(widget.miCodigoCita),
+                          const SizedBox(height: 15),
+                          _buildInputCode(),
+                          const SizedBox(height: 20),
+                          _PremiumButton(text: _procesandoValidacion ? "VALIDANDO..." : "CONFIRMA TU CITA", gradient: kBtnConfirmGradient, onTap: _validarYConfirmar),
+                          const SizedBox(height: 12),
+                          // 🛡️ TEXTO AMARILLO SIN ENCOGER (Fijo a 16pt con salto de línea)
+                          const Text(
+                              "POR TU SEGURIDAD SOLO DALE A TU MATCHY TU CÓDIGO EN EL LUGAR DE LA CITA",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold)
+                          ),
+                        ]),
                       ),
                       const SizedBox(height: 20),
-
                       _PremiumButton(text: "REPROGRAMAR CITA", gradient: kBtnReproGradient, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)))),
                       const SizedBox(height: 15),
-
                       Opacity(opacity: _esCancelable ? 1.0 : 0.5, child: _PremiumButton(text: "CANCELAR CITA", gradient: kBtnCancelGradient, onTap: _esCancelable ? _gestionarCancelacion : () {})),
-                      if (!_esCancelable) const Padding(padding: EdgeInsets.only(top: 8.0), child: Text("Faltan menos de 12 horas. Solo puedes reprogramar.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 19))),
+                      // 🛡️ TEXTO INFERIOR SIN ENCOGER (Fijo a 19pt con salto de línea)
+                      if (!_esCancelable) const Padding(
+                        padding: EdgeInsets.only(top: 12.0),
+                        child: Text(
+                            "Faltan menos de 12 horas. Solo puedes reprogramar.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white54, fontSize: 19)
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -480,16 +415,23 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))),
-      child: Column(children: [Icon(icon, color: Colors.white, size: 28), const SizedBox(height: 8), FittedBox(fit: BoxFit.scaleDown, child: Text(text.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)))]),
+      child: Column(children: [
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(text.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold))
+        )
+      ]),
     );
   }
 
   Widget _buildDisplayCode(String code) {
-    return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: const Color(0xFF6B4EE6), borderRadius: BorderRadius.circular(15)), child: Column(children: [const Text("MI CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 15, letterSpacing: 1.5)), Text(code.isEmpty ? "---" : code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kCodeFontSize, letterSpacing: 2.0))]));
+    return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: const Color(0xFF6B4EE6), borderRadius: BorderRadius.circular(15)), child: Column(children: [const Text("MI CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 15, letterSpacing: 1.5)), FittedBox(fit: BoxFit.scaleDown, child: Text(code.isEmpty ? "---" : code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kCodeFontSize, letterSpacing: 2.0)))]));
   }
 
   Widget _buildInputCode() {
-    return Container(decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)), child: TextField(controller: _codigoMatchyController, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0), textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(hintText: "PON EL CÓDIGO DE TU MATCHY", hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 18))));
+    return Container(decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)), child: TextField(controller: _codigoMatchyController, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0), textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(hintText: "PON EL CÓDIGO DE TU MATCHY", hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 12))));
   }
 }
 
@@ -497,6 +439,18 @@ class _PremiumButton extends StatelessWidget {
   final String text; final List<Color> gradient; final VoidCallback onTap;
   const _PremiumButton({required this.text, required this.gradient, required this.onTap});
   @override Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap, child: Container(width: double.infinity, height: 55, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient), borderRadius: BorderRadius.circular(kButtonRadius), boxShadow: kButtonShadow, border: Border.all(color: Colors.white24, width: 1)), alignment: Alignment.center, child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5))));
+    return GestureDetector(
+        onTap: onTap,
+        child: Container(
+            width: double.infinity, height: 55,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient), borderRadius: BorderRadius.circular(kButtonRadius), boxShadow: kButtonShadow, border: Border.all(color: Colors.white24, width: 1)),
+            alignment: Alignment.center,
+            child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 0.5))
+            )
+        )
+    );
   }
 }

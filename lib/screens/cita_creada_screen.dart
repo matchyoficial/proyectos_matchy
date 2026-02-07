@@ -1,6 +1,6 @@
 // 📂 lib/screens/cita_creada_screen.dart
-// ✅ CITA CREADA (DISEÑO PREMIUM)
-// 🔥 UI: Botón "BORRAR TU CITA" (Rojo suave).
+// ✅ CITA CREADA BLINDADA (DISEÑO PREMIUM RESPETADO)
+// 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
 // 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
 
 import 'package:flutter/material.dart';
@@ -27,13 +27,11 @@ class CitaCreadaScreen extends StatelessWidget {
   });
 
   // ===========================================================================
-  // 🔴🔴 CHINCHES MAESTROS (DISEÑO PREMIUM) 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO PREMIUM)
   // ===========================================================================
 
-  // Botones Premium (Gradiente + Sombra)
-  // 🔥 CAMBIO: Rojo suave para "Borrar" (No penaliza)
   static const List<Color> kButtonGradientDelete = [Color(0xFFEF5350), Color(0xFFE57373)];
-  static const List<Color> kButtonGradientBack   = [Color(0xFF393975), Color(0xFF1A1A24)]; // Azul/Negro Premium
+  static const List<Color> kButtonGradientBack   = [Color(0xFF393975), Color(0xFF1A1A24)];
 
   static const double kButtonRadius = 18.0;
   static const BorderSide kButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
@@ -43,7 +41,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
   // ===========================================================================
 
-  // 🔧 FOTO DESDE FIREBASE (fallback seguro)
   String _pickFotoLugar(Map<String, dynamic> data) {
     final portada = (data['lugarFotoPortada'] ?? '').toString();
     if (portada.startsWith('http')) return portada;
@@ -58,20 +55,16 @@ class CitaCreadaScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. BLOQUEAR BOTÓN ATRÁS FÍSICO
     return PopScope(
-      canPop: false, // Impide volver atrás para evitar duplicados
+      canPop: false,
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            // 2. FONDO INFINITO
             Positioned.fill(
               child: Image.asset(
                 'assets/images/fondo.jpg',
                 fit: BoxFit.cover,
-                height: double.infinity,
-                width: double.infinity,
               ),
             ),
 
@@ -87,10 +80,7 @@ class CitaCreadaScreen extends StatelessWidget {
                     }
 
                     final data = snap.data!.data() as Map<String, dynamic>? ?? {};
-
-                    // 3. LEER CÓDIGO OWNER
                     final codigo = (data['codigoOwner'] ?? 'PENDIENTE').toString();
-
                     final sedeNombre = (data['sedeNombre'] ?? '').toString();
                     final sedeDireccion = (data['sedeDireccion'] ?? '').toString();
                     final fotoUrl = _pickFotoLugar(data);
@@ -104,7 +94,6 @@ class CitaCreadaScreen extends StatelessWidget {
                           Image.asset('assets/images/logomatchyplano.png', height: 60),
                           const SizedBox(height: 20),
 
-                          // 4. FOTO ANTI-MOCHAR CABEZAS
                           Container(
                             decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(20),
@@ -117,10 +106,10 @@ class CitaCreadaScreen extends StatelessWidget {
                               child: fotoUrl.isNotEmpty
                                   ? Image.network(
                                 fotoUrl,
-                                height: 200, // Más alto para lucir mejor
+                                height: 200,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
-                                alignment: Alignment.topCenter, // 👈 CLAVE: Alineación Top
+                                alignment: Alignment.topCenter,
                                 errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, height: 200),
                               )
                                   : Image.asset('assets/images/perfil1.jpg', height: 200, width: double.infinity, fit: BoxFit.cover),
@@ -129,21 +118,25 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 25),
 
-                          const Text(
-                            "TU CITA ESTÁ CREADA",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 25,
-                                fontWeight: FontWeight.w900,
-                                fontFamily: 'Poppins',
-                                shadows: [Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 3))]
+                          // BLINDAJE: Título elástico
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: const Text(
+                              "TU CITA ESTÁ CREADA",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  fontFamily: 'Poppins',
+                                  shadows: [Shadow(color: Colors.black, blurRadius: 3, offset: Offset(0, 3))]
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            textAlign: TextAlign.center,
                           ),
 
                           const SizedBox(height: 20),
 
-                          // 5. INFO CONTAINER (Glassmorphism)
+                          // 🛡️ INFO CONTAINER BLINDADO
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(24),
@@ -169,7 +162,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 25),
 
-                          // 6. ADVERTENCIAS
                           Container(
                             padding: const EdgeInsets.all(18),
                             decoration: BoxDecoration(
@@ -190,13 +182,17 @@ class CitaCreadaScreen extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                const Text(
-                                  "RECUERDA QUE EN MATCHY EL QUE INVITA PAGA.",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                                // BLINDAJE: Texto advertencia elástico
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: const Text(
+                                    "RECUERDA QUE EN MATCHY EL QUE INVITA PAGA.",
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -205,8 +201,11 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 30),
 
-                          // 7. CÓDIGO
-                          const Text("CÓDIGO DE LA CITA:", style: TextStyle(color: Colors.white70, fontSize: 20, letterSpacing: 1)),
+                          // BLINDAJE: Texto código
+                          const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text("CÓDIGO DE LA CITA:", style: TextStyle(color: Colors.white70, fontSize: 20, letterSpacing: 1))
+                          ),
                           const SizedBox(height: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -215,25 +214,26 @@ class CitaCreadaScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(18),
                                 boxShadow: [BoxShadow(color: const Color(0xFF6B4EE6).withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))]
                             ),
-                            child: Text(
-                              codigo,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 3.0
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                codigo,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 3.0
+                                ),
                               ),
                             ),
                           ),
 
                           const SizedBox(height: 40),
 
-                          // 8. BOTÓN BORRAR (CAMBIO CLAVE)
                           _PremiumButton(
-                            text: "BORRAR TU CITA", // Texto actualizado
-                            gradientColors: kButtonGradientDelete, // Color suave
+                            text: "BORRAR TU CITA",
+                            gradientColors: kButtonGradientDelete,
                             onTap: () async {
-                              // 🔥 LÓGICA DE BORRADO FÍSICO (DELETE)
                               await FirebaseFirestore.instance.collection('citas').doc(citaId).delete();
 
                               if (!context.mounted) return;
@@ -246,7 +246,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 16),
 
-                          // 9. BOTÓN REGRESAR (Premium)
                           _PremiumButton(
                             text: "REGRESAR AL PANEL",
                             gradientColors: kButtonGradientBack,
@@ -258,7 +257,6 @@ class CitaCreadaScreen extends StatelessWidget {
                             },
                           ),
 
-                          // Espacio extra para el fade out
                           const SizedBox(height: 100),
                         ],
                       ),
@@ -268,7 +266,6 @@ class CitaCreadaScreen extends StatelessWidget {
               ),
             ),
 
-            // 10. DEGRADADO INFERIOR (FADE OUT)
             Positioned(
               bottom: 0, left: 0, right: 0, height: 90,
               child: IgnorePointer(
@@ -299,10 +296,14 @@ class CitaCreadaScreen extends StatelessWidget {
           Text("$titulo:", style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.w600, fontSize: 13, letterSpacing: 0.5)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              valor.toUpperCase(),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-              textAlign: TextAlign.right,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Text(
+                valor.toUpperCase(),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                textAlign: TextAlign.right,
+              ),
             ),
           ),
         ],
@@ -311,7 +312,6 @@ class CitaCreadaScreen extends StatelessWidget {
   }
 }
 
-// 🔥 WIDGET REUTILIZABLE: BOTÓN PREMIUM
 class _PremiumButton extends StatelessWidget {
   final String text;
   final List<Color> gradientColors;
@@ -330,6 +330,7 @@ class _PremiumButton extends StatelessWidget {
       child: Container(
         width: double.infinity,
         height: 54,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -341,13 +342,16 @@ class _PremiumButton extends StatelessWidget {
           boxShadow: CitaCreadaScreen.kButtonShadow,
         ),
         alignment: Alignment.center,
-        child: Text(
-          text,
-          style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.5
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            text,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5
+            ),
           ),
         ),
       ),

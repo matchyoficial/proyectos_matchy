@@ -1,7 +1,7 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ DETALLE CITA PENDIENTE (CORREGIDO PARA OWNER)
+// ✅ DETALLE CITA PENDIENTE BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Nombre 30pt, Dirección 18pt, Títulos 20pt.
 // 🔥 FIX: Al hacer Matchy manual, pasamos 'soyElOwner: true' a MatchScreen.
-// 🔥 ESTO HABILITA LA CREACIÓN DEL EVENTO PARA AVISARLE AL OTRO.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -14,7 +14,6 @@ import 'package:proyectos_matchy/screens/match_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
-// ... (Constantes y Modelos se mantienen igual) ...
 // ============================================================
 // FIRESTORE KEYS
 // ============================================================
@@ -41,7 +40,9 @@ const String kLugarFotoPortadaField = 'fotoPortada';
 
 const String kUsersCollection = 'users';
 
-// ... (Estilos Premium igual) ...
+// ============================================================
+// ESTILOS PREMIUM BLINDADOS
+// ============================================================
 const double kLogoHeight = 45.0;
 const double kLogoTopSpace = 35.0;
 const List<BoxShadow> kCardShadow = [BoxShadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 5))];
@@ -266,8 +267,6 @@ class _CitasPendientesDetalleScreenState
             citaId: cita.docId,
             lugarNombre: cita.nombreLugar,
             lugarFoto: cita.fotoLugar,
-
-            // 🛑🛑🛑 SOY EL DUEÑO (CREADOR DE LA CITA) 🛑🛑🛑
             soyElOwner: true,
           ),
         ),
@@ -336,19 +335,41 @@ class _CitasPendientesDetalleScreenState
         children: [
           Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), boxShadow: kCardShadow), child: _fotoLugar(cita.fotoLugar)),
           const SizedBox(height: 20),
-          Text(cita.nombreLugar.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow, letterSpacing: 0.5)),
+
+          // BLINDAJE: Nombre del lugar a 30pt
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(cita.nombreLugar.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow, letterSpacing: 0.5)),
+          ),
           const SizedBox(height: 6),
-          Text(cita.direccionLugar, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 19, fontWeight: FontWeight.w500, fontFamily: 'Poppins', shadows: kTextShadow)),
+
+          // BLINDAJE: Dirección a 18pt
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(cita.direccionLugar, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w500, fontFamily: 'Poppins', shadows: kTextShadow)),
+          ),
           const SizedBox(height: 25),
-          Text(_fechaLarga(cita.fecha).toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFF8F7FA), fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)),
+
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(_fechaLarga(cita.fecha).toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFF8F7FA), fontSize: 22, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)),
+          ),
           Text(cita.hora, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow)),
           const SizedBox(height: 15),
+
           Row(children: [Expanded(child: _infoChip(icon: '🎯', text: cita.intencion)), const SizedBox(width: 10), Expanded(child: _infoChip(icon: '👥', text: cita.preferencia))]),
           const SizedBox(height: 25),
+
           _RelojPremium(fecha: cita.fecha, hora: cita.hora, nombreLugar: cita.nombreLugar, onCancel: _cancelarAuto),
           const SizedBox(height: 30),
-          const Text('¿CON QUIÉN QUIERES IR A TU CITA?', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)),
+
+          // BLINDAJE: Título sección a 20pt
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: const Text('¿CON QUIÉN QUIERES IR A TU CITA?', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)),
+          ),
           const SizedBox(height: 15),
+
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: _candidatosStreamCache,
             builder: (_, snap) {
@@ -374,10 +395,21 @@ class _CitasPendientesDetalleScreenState
   bool _isNetwork(String v) => v.startsWith('http://') || v.startsWith('https://');
   Widget _fotoLugar(String v) { final src = v.trim(); Widget w = (src.isEmpty) ? Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover) : (_isNetwork(src) ? Image.network(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)) : Image.asset(src, fit: BoxFit.cover, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover))); return Container(height: 190, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(22)), child: w); }
   Widget _box(String t, {bool soft = false}) => Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white12)), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: soft ? Colors.white70 : Colors.white, fontFamily: 'Poppins', fontWeight: FontWeight.w700)));
-  Widget _infoChip({required String icon, required String text}) { final t = text.trim().isEmpty ? '—' : text.trim(); return Container(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10), decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18), border: Border.all(color: kPremiumBorder.color, width: 0.5), boxShadow: kCapsuleShadow), child: Column(children: [Text(icon, style: const TextStyle(fontSize: 20)), const SizedBox(height: 4), Text(t.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins'))])); }
+  Widget _infoChip({required String icon, required String text}) {
+    final t = text.trim().isEmpty ? '—' : text.trim();
+    return Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(18), border: Border.all(color: kPremiumBorder.color, width: 0.5), boxShadow: kCapsuleShadow),
+        child: Column(children: [
+          Text(icon, style: const TextStyle(fontSize: 20)),
+          const SizedBox(height: 4),
+          FittedBox(fit: BoxFit.scaleDown, child: Text(t.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins')))
+        ])
+    );
+  }
 }
 
 class _RelojPremium extends StatefulWidget { final String fecha; final String hora; final String nombreLugar; final VoidCallback onCancel; const _RelojPremium({required this.fecha, required this.hora, required this.nombreLugar, required this.onCancel}); @override State<_RelojPremium> createState() => _RelojPremiumState(); }
-class _RelojPremiumState extends State<_RelojPremium> { Timer? _timer; Duration _restante = Duration.zero; bool _alerta1hMostrada = false; @override void initState() { super.initState(); _actualizar(); _timer = Timer.periodic(const Duration(seconds: 1), (_) { if (!mounted) return; _actualizar(); }); } @override void dispose() { _timer?.cancel(); super.dispose(); } void _actualizar() { final dt = _parse(widget.fecha, widget.hora); if (dt == null) return; final limite = dt.subtract(const Duration(hours: 12)); final now = DateTime.now(); final diff = limite.difference(now); if (!_alerta1hMostrada && diff <= const Duration(hours: 1) && diff > Duration.zero) { _alerta1hMostrada = true; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Te queda 1 hora para escoger tu matchy en la cita del ${widget.nombreLugar}"))); } if (diff.isNegative || diff == Duration.zero) { widget.onCancel(); } setState(() { _restante = diff.isNegative ? Duration.zero : diff; }); } DateTime? _parse(String fecha, String hora) { try { final f = fecha.split('/'); if (f.length != 3) return null; final day = int.parse(f[0]); final month = int.parse(f[1]); final year = int.parse(f[2]); final upper = hora.toUpperCase(); final isPM = upper.contains('PM'); final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim(); final hm = clean.split(':'); int h = int.parse(hm[0]); int m = int.parse(hm[1]); if (isPM) { if (h != 12) h += 12; } else { if (h == 12) h = 0; } return DateTime(year, month, day, h, m); } catch (_) { return null; } } String _fmt(Duration d) { final s = d.inSeconds; final h = (s ~/ 3600).toString().padLeft(2, '0'); final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0'); final ss = (s % 60).toString().padLeft(2, '0'); return '$h:$m:$ss'; } @override Widget build(BuildContext context) { return Container(padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), gradient: const LinearGradient(colors: [Color(0x88FF4081), Color(0x88FF5252)], begin: Alignment.topLeft, end: Alignment.bottomRight), border: Border.all(color: Colors.white24, width: 1), boxShadow: kCardShadow), child: Column(children: [Text(_fmt(_restante), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'monospace', letterSpacing: 2.0, shadows: kTextShadow)), const SizedBox(height: 6), const Text('TIEMPO PARA ELEGIR TU MATCHY', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w800, fontFamily: 'Poppins', letterSpacing: 1.0))])); } }
-class _PremiumButton extends StatelessWidget { final String text; final List<Color> gradient; final VoidCallback onTap; const _PremiumButton({required this.text, required this.gradient, required this.onTap}); @override Widget build(BuildContext context) { return GestureDetector(onTap: onTap, child: Container(width: double.infinity, height: 55, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient), borderRadius: BorderRadius.circular(kButtonRadius), boxShadow: kButtonShadow, border: Border.all(color: Colors.white24, width: 1)), alignment: Alignment.center, child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)))); } }
-class _CandidatoCard extends StatelessWidget { final _CandidatoFS candidato; final Future<void> Function() onMatchy; final VoidCallback onTapFoto; final bool busy; const _CandidatoCard({required this.candidato, required this.onMatchy, required this.onTapFoto, required this.busy}); Widget _buildImage() { return FotoPerfilUsuario(uid: candidato.uid, fit: BoxFit.cover, alignment: Alignment.topCenter); } @override Widget build(BuildContext context) { const double radio = 18; const double altoBoton = 36; final nombre = candidato.nombre.trim().isNotEmpty ? candidato.nombre : 'Sin nombre'; final edadTxt = candidato.edad > 0 ? ', ${candidato.edad}' : ''; return Column(children: [Expanded(child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(radio), child: InkWell(borderRadius: BorderRadius.circular(radio), onTap: onTapFoto, child: ClipRRect(borderRadius: BorderRadius.circular(radio), child: Stack(children: [Positioned.fill(child: _buildImage()), Positioned(bottom: 0, left: 0, right: 0, height: 70, child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black.withOpacity(0.9)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))), Positioned(bottom: 10, left: 10, right: 10, child: Text('$nombre$edadTxt', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow)))]))))), const SizedBox(height: 8), SizedBox(width: double.infinity, height: altoBoton, child: ElevatedButton(onPressed: busy ? null : () async => await onMatchy(), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 4, shadowColor: Colors.black54), child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)) : const Text('HACER MATCHY', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontFamily: 'Poppins'))))]); } }
+class _RelojPremiumState extends State<_RelojPremium> { Timer? _timer; Duration _restante = Duration.zero; bool _alerta1hMostrada = false; @override void initState() { super.initState(); _actualizar(); _timer = Timer.periodic(const Duration(seconds: 1), (_) { if (!mounted) return; _actualizar(); }); } @override void dispose() { _timer?.cancel(); super.dispose(); } void _actualizar() { final dt = _parse(widget.fecha, widget.hora); if (dt == null) return; final limite = dt.subtract(const Duration(hours: 12)); final now = DateTime.now(); final diff = limite.difference(now); if (!_alerta1hMostrada && diff <= const Duration(hours: 1) && diff > Duration.zero) { _alerta1hMostrada = true; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Te queda 1 hora para escoger tu matchy en la cita del ${widget.nombreLugar}"))); } if (diff.isNegative || diff == Duration.zero) { widget.onCancel(); } setState(() { _restante = diff.isNegative ? Duration.zero : diff; }); } DateTime? _parse(String fecha, String hora) { try { final f = fecha.split('/'); if (f.length != 3) return null; final day = int.parse(f[0]); final month = int.parse(f[1]); final year = int.parse(f[2]); final upper = hora.toUpperCase(); final isPM = upper.contains('PM'); final clean = upper.replaceAll('AM', '').replaceAll('PM', '').trim(); final hm = clean.split(':'); int h = int.parse(hm[0]); int m = int.parse(hm[1]); if (isPM) { if (h != 12) h += 12; } else { if (h == 12) h = 0; } return DateTime(year, month, day, h, m); } catch (_) { return null; } } String _fmt(Duration d) { final s = d.inSeconds; final h = (s ~/ 3600).toString().padLeft(2, '0'); final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0'); final ss = (s % 60).toString().padLeft(2, '0'); return '$h:$m:$ss'; } @override Widget build(BuildContext context) { return Container(padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), gradient: const LinearGradient(colors: [Color(0x88FF4081), Color(0x88FF5252)], begin: Alignment.topLeft, end: Alignment.bottomRight), border: Border.all(color: Colors.white24, width: 1), boxShadow: kCardShadow), child: Column(children: [Text(_fmt(_restante), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, fontFamily: 'monospace', letterSpacing: 2.0, shadows: kTextShadow)), const SizedBox(height: 6), FittedBox(fit: BoxFit.scaleDown, child: const Text('TIEMPO PARA ELEGIR TU MATCHY', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w800, fontFamily: 'Poppins', letterSpacing: 1.0)))])); } }
+class _PremiumButton extends StatelessWidget { final String text; final List<Color> gradient; final VoidCallback onTap; const _PremiumButton({required this.text, required this.gradient, required this.onTap}); @override Widget build(BuildContext context) { return GestureDetector(onTap: onTap, child: Container(width: double.infinity, height: 55, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient), borderRadius: BorderRadius.circular(kButtonRadius), boxShadow: kButtonShadow, border: Border.all(color: Colors.white24, width: 1)), alignment: Alignment.center, child: FittedBox(fit: BoxFit.scaleDown, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)))))); } }
+class _CandidatoCard extends StatelessWidget { final _CandidatoFS candidato; final Future<void> Function() onMatchy; final VoidCallback onTapFoto; final bool busy; const _CandidatoCard({required this.candidato, required this.onMatchy, required this.onTapFoto, required this.busy}); Widget _buildImage() { return FotoPerfilUsuario(uid: candidato.uid, fit: BoxFit.cover, alignment: Alignment.topCenter); } @override Widget build(BuildContext context) { const double radio = 18; const double altoBoton = 36; final nombre = candidato.nombre.trim().isNotEmpty ? candidato.nombre : 'Sin nombre'; final edadTxt = candidato.edad > 0 ? ', ${candidato.edad}' : ''; return Column(children: [Expanded(child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(radio), child: InkWell(borderRadius: BorderRadius.circular(radio), onTap: onTapFoto, child: ClipRRect(borderRadius: BorderRadius.circular(radio), child: Stack(children: [Positioned.fill(child: _buildImage()), Positioned(bottom: 0, left: 0, right: 0, height: 70, child: Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black.withOpacity(0.9)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))), Positioned(bottom: 10, left: 10, right: 10, child: FittedBox(fit: BoxFit.scaleDown, child: Text('$nombre$edadTxt', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow))))]))))), const SizedBox(height: 8), SizedBox(width: double.infinity, height: altoBoton, child: ElevatedButton(onPressed: busy ? null : () async => await onMatchy(), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFC107), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 4, shadowColor: Colors.black54), child: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)) : FittedBox(fit: BoxFit.scaleDown, child: const Text('HACER MATCHY', style: TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.w900, fontFamily: 'Poppins')))))]); } }

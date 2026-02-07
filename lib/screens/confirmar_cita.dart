@@ -1,7 +1,7 @@
 // 📂 lib/screens/confirmar_cita.dart
-// ✅ PANTALLA ÉXITO (TEXTOS ACTUALIZADOS A "PUNTUALIDAD")
-// 🔥 UI: Muestra mensaje de premio (+20 puntos) o mensaje motivacional.
-// 🔥 UI: Fotos 130x130 fijas con alineación superior.
+// ✅ PANTALLA ÉXITO BLINDADA (DISEÑO Y FUENTES ORIGINALES)
+// 🔥 BLINDAJE: Títulos y nombres protegidos con FittedBox.
+// 🔥 UI: Mensajes de racha (naranja/cyan) intactos para evitar encogimiento.
 
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -13,9 +13,8 @@ class ConfirmarCitaScreen extends StatefulWidget {
   final String matchyNombre;
   final String matchyFoto;
 
-  // 🆕 VARIABLES PARA EL PREMIO
-  final bool ganaronPuntos; // ¿Ganaron los 20 puntos hoy?
-  final int citasFaltantes; // ¿Cuántas faltan para el premio?
+  final bool ganaronPuntos;
+  final int citasFaltantes;
 
   const ConfirmarCitaScreen({
     super.key,
@@ -23,8 +22,8 @@ class ConfirmarCitaScreen extends StatefulWidget {
     this.ownerFoto = '',
     this.matchyNombre = 'Tu Match',
     this.matchyFoto = '',
-    this.ganaronPuntos = false, // Por defecto false
-    this.citasFaltantes = 0,    // Por defecto 0
+    this.ganaronPuntos = false,
+    this.citasFaltantes = 0,
   });
 
   @override
@@ -33,7 +32,7 @@ class ConfirmarCitaScreen extends StatefulWidget {
 
 class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerProviderStateMixin {
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO ORIGINAL RESPETADO)
   // ===========================================================================
 
   static const double kLogoHeight = 45.0;
@@ -46,23 +45,20 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
   static const double kSizeTips = 14.0;
   static const double kSizeBtnText = 16.0;
 
-  // 🔥 FOTOS
   static const double kFotoSize = 130.0;
   static const double kFotoRadius = 24.0;
   static const double kFotoLabelSize = 0.0;
 
-  // 🔥 ANIMACIONES
   static const double kPulseMin = 1.0;
   static const double kPulseMax = 1.05;
   static const int kPulseDurationMs = 1000;
 
-  // 🔥 COLORES
   static const List<Color> kGoldColors = [Color(0xFFFFD700), Color(0xFFFFB300), Color(0xFFFFE082)];
   static const List<Color> kBtnGradient = [Color(0xF7292993), Color(0xFF1A1A24)];
   static const Color kConfettiColor1 = Color(0xFFFFD700);
   static const Color kConfettiColor2 = Color(0xFFFFC107);
   static const Color kConfettiColor3 = Color(0xFFFFF59D);
-  static const Color kCyanNeon = Color(0xFF00E5FF); // Nuevo color para mensaje motivacional
+  static const Color kCyanNeon = Color(0xFF00E5FF);
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -123,7 +119,7 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
             Column(
               children: [
-                SizedBox(height: kLogoTopSpace),
+                const SizedBox(height: kLogoTopSpace),
                 SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png')),
 
                 Expanded(
@@ -137,7 +133,7 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
                         ScaleTransition(
                           scale: _pulseAnimation,
                           child: Column(
-                            children: [
+                            children: const [
                               _GoldText(text: "CITA CONFIRMADA CON", fontSize: kSizeTitulo1),
                               _GoldText(text: "ÉXITO", fontSize: kSizeTitulo2),
                             ],
@@ -146,7 +142,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
                         const SizedBox(height: 15),
 
-                        // 🔥 FOTOS CUADRADAS
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,15 +154,14 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
                         const SizedBox(height: 15),
 
-                        // 🆕 MENSAJE DE RECOMPENSA O MOTIVACIÓN
+                        // 🛡️ MENSAJE DE RECOMPENSA (SIN FittedBox para evitar encogimiento)
                         if (widget.ganaronPuntos)
-                        // CASO 1: ¡PREMIO DE FUEGO! 🔥 (TEXTO ACTUALIZADO)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.2), // Fondo Naranja Fuego
+                              color: Colors.orange.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(15),
-                              border: Border.all(color: Colors.orangeAccent, width: 1), // Borde Fuego
+                              border: Border.all(color: Colors.orangeAccent, width: 1),
                             ),
                             child: const Text(
                               "🔥🔥🔥 ¡RACHA COMPLETADA! +20 PUNTOS DE PUNTUALIDAD 🔥🔥🔥",
@@ -176,7 +170,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
                             ),
                           )
                         else if (widget.citasFaltantes > 0)
-                        // CASO 2: MOTIVACIÓN (TEXTO ACTUALIZADO)
                           Container(
                             margin: const EdgeInsets.symmetric(horizontal: 10),
                             padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
@@ -262,7 +255,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
     );
   }
 
-  // 🔥 HELPER FOTO FIJA (ANTI-MOCHA CABEZAS)
   Widget _buildFotoFija(String nombre, String assetOrUrl, String label) {
     return Column(
       children: [
@@ -274,7 +266,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
             child: Text(label, style: const TextStyle(color: Colors.white, fontSize: kFotoLabelSize, fontWeight: FontWeight.bold)),
           ),
 
-        // CONTENEDOR 130x130
         Container(
           width: kFotoSize,
           height: kFotoSize,
@@ -287,7 +278,6 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
           child: ClipRRect(
             borderRadius: BorderRadius.circular(kFotoRadius - 2),
             child: assetOrUrl.startsWith('http')
-            // 🛑 alignment: Alignment.topCenter ES LA CLAVE
                 ? Image.network(assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter))
                 : Image.asset(assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)),
           ),
@@ -297,12 +287,17 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
 
         SizedBox(
           width: kFotoSize + 20,
-          child: Text(
-              nombre,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: kSizeNombres, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                  nombre,
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: kSizeNombres, shadows: [Shadow(color: Colors.black, blurRadius: 4)])
+              ),
+            ),
           ),
         ),
       ],
@@ -318,9 +313,15 @@ class _GoldText extends StatelessWidget {
   final String text; final double fontSize;
   const _GoldText({required this.text, required this.fontSize});
   @override Widget build(BuildContext context) {
-    return ShaderMask(
-      shaderCallback: (bounds) => const LinearGradient(colors: _ConfirmarCitaScreenState.kGoldColors, begin: Alignment.topCenter, end: Alignment.bottomCenter).createShader(bounds),
-      child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: Colors.white, fontFamily: 'Poppins', shadows: const [Shadow(color: Colors.black, offset: Offset(0, 2), blurRadius: 4)])),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(colors: _ConfirmarCitaScreenState.kGoldColors, begin: Alignment.topCenter, end: Alignment.bottomCenter).createShader(bounds),
+          child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: Colors.white, fontFamily: 'Poppins', shadows: const [Shadow(color: Colors.black, offset: Offset(0, 2), blurRadius: 4)])),
+        ),
+      ),
     );
   }
 }
@@ -329,7 +330,20 @@ class _PremiumButton extends StatelessWidget {
   final String text; final VoidCallback onTap;
   const _PremiumButton({required this.text, required this.onTap});
   @override Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap, child: Container(width: MediaQuery.of(context).size.width * 0.7, height: 55, decoration: BoxDecoration(gradient: const LinearGradient(colors: _ConfirmarCitaScreenState.kBtnGradient, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))], border: Border.all(color: Colors.white24)), alignment: Alignment.center, child: Text(text, style: const TextStyle(color: Colors.white, fontSize: _ConfirmarCitaScreenState.kSizeBtnText, fontWeight: FontWeight.w900, letterSpacing: 1.0, fontFamily: 'Poppins'))));
+    return GestureDetector(
+        onTap: onTap,
+        child: Container(
+            width: MediaQuery.of(context).size.width * 0.7,
+            height: 55,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(gradient: const LinearGradient(colors: _ConfirmarCitaScreenState.kBtnGradient, begin: Alignment.topLeft, end: Alignment.bottomRight), borderRadius: BorderRadius.circular(30), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))], border: Border.all(color: Colors.white24)),
+            alignment: Alignment.center,
+            child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(text, style: const TextStyle(color: Colors.white, fontSize: _ConfirmarCitaScreenState.kSizeBtnText, fontWeight: FontWeight.w900, letterSpacing: 1.0, fontFamily: 'Poppins'))
+            )
+        )
+    );
   }
 }
 

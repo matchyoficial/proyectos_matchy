@@ -1,15 +1,14 @@
 // 📂 lib/screens/nueva_cita_solicitud_screen.dart
-// ✅ PANTALLA DE SOLICITUD DE CITA (FOTO INTELIGENTE + FIX CABEZAS)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' en la foto del solicitante.
-// 🔥 FIX UI: Fotos con 'alignment: Alignment.topCenter' (Anti-corte).
-// 🔥 UI: Diseño Premium + Fade Out inferior + Botón Chevron.
+// ✅ PANTALLA DE SOLICITUD DE CITA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Textos protegidos con FittedBox SIN ALTERAR tamaños de fuente originales.
+// 🔥 UI: FotoPerfilUsuario con Alignment.topCenter y Fade Out inferior respetados.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart';
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 class NuevaCitaSolicitudScreen extends StatefulWidget {
   final String citaId;
@@ -24,24 +23,21 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
   bool _procesando = false;
 
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (DISEÑO) 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   // ===========================================================================
-  static const Color kCardBackground = Color(0x20FFFFFF); // Cristalino sutil
+  static const Color kCardBackground = Color(0x20FFFFFF);
   static const double kCardRadius = 30.0;
-  static const double kFotoPerfilSize = 130.0; // Grande
+  static const double kFotoPerfilSize = 130.0;
   static const double kFotoPerfilRadius = 24.0;
-  static const double kFotoLugarHeight = 180.0; // Larga
+  static const double kFotoLugarHeight = 180.0;
   static const double kFotoLugarRadius = 20.0;
 
-  // Botones
-  static const List<Color> kBtnAceptarGradient = [Color(0xFF00C853), Color(0xFF009624)]; // Verde
-  static const List<Color> kBtnSugerirGradient = [Color(0xFF7E208E), Color(0xFC4B3F60)]; // Morado Premium
+  static const List<Color> kBtnAceptarGradient = [Color(0xFF00C853), Color(0xFF009624)];
+  static const List<Color> kBtnSugerirGradient = [Color(0xFF7E208E), Color(0xFC4B3F60)];
 
-  // Tipografía (Compacta)
   static const TextStyle kTituloStyle = TextStyle(color: Colors.white, fontSize: 29, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5);
   static const TextStyle kSubtituloStyle = TextStyle(color: Colors.white70, fontSize: 21, fontWeight: FontWeight.w600, fontFamily: 'Poppins');
 
-  // 🔥 Texto Compacto (Height 1.0)
   static const TextStyle kNombreLugarStyle = TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.0);
   static const TextStyle kDireccionStyle = TextStyle(color: Colors.white60, fontSize: 19, fontWeight: FontWeight.w500, height: 1.0);
 
@@ -84,12 +80,7 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
   }
 
   void _sugerirOtroMomento() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)));
   }
 
   String _formatearFechaLarga(String fechaCorta) {
@@ -109,10 +100,8 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. Fondo
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
 
-          // 2. Contenido Scrollable
           Column(
             children: [
               const SizedBox(height: 15),
@@ -125,7 +114,7 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 100), // Padding inferior extra para el fade
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
                   child: StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance.collection('citas').doc(widget.citaId).snapshots(),
                     builder: (context, snap) {
@@ -133,7 +122,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                       if (!snap.data!.exists) return const Center(child: Text("Cita no encontrada", style: TextStyle(color: Colors.white)));
 
                       final data = snap.data!.data() as Map<String, dynamic>;
-
                       final lugarNombre = (data['lugarNombre'] ?? 'Lugar').toString().toUpperCase();
                       final lugarFoto = (data['lugarFotoPortada'] ?? '').toString();
                       final direccion = (data['sedeDireccion'] != null && data['sedeDireccion'].toString().isNotEmpty)
@@ -160,12 +148,13 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text("INVITACIÓN DE CITA", style: kTituloStyle, textAlign: TextAlign.center),
+                            // 🛡️ BLINDAJE: Título estandarizado
+                            FittedBox(fit: BoxFit.scaleDown, child: const Text("INVITACIÓN DE CITA", style: kTituloStyle, textAlign: TextAlign.center)),
                             const SizedBox(height: 4),
-                            Text("$ownerNombre te ha invitado", style: kSubtituloStyle, textAlign: TextAlign.center),
+                            // 🛡️ BLINDAJE: Nombre del Matchy
+                            FittedBox(fit: BoxFit.scaleDown, child: Text("$ownerNombre te ha invitado", style: kSubtituloStyle, textAlign: TextAlign.center)),
                             const SizedBox(height: 25),
 
-                            // FOTO PERFIL (ANTI-CORTE DE CABEZA + WIDGET INTELIGENTE)
                             Container(
                               width: kFotoPerfilSize,
                               height: kFotoPerfilSize,
@@ -175,18 +164,16 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(kFotoPerfilRadius),
-                                // 🔥 AQUÍ ESTÁ EL CAMBIO
                                 child: FotoPerfilUsuario(
                                   uid: ownerUid,
                                   fit: BoxFit.cover,
-                                  alignment: Alignment.topCenter, // 🔥 Anti-corte de cabezas
+                                  alignment: Alignment.topCenter,
                                 ),
                               ),
                             ),
 
                             const SizedBox(height: 25),
 
-                            // FOTO LUGAR (ANTI-CORTE)
                             if (lugarFoto.isNotEmpty)
                               Container(
                                 height: kFotoLugarHeight,
@@ -201,27 +188,31 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                                   child: Image.network(
                                       lugarFoto,
                                       fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter // 🔥 FIX: Prioriza el techo/cielo
+                                      alignment: Alignment.topCenter
                                   ),
                                 ),
                               ),
 
-                            // INFO LUGAR (COMPACTA)
-                            Text(lugarNombre, textAlign: TextAlign.center, style: kNombreLugarStyle),
-                            const SizedBox(height: 4), // Espacio mínimo
+                            // 🛡️ BLINDAJE: Nombre de lugar
+                            FittedBox(fit: BoxFit.scaleDown, child: Text(lugarNombre, textAlign: TextAlign.center, style: kNombreLugarStyle)),
+                            const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Icon(Icons.location_on, color: Colors.white60, size: 16),
                                 const SizedBox(width: 4),
+                                // 🛡️ BLINDAJE: Dirección
                                 Flexible(
-                                    child: Text(
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
                                         direccion,
                                         textAlign: TextAlign.center,
                                         style: kDireccionStyle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis
+                                        maxLines: 1,
+                                      ),
                                     )
                                 ),
                               ],
@@ -229,7 +220,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
 
                             const SizedBox(height: 10),
 
-                            // FECHA Y HORA
                             Container(
                               padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 10),
                               width: double.infinity,
@@ -240,16 +230,16 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                               ),
                               child: Column(
                                 children: [
-                                  Text(fechaBonita, textAlign: TextAlign.center, style: kFechaStyle),
+                                  // 🛡️ BLINDAJE: Fecha y Hora
+                                  FittedBox(fit: BoxFit.scaleDown, child: Text(fechaBonita, textAlign: TextAlign.center, style: kFechaStyle)),
                                   const SizedBox(height: 4),
-                                  Text(horaRaw, textAlign: TextAlign.center, style: kHoraStyle),
+                                  FittedBox(fit: BoxFit.scaleDown, child: Text(horaRaw, textAlign: TextAlign.center, style: kHoraStyle)),
                                 ],
                               ),
                             ),
 
                             const SizedBox(height: 14),
 
-                            // BOTONES
                             _BotonPremiumAccion(
                               text: "ACEPTAR CITA",
                               gradient: kBtnAceptarGradient,
@@ -276,7 +266,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
             ],
           ),
 
-          // 3. 🔥 DEGRADADO INFERIOR (FADE OUT)
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -293,7 +282,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
             ),
           ),
 
-          // 4. 🔥 BOTÓN CHEVRON (Estilo idéntico al proyecto)
           Positioned(
             top: 50,
             left: 16,
@@ -350,22 +338,28 @@ class _BotonPremiumAccion extends StatelessWidget {
           child: Center(
             child: isLoading
                 ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 22),
-                const SizedBox(width: 10),
-                Text(
-                  text,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.8,
-                      fontFamily: 'Poppins'
-                  ),
+                : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(icon, color: Colors.white, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      text,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.8,
+                          fontFamily: 'Poppins'
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

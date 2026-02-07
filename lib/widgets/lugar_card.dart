@@ -1,6 +1,6 @@
 // 📂 lib/widgets/lugar_card.dart
-// ✅ LugarCard (CON CHINCHES MAESTROS)
-// 🔥 FIX: Control total del degradado y sombras de texto.
+// ✅ LugarCard (CON CHINCHES MAESTROS BLINDADO)
+// 🔥 FIX: Blindaje adaptativo para nombres de lugares.
 // 🔥 LOGIC: ImageProvider seguro.
 
 import 'package:flutter/material.dart';
@@ -19,28 +19,23 @@ class LugarCard extends StatelessWidget {
   });
 
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (CONTROL VISUAL) 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (BLINDADA)
   // ===========================================================================
 
-  // 1. DEGRADADO (FONDO NEGRO DEL TEXTO)
-  static const double kGradientOpacity = 0.99; // 0.0 transparente - 1.0 negro total
-  static const double kGradientStopStart = 0.68; // Dónde empieza el negro (0.0 arriba - 1.0 abajo)
+  static const double kGradientOpacity = 0.99;
+  static const double kGradientStopStart = 0.68;
 
-  // 2. SOMBRA DE TEXTOS (VISIBILIDAD)
-  static const double kShadowOffsetX = 1.0;  // Mover sombra horizontal (Der/Izq)
-  static const double kShadowOffsetY = 3.0;  // Mover sombra vertical (Arriba/Abajo)
-  static const double kShadowBlur = 0.0;     // Intensidad del difuminado
-  static const double kShadowOpacity = 1.0;  // Qué tan negra es la sombra (0.0 a 1.0)
+  static const double kShadowOffsetX = 1.0;
+  static const double kShadowOffsetY = 3.0;
+  static const double kShadowBlur = 0.0;
+  static const double kShadowOpacity = 1.0;
 
-  // 3. TAMAÑO CARDS (MODIFICADOR GLOBAL)
-  // Suma o resta altura a todas las cards. Ej: 20.0 las hace más largas, -20.0 más cortas.
   static const double kAlturaExtraCards = 0.0;
 
-  // 4. FUENTES
-  static const double kNombreFontSize = 22.0;
-  static const double kDireccionFontSize = 15.0;
+  // 4. FUENTES (Blindaje: bajamos el nombre a 20 para estandarizar títulos)
+  static const double kNombreFontSize = 20.0; // Estandarizado a 20 según regla de oro
+  static const double kDireccionFontSize = 14.0; // Reducido 1 punto para ganar aire
 
-  // 5. ESPACIADOS
   static const double kCardRadius = 20.0;
   static const double kTextoPaddingH = 16.0;
   static const double kTextoPaddingBottom = 14.0;
@@ -61,7 +56,6 @@ class LugarCard extends StatelessWidget {
       imageProvider = const AssetImage('assets/images/asset_sitio.jpg');
     }
 
-    // Configuración de la sombra reutilizable
     final List<Shadow> sombrasTexto = [
       Shadow(
         color: Colors.black.withOpacity(kShadowOpacity),
@@ -75,7 +69,6 @@ class LugarCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: kEspacioEntreCards),
         child: Container(
-          // 🔥 AQUI SE APLICA EL CHINCHE DE ALTURA EXTRA
           height: altoTarjeta + kAlturaExtraCards,
           width: double.infinity,
           decoration: BoxDecoration(
@@ -94,7 +87,6 @@ class LugarCard extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              // 🔹 GRADIENTE INFERIOR
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -112,7 +104,7 @@ class LugarCard extends StatelessWidget {
                 ),
               ),
 
-              // 🔹 TEXTO CON SOMBRA
+              // 🔹 TEXTO BLINDADO
               Positioned(
                 left: kTextoPaddingH,
                 right: kTextoPaddingH,
@@ -121,29 +113,37 @@ class LugarCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      lugar.nombre,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: kNombreFontSize,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
-                        shadows: sombrasTexto, // 🔥 Sombra aplicada
+                    // BLINDAJE: Nombre adaptativo
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        lugar.nombre.toUpperCase(), // Forzamos mayúsculas para estilo Matchy
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: kNombreFontSize,
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
+                          shadows: sombrasTexto,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      lugar.direccion,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: kDireccionFontSize,
-                        fontWeight: FontWeight.w500,
-                        height: 1.1,
-                        shadows: sombrasTexto, // 🔥 Sombra aplicada
+                    // BLINDAJE: Dirección adaptativa
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        lugar.direccion,
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: kDireccionFontSize,
+                          fontWeight: FontWeight.w500,
+                          height: 1.1,
+                          shadows: sombrasTexto,
+                        ),
                       ),
                     ),
                   ],

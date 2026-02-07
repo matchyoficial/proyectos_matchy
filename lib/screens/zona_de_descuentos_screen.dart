@@ -1,8 +1,8 @@
 // 📂 lib/screens/zona_de_descuentos_screen.dart
-// ✅ ZONA DE DESCUENTOS (DISEÑO PREMIUM FINAL)
-// 🔥 UI: Grid de 3 columnas.
-// 🔥 INTERACCIÓN: Click expande a Fullscreen con Zoom + Degradado con texto.
-// 🔥 UI: Botón Chevron flotante (Atrás).
+// ✅ ZONA DE DESCUENTOS BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Título estandarizado a 20pt y protegido con FittedBox.
+// 🔥 UI: Textos informativos intactos para asegurar saltos de línea y legibilidad.
+// 🔥 INTERACCIÓN: Fullscreen con Zoom + Degradado premium respetados.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,23 +27,26 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  // TÍTULO ENCABEZADO
-                  const Text(
-                    "ZONA DE DESCUENTOS",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: 'Poppins',
-                      letterSpacing: 1.0,
-                      shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                  // 🛡️ BLINDAJE: TÍTULO ESTANDARIZADO A 20pt
+                  const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      "ZONA DE DESCUENTOS",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20, // Estandarizado según regla de oro
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Poppins',
+                        letterSpacing: 1.0,
+                        shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                      ),
                     ),
                   ),
 
                   const SizedBox(height: 10),
 
-                  // SUBTÍTULO
+                  // 🛡️ TEXTO INFORMATIVO (INTACTO PARA EVITAR ENCOGIMIENTO)
                   const Text(
                     "¡Exclusivo para parejas Matchy! Presenta estos códigos.",
                     textAlign: TextAlign.center,
@@ -64,13 +67,12 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
                           ? snapshot.data!.docs
                           : [];
 
-                      // Si está vacío, mostramos 12 items de ejemplo
                       final itemCount = docs.isEmpty ? 12 : docs.length;
 
                       return GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         shrinkWrap: true,
-                        padding: const EdgeInsets.only(bottom: 100), // Espacio para el Fade Out
+                        padding: const EdgeInsets.only(bottom: 100),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 12,
@@ -80,7 +82,7 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
                         itemCount: itemCount,
                         itemBuilder: (context, index) {
                           String fotoUrl = '';
-                          String titulo = ''; // Se usa solo para la card pequeña si quieres, o se ignora
+                          String titulo = '';
 
                           if (docs.isNotEmpty) {
                             final data = docs[index].data() as Map<String, dynamic>;
@@ -102,7 +104,7 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
             ),
           ),
 
-          // 2. 🔥 DEGRADADO INFERIOR (FADE OUT DE LA PANTALLA PRINCIPAL)
+          // 2. DEGRADADO INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -119,7 +121,7 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
             ),
           ),
 
-          // 3. 🔥 BOTÓN CHEVRON (ATRAS)
+          // 3. BOTÓN ATRÁS
           Positioned(
             top: 50, left: 16,
             child: GestureDetector(
@@ -141,9 +143,6 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
   }
 }
 
-// ===============================================================
-// 🔹 CARD PEQUEÑA DEL GRID
-// ===============================================================
 class _DiscountCard extends StatelessWidget {
   final String fotoUrl;
   final String titulo;
@@ -159,7 +158,6 @@ class _DiscountCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // 🔥 NAVEGAR A PANTALLA COMPLETA
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -171,7 +169,6 @@ class _DiscountCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(15),
           boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
-          // Borde dorado sutil
           border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.3), width: 1),
         ),
         child: ClipRRect(
@@ -179,7 +176,6 @@ class _DiscountCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // FOTO
               fotoUrl.isNotEmpty
                   ? Image.network(fotoUrl, fit: BoxFit.cover)
                   : Container(
@@ -189,9 +185,16 @@ class _DiscountCard extends StatelessWidget {
                   children: [
                     const Icon(Icons.local_offer, color: Colors.white24, size: 30),
                     const SizedBox(height: 5),
-                    Text(
-                      "PROMO ${index + 1}",
-                      style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                    // 🛡️ BLINDAJE: Texto variable elástico
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          "PROMO ${index + 1}",
+                          style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
                     )
                   ],
                 ),
@@ -204,9 +207,6 @@ class _DiscountCard extends StatelessWidget {
   }
 }
 
-// ===============================================================
-// 🔹 PANTALLA DETALLE FULLSCREEN (NUEVA)
-// ===============================================================
 class _DiscountDetailScreen extends StatelessWidget {
   final String fotoUrl;
 
@@ -218,7 +218,6 @@ class _DiscountDetailScreen extends StatelessWidget {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // 1. FOTO FULLSCREEN CON ZOOM
           Center(
             child: InteractiveViewer(
               minScale: 1.0,
@@ -226,7 +225,7 @@ class _DiscountDetailScreen extends StatelessWidget {
               child: fotoUrl.isNotEmpty
                   ? Image.network(
                 fotoUrl,
-                fit: BoxFit.contain, // Muestra el cupón entero
+                fit: BoxFit.contain,
                 width: double.infinity,
                 height: double.infinity,
                 errorBuilder: (_,__,___) => const Column(
@@ -242,7 +241,7 @@ class _DiscountDetailScreen extends StatelessWidget {
             ),
           ),
 
-          // 2. 🔥 DEGRADADO INFERIOR NEGRO
+          // 2. DEGRADADO INFERIOR
           Positioned(
             bottom: 0,
             left: 0,
@@ -255,12 +254,13 @@ class _DiscountDetailScreen extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     Colors.transparent,
-                    Colors.black.withOpacity(0.9), // Negro casi sólido
-                    Colors.black, // Negro total al final
+                    Colors.black.withOpacity(0.9),
+                    Colors.black,
                   ],
                   stops: const [0.0, 0.4, 1.0],
                 ),
               ),
+              // 🛡️ TEXTO INFORMATIVO (INTACTO PARA MANTENER SALTOS DE LÍNEA)
               child: const Text(
                 "Presenta este cupón en el establecimiento para redimir tu beneficio.",
                 textAlign: TextAlign.center,
@@ -275,7 +275,7 @@ class _DiscountDetailScreen extends StatelessWidget {
             ),
           ),
 
-          // 3. BOTÓN CERRAR (CHEVRON FLOTANTE)
+          // 3. BOTÓN CERRAR
           Positioned(
             top: 50,
             left: 16,

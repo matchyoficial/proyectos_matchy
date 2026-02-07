@@ -1,7 +1,7 @@
 // 📂 lib/screens/reprogramar_cita_aceptar_screen.dart
-// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN (FOTO INTELIGENTE + FINAL)
-// 🔥 FIX: Implementado 'FotoPerfilUsuario' para la foto del solicitante.
-// 🔥 LOGIC: Notificaciones y transacciones con WriteBatch intactas.
+// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables elásticos.
+// 🔥 UI: FotoPerfilUsuario y lógica de WriteBatch intactas.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -9,8 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // 🟢 Necesario para current user
-import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart'; // 👈 WIDGET NUEVO
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
 class ReprogramarCitaAceptarScreen extends StatefulWidget {
   final String citaId;
@@ -22,7 +22,7 @@ class ReprogramarCitaAceptarScreen extends StatefulWidget {
 }
 
 class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScreen> {
-  // ... (Tus chinches de diseño siguen igual) ...
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   static const double kCardHeight = 280.0;
   static const double kCardBorderRadius = 25.0;
   static const double kCardMarginH = 20.0;
@@ -33,7 +33,9 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
   static const Color kAccentColor = Color(0xFFE0D4FF);
   static const Color kPrimaryButton = Color(0xFF6B4EE6);
   static const Color kSelectionColor = Color(0xFF4CAF50);
-  static const double kTitleSize = 24.0;
+
+  // Regla de Oro: Título de sección a 20pt
+  static const double kTitleSize = 20.0;
 
   bool _loading = true;
   Map<String, dynamic>? _citaData;
@@ -78,7 +80,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
     return "$diaSemana $diaNum $mes";
   }
 
-  // 🔴 AQUÍ ESTÁ LA ACTUALIZACIÓN: NOTIFICAR AL SOLICITANTE
   Future<void> _confirmarHorario() async {
     if (_seleccionIndex == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -92,30 +93,23 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
     try {
       final db = FirebaseFirestore.instance;
-      final batch = db.batch(); // Usamos Batch para seguridad
+      final batch = db.batch();
 
       final DateTime nuevaFecha = _opcionesRecibidas[_seleccionIndex!];
-
-      // Formato para guardar
       final String fechaStr = DateFormat('dd/MM/yyyy').format(nuevaFecha);
       final String horaStr = DateFormat('hh:mm a').format(nuevaFecha);
 
-      // Referencias
       final citaRef = db.collection('citas').doc(widget.citaId);
-
-      // Identificar a quién notificar (al que pidió el cambio)
       final String requesterUid = (_citaData?['repro_by_uid'] ?? '').toString();
       final String myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-      // 1. Actualizar Cita
       batch.update(citaRef, {
-        'status': 'matched', // Vuelve a estar activa
+        'status': 'matched',
         'fecha': fechaStr,
         'hora': horaStr,
         'repro_accepted_at': FieldValue.serverTimestamp(),
       });
 
-      // 2. Crear Notificación de Confirmación (Si existe el ID del solicitante)
       if (requesterUid.isNotEmpty && requesterUid != myUid) {
         final notifRef = db.collection('users').doc(requesterUid).collection('notifications').doc();
         batch.set(notifRef, {
@@ -139,7 +133,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("¡CITA REPROGRAMADA!", style: TextStyle(color: kSelectionColor, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
+          title: const FittedBox(fit: BoxFit.scaleDown, child: Text("¡CITA REPROGRAMADA!", style: TextStyle(color: kSelectionColor, fontWeight: FontWeight.w900))),
           content: Text("TU CITA HA SIDO ACTUALIZADA PARA EL\n$fechaStr A LAS $horaStr", style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
           actions: [
             Center(
@@ -171,8 +165,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
     final String matchyNombre = _citaData!['matchyNombre'] ?? _citaData!['candidatoNombre'] ?? 'MATCHY';
     final String fechaVieja = _citaData!['fecha'] ?? '--/--';
     final String horaVieja = _citaData!['hora'] ?? '--:--';
-
-    // 🔥 Recuperamos el UID de quien reprogramó para mostrar su foto actual
     final String reproByUid = (_citaData!['repro_by_uid'] ?? '').toString();
 
     return Scaffold(
@@ -186,8 +178,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
           padding: const EdgeInsets.symmetric(horizontal: 0),
           child: Column(
             children: [
-
-              // TARJETA LUGAR
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                 height: kCardHeight,
@@ -224,7 +214,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                         ),
                       ),
 
-                      // 🔥 FOTO SOLICITANTE (WIDGET INTELIGENTE)
                       Positioned(
                         bottom: kUserPhotoMargin,
                         right: kUserPhotoMargin,
@@ -239,7 +228,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
-                            // 🔥 AQUÍ ESTÁ EL CAMBIO
                             child: FotoPerfilUsuario(
                               uid: reproByUid,
                               fit: BoxFit.cover,
@@ -255,16 +243,22 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
               const SizedBox(height: 25),
 
-              // TITULO
-              const Text(
-                "SOLICITUD DE CAMBIO",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))]),
+              // BLINDAJE: Título estandarizado a 20pt
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: const Text(
+                    "SOLICITUD DE CAMBIO",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))]),
+                  ),
+                ),
               ),
 
               const SizedBox(height: 15),
 
-              // CÁPSULA INFO
+              // 🛡️ CÁPSULA INFO BLINDADA
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                 padding: const EdgeInsets.all(20),
@@ -293,7 +287,6 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
               const SizedBox(height: 20),
 
-              // LISTA OPCIONES
               if (_opcionesRecibidas.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(20),
@@ -314,7 +307,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
               const SizedBox(height: 20),
 
-              // BOTÓN
+              // 🛡️ BOTÓN CONFIRMAR BLINDADO
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                 child: SizedBox(
@@ -329,9 +322,12 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                     onPressed: (_saving || _seleccionIndex == null) ? null : _confirmarHorario,
                     child: _saving
                         ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(
-                      "CONFIRMAR NUEVO HORARIO",
-                      style: TextStyle(color: _seleccionIndex != null ? Colors.white : Colors.white38, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins'),
+                        : FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        "CONFIRMAR NUEVO HORARIO",
+                        style: TextStyle(color: _seleccionIndex != null ? Colors.white : Colors.white38, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins'),
+                      ),
                     ),
                   ),
                 ),
@@ -351,7 +347,13 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
       children: [
         Icon(icon, color: isAccent ? kAccentColor : Colors.white70, size: 20),
         const SizedBox(width: 12),
-        Expanded(child: Text(text, style: TextStyle(color: isAccent ? kAccentColor : (isStrike ? Colors.white38 : Colors.white), fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Poppins', decoration: isStrike ? TextDecoration.lineThrough : null, decorationColor: Colors.white38))),
+        Expanded(
+            child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(text, style: TextStyle(color: isAccent ? kAccentColor : (isStrike ? Colors.white38 : Colors.white), fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Poppins', decoration: isStrike ? TextDecoration.lineThrough : null, decorationColor: Colors.white38))
+            )
+        ),
       ],
     );
   }
@@ -380,13 +382,18 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
               child: isSelected ? const Icon(Icons.check, size: 16, color: Colors.white) : null,
             ),
             const SizedBox(width: 15),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? kSelectionColor : kAccentColor, fontSize: 10, fontWeight: FontWeight.bold)),
-                Text("$dateFormatted - $timeFormatted", style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-              ],
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? kSelectionColor : kAccentColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                  FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text("$dateFormatted - $timeFormatted", style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins'))
+                  ),
+                ],
+              ),
             ),
           ],
         ),

@@ -1,13 +1,13 @@
 // 📂 lib/screens/cancelar_cita_screen.dart
-// ✅ PANTALLA DE CANCELACIÓN (DISEÑO FINAL)
+// ✅ PANTALLA DE CANCELACIÓN BLINDADA (DISEÑO FINAL)
+// 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
 // 🔥 UI: Logo Matchy, Botón Rojo de Castigo y Mini-Termómetro en tiempo real.
-// 🔥 CONTROL: Zona de Chinches Maestros para ajustar tamaños y espacios.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
-import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart'; // Asegúrate de tener este import o ajustarlo
+import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart';
 
 class CancelarCitaScreen extends StatefulWidget {
   final String citaId;
@@ -25,48 +25,40 @@ class CancelarCitaScreen extends StatefulWidget {
 
 class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
   // ===========================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (AJUSTA TU DISEÑO AQUÍ) 🔴🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (MANTENIENDO TAMAÑOS SOLICITADOS)
   // ===========================================================================
 
-  // 1. LOGO MATCHY
-  static const double kLogoTopMargin        = 6.0; // Distancia del techo al logo
-  static const double kLogoHeight           = 40.0; // Tamaño del logo Matchy
+  static const double kLogoTopMargin        = 6.0;
+  static const double kLogoHeight           = 40.0;
 
-  // 2. ICONO DE ADVERTENCIA (TRIÁNGULO)
-  static const double kIconoWarningTopGap   = 30.0; // Espacio entre Logo y Triángulo
-  static const double kIconoWarningSize     = 75.0; // Tamaño del icono (triángulo)
-  static const double kCirculoWarningSize   = 20.0; // Padding del circulo rojo alrededor
+  static const double kIconoWarningTopGap   = 30.0;
+  static const double kIconoWarningSize     = 75.0;
+  static const double kCirculoWarningSize   = 20.0;
 
-  // 3. TEXTOS PRINCIPALES
-  static const double kTituloFontSize       = 36.0; // "¿ESTÁS SEGURO?"
-  static const double kTituloTopGap         = 25.0; // Espacio arriba del título
-  static const double kDescripcionFontSize  = 18.0; // Texto explicativo
-  static const double kDescripcionTopGap    = 15.0; // Espacio arriba de descripción
+  static const double kTituloFontSize       = 36.0; // TAMAÑO ACTUAL RESPETADO
+  static const double kTituloTopGap         = 25.0;
+  static const double kDescripcionFontSize  = 18.0;
+  static const double kDescripcionTopGap    = 15.0;
 
-  // 4. CÁPSULA NEGRA (PENALIDAD + TERMÓMETRO)
-  static const double kCapsulaTopGap        = 35.0; // Separación de la cápsula
-  static const double kCapsulaPadding       = 16.0; // Relleno interno
-  static const double kMiniTermoHeight      = 8.0;  // Grosor de la barrita del mini termómetro
+  static const double kCapsulaTopGap        = 35.0;
+  static const double kCapsulaPadding       = 16.0;
+  static const double kMiniTermoHeight      = 8.0;
 
-  // 5. BOTÓN REPROGRAMAR (VERDE)
-  static const double kBotonReproTopGap     = 27.0; // Subir o bajar el botón verde
-  static const double kBotonReproHeight     = 55.0; // Altura del botón
-  static const double kBotonReproFontSize   = 16.0; // Tamaño letra
+  static const double kBotonReproTopGap     = 27.0;
+  static const double kBotonReproHeight     = 55.0;
+  static const double kBotonReproFontSize   = 16.0;
 
-  // 6. TEXTO INFERIOR ("Si reprogramas...")
   static const double kTextoInfoFontSize    = 19.0;
   static const double kTextoInfoTopGap      = 12.0;
 
-  // 7. BOTÓN PENALIDAD (ROJO)
-  static const double kBotonRojoTopGap      = 43.0; // Separación del botón rojo
-  static const double kBotonRojoHeight      = 50.0; // Altura botón rojo
-  static const double kBotonRojoFontSize    = 14.0; // Tamaño letra botón rojo
+  static const double kBotonRojoTopGap      = 43.0;
+  static const double kBotonRojoHeight      = 50.0;
+  static const double kBotonRojoFontSize    = 14.0;
 
   // ===========================================================================
 
   bool _isLoading = false;
 
-  // Lógica de Castigo (-10%)
   Future<void> _ejecutarCancelacion() async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -78,14 +70,10 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final userSnapshot = await transaction.get(userRef);
-
         int currentScore = (userSnapshot.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
         int newScore = (currentScore - 10).clamp(0, 100);
 
-        transaction.update(userRef, {
-          'confiabilidad': newScore,
-        });
-
+        transaction.update(userRef, {'confiabilidad': newScore});
         transaction.update(citaRef, {
           'status': 'cancelled',
           'canceladoPor': user.uid,
@@ -114,7 +102,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
     }
   }
 
-  // Helper para color del termómetro
   Color _getScoreColor(int score) {
     if (score >= 80) return const Color(0xFF00E676);
     if (score >= 50) return const Color(0xFFFFC107);
@@ -130,7 +117,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Fondo sutil
           Positioned.fill(
             child: Opacity(
               opacity: 0.3,
@@ -144,7 +130,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                     ? FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots()
                     : null,
                 builder: (context, snapshot) {
-                  // Obtener puntaje en tiempo real
                   int myScore = 100;
                   if (snapshot.hasData && snapshot.data != null) {
                     final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -153,13 +138,12 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
 
                   return Column(
                     children: [
-                      // 1. HEADER (Botón X y Logo Matchy)
+                      // 1. HEADER
                       Padding(
                         padding: const EdgeInsets.only(top: kLogoTopMargin, left: 10, right: 10),
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Botón Atrás
                             Align(
                               alignment: Alignment.centerLeft,
                               child: IconButton(
@@ -167,20 +151,18 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ),
-                            // Logo Matchy
                             Image.asset('assets/images/logomatchyplano.png', height: kLogoHeight),
                           ],
                         ),
                       ),
 
-                      // CONTENIDO SCROLLEABLE (Para pantallas pequeñas)
                       Expanded(
                         child: SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 30),
                           physics: const BouncingScrollPhysics(),
                           child: Column(
                             children: [
-                              SizedBox(height: kIconoWarningTopGap),
+                              const SizedBox(height: kIconoWarningTopGap),
 
                               // 2. ICONO ADVERTENCIA
                               Container(
@@ -191,28 +173,31 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                     border: Border.all(color: const Color(0xFFD50000), width: 2),
                                     boxShadow: [BoxShadow(color: const Color(0xFFD50000).withOpacity(0.2), blurRadius: 15)]
                                 ),
-                                child: Icon(
+                                child: const Icon(
                                   Icons.warning_amber_rounded,
-                                  color: const Color(0xFFD50000),
+                                  color: Color(0xFFD50000),
                                   size: kIconoWarningSize,
                                 ),
                               ),
 
-                              SizedBox(height: kTituloTopGap),
+                              const SizedBox(height: kTituloTopGap),
 
-                              // 3. TEXTOS
-                              Text(
-                                "¿ESTÁS SEGURO?",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: kTituloFontSize,
-                                  fontWeight: FontWeight.w900,
-                                  fontFamily: 'Poppins',
-                                  letterSpacing: 1.0,
+                              // 3. TEXTOS BLINDADOS
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: const Text(
+                                  "¿ESTÁS SEGURO?",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: kTituloFontSize,
+                                    fontWeight: FontWeight.w900,
+                                    fontFamily: 'Poppins',
+                                    letterSpacing: 1.0,
+                                  ),
                                 ),
                               ),
-                              SizedBox(height: kDescripcionTopGap),
+                              const SizedBox(height: kDescripcionTopGap),
                               Text(
                                 "Cancelar esta cita afectará negativamente tu reputación en la comunidad Matchy.",
                                 textAlign: TextAlign.center,
@@ -223,9 +208,9 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                 ),
                               ),
 
-                              SizedBox(height: kCapsulaTopGap),
+                              const SizedBox(height: kCapsulaTopGap),
 
-                              // 4. CÁPSULA NEGRA + MINI TERMÓMETRO
+                              // 4. CÁPSULA NEGRA + MINI TERMÓMETRO BLINDADO
                               Container(
                                 padding: const EdgeInsets.all(kCapsulaPadding),
                                 decoration: BoxDecoration(
@@ -236,7 +221,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                 ),
                                 child: Column(
                                   children: [
-                                    // Fila Superior: Icono y Texto Penalidad
                                     Row(
                                       children: [
                                         const Icon(Icons.trending_down, color: Color(0xFFFF5252), size: 32),
@@ -245,14 +229,20 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: const [
-                                              Text(
-                                                "PENALIDAD AUTOMÁTICA",
-                                                style: TextStyle(color: Color(0xFFFF5252), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                              FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  "PENALIDAD AUTOMÁTICA",
+                                                  style: TextStyle(color: Color(0xFFFF5252), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                                ),
                                               ),
                                               SizedBox(height: 2),
-                                              Text(
-                                                "-10% de Confiabilidad",
-                                                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                                              FittedBox(
+                                                fit: BoxFit.scaleDown,
+                                                child: Text(
+                                                  "-10% de Confiabilidad",
+                                                  style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
+                                                ),
                                               ),
                                             ],
                                           ),
@@ -264,7 +254,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                     Divider(color: Colors.white.withOpacity(0.1), height: 1),
                                     const SizedBox(height: 15),
 
-                                    // Sección Mini Termómetro
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
@@ -273,7 +262,6 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                       ],
                                     ),
                                     const SizedBox(height: 6),
-                                    // Barrita Visual
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(5),
                                       child: SizedBox(
@@ -289,9 +277,9 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                 ),
                               ),
 
-                              SizedBox(height: kBotonReproTopGap),
+                              const SizedBox(height: kBotonReproTopGap),
 
-                              // 5. BOTÓN REPROGRAMAR (VERDE)
+                              // 5. BOTÓN REPROGRAMAR (VERDE) BLINDADO
                               SizedBox(
                                 width: double.infinity,
                                 height: kBotonReproHeight,
@@ -306,22 +294,31 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                   onPressed: () {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)));
                                   },
-                                  child: Text(
-                                    "REPROGRAMAR CITA",
-                                    style: TextStyle(fontSize: kBotonReproFontSize, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        "REPROGRAMAR CITA",
+                                        style: TextStyle(fontSize: kBotonReproFontSize, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
 
-                              SizedBox(height: kTextoInfoTopGap),
-                              Text(
-                                "Si reprogramas, no perderás puntos.",
-                                style: TextStyle(color: Colors.white54, fontSize: kTextoInfoFontSize),
+                              const SizedBox(height: kTextoInfoTopGap),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  "Si reprogramas, no perderás puntos.",
+                                  style: TextStyle(color: Colors.white54, fontSize: kTextoInfoFontSize),
+                                ),
                               ),
 
-                              SizedBox(height: kBotonRojoTopGap),
+                              const SizedBox(height: kBotonRojoTopGap),
 
-                              // 6. BOTÓN PENALIDAD (ROJO)
+                              // 6. BOTÓN PENALIDAD (ROJO) BLINDADO
                               if (_isLoading)
                                 const CircularProgressIndicator(color: Color(0xFFFF5252))
                               else
@@ -336,18 +333,24 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                       backgroundColor: const Color(0xFFFF5252).withOpacity(0.05),
                                     ),
                                     onPressed: _ejecutarCancelacion,
-                                    child: Text(
-                                      "ASUMIR PENALIDAD Y CANCELAR",
-                                      style: TextStyle(
-                                          fontSize: kBotonRojoFontSize,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 0.5
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                                        child: Text(
+                                          "ASUMIR PENALIDAD Y CANCELAR",
+                                          style: TextStyle(
+                                              fontSize: kBotonRojoFontSize,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
 
-                              const SizedBox(height: 40), // Espacio final para scroll
+                              const SizedBox(height: 40),
                             ],
                           ),
                         ),

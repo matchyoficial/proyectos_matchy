@@ -1,7 +1,8 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
-// ✅ CREAR CITA PRIVADA (FADE OUT + NUBE ESTILIZADA)
-// 🔥 UI FIX: Agregado degradado negro inferior (Fade Out).
-// 🔥 UI FIX: Nube informativa con estilo idéntico a 'Reprogramar' y texto justificado ordenado.
+// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Nombres y botones protegidos con FittedBox.
+// 🔥 UI: Nube informativa intacta (14.9pt) para evitar encogimiento.
+// 🔥 UI: Fade Out inferior y diseño premium respetados.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ class CreaCitaMatchyScreen extends StatefulWidget {
 }
 
 class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
-  // UI Constants
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   static const double kAlturaFoto = 210.0;
   static const double kMargenFotoHorizontal = 23.0;
   static const double kRadioFoto = 24.0;
@@ -100,9 +101,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     return '';
   }
 
-  // -------------------------------------------------------------
-  // 🔥 LÓGICA DE ENVÍO + NOTIFICACIÓN
-  // -------------------------------------------------------------
   Future<String> _enviarInvitacionFirestore() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('No hay sesión iniciada');
@@ -110,14 +108,12 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
     final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
 
-    // Datos del Creador
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
     final ownerNombre = (dataUser['nombre'] ?? 'Alguien').toString();
     final ownerEdad = dataUser['edad'] is int ? dataUser['edad'] : 0;
     final ownerFoto = (dataUser['profilePhotoUrl'] ?? '').toString();
 
-    // Datos del Invitado
     final snapMatchy = await FirebaseFirestore.instance.collection('users').doc(widget.matchyUidInvitado).get();
     final dataMatchy = snapMatchy.data() ?? {};
     final matchyNombre = (dataMatchy['nombre'] ?? 'Matchy').toString();
@@ -133,7 +129,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
     final citaId = docRef.id;
 
-    // 1. Guardar Cita
     await docRef.set({
       'isPrivate': true,
       'status': 'pending_approval',
@@ -163,10 +158,9 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'sedeDireccion': sedeFinal.direccion,
     });
 
-    // 2. 🔥 ENVIAR NOTIFICACIÓN AL INVITADO
     await FirebaseFirestore.instance
         .collection('users')
-        .doc(widget.matchyUidInvitado) // Buzón del invitado
+        .doc(widget.matchyUidInvitado)
         .collection('notifications')
         .add({
       'type': 'invitacion_cita',
@@ -224,7 +218,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // FONDO
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
           const MatchyBackButton(top: 10, left: 16),
 
@@ -235,23 +228,30 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
               const SizedBox(height: espacioLogoScroll),
               Expanded(
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.only(bottom: margenInferiorPantalla),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const Text(
-                        "PLANEA TU CITA CON TU MATCHY",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: kTituloPantallaSize,
-                            fontWeight: FontWeight.bold,
-                            shadows: [Shadow(color: Colors.black, blurRadius: 4)]
+                      // BLINDAJE: Título adaptativo
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: const Text(
+                            "PLANEA TU CITA CON TU MATCHY",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: kTituloPantallaSize,
+                                fontWeight: FontWeight.bold,
+                                shadows: [Shadow(color: Colors.black, blurRadius: 4)]
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
 
-                      // FOTO
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: kMargenFotoHorizontal),
                         child: Container(
@@ -270,7 +270,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 16),
 
-                      // NOMBRE
+                      // BLINDAJE: Nombre del lugar
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
@@ -289,24 +289,27 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
+                      // BLINDAJE: Dirección adaptativa
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          _sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: kDireccionSize,
-                            fontWeight: FontWeight.w500,
-                            height: 1.1,
-                            shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: kDireccionSize,
+                              fontWeight: FontWeight.w500,
+                              height: 1.1,
+                              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                            ),
                           ),
                         ),
                       ),
 
                       const SizedBox(height: 25),
 
-                      // FECHA Y HORA
                       _BotonPremium(
                         text: _fecha.isEmpty ? "SELECCIONAR FECHA" : "FECHA: $_fecha",
                         icon: Icons.calendar_today,
@@ -378,7 +381,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 40),
 
-                      // BOTÓN DE ACCIÓN
                       _BotonPremium(
                         text: "ENVIAR INVITACIÓN",
                         width: width * 0.85,
@@ -391,7 +393,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 30),
 
-                      // 🔥 NUBE INFORMATIVA ESTILIZADA (Estilo Reprogramar + Justify)
+                      // 🔥 NUBE INFORMATIVA ESTILIZADA (RESISTENTE A ENCOGIMIENTO)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 24),
                         padding: const EdgeInsets.all(16),
@@ -401,18 +403,18 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                           border: Border.all(color: Colors.white24, width: 1),
                         ),
                         child: const Row(
-                          crossAxisAlignment: CrossAxisAlignment.start, // Alineado arriba
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 28),
                             SizedBox(width: 15),
                             Expanded(
                               child: Text(
                                 "Se enviará una notificación a tu Matchy. Hablen por chat antes de fijar la cita para evitar cancelaciones y penalizaciones.",
-                                textAlign: TextAlign.justify, // 🔥 JUSTIFICADO
+                                textAlign: TextAlign.justify,
                                 style: TextStyle(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w800, // Bold fuerte como en reprogramar
-                                    fontSize: 14.9,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14.9, // Mantiene su tamaño real sin FittedBox
                                     fontFamily: 'Poppins',
                                     height: 1.3
                                 ),
@@ -428,7 +430,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
             ],
           ),
 
-          // 🔥 FADE OUT INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -494,15 +495,21 @@ class _BotonPremium extends StatelessWidget {
           child: Center(
             child: isLoading
                 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)],
-                Text(
-                  text,
-                  style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)],
+                    Text(
+                      text,
+                      style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ),

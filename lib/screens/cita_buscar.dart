@@ -1,7 +1,7 @@
 // 📂 lib/screens/cita_buscar.dart
-// ✅ CITA BUSCAR — VERSIÓN FINAL Y CORRECTA
+// ✅ CITA BUSCAR — VERSIÓN FINAL Y CORRECTA (BLINDADA)
 // 🔥 FIX: Agregado 'kCardTopMargin' para bajar toda la carta y evitar cortes arriba.
-// 🔥 UI: Diseño Vertical Blindado (Foto -> Info -> Foto -> Barra -> Botones).
+// 🔥 UI: Dirección subida a 14pt + FittedBox de seguridad.
 // 🔥 WIDGET: Termómetro nativo integrado.
 
 import 'dart:math' as math;
@@ -360,7 +360,13 @@ class _SwipeBundleSolid extends StatelessWidget {
       if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
       if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
       if (!isProfile) Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
-      if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [Text(model.placeName.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.0)), const SizedBox(height: 4), Text(model.placeAddress, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Poppins'))]))
+      if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // BLINDAJE: Nombre adaptativo
+        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.0))),
+        const SizedBox(height: 4),
+        // BLINDAJE: Dirección a 14pt adaptativa
+        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeAddress, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins')))
+      ]))
     ])));
   }
 

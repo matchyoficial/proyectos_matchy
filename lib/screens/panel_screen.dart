@@ -1,5 +1,5 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (FINAL)
+// ✅ PANEL CENTRAL (FINAL BLINDADO)
 // 🔥 LAYOUT: Logo a la izquierda, Botones a la derecha (Info > Buscar > Alertas).
 // 🔥 UI: Paneles desplegables más altos.
 // 🔥 CONTENT: Tabla de penalización detallada con 5to Strike dramático.
@@ -126,9 +126,8 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
     if (clean.isEmpty) return 'SIN NOMBRE';
     final parts = clean.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.isEmpty) return 'SIN NOMBRE';
-    final first = parts.first;
-    final two = parts.length >= 2 ? '${parts[0]} ${parts[1]}' : first;
-    return (clean.length <= 12 && parts.length <= 2) ? clean.toUpperCase() : (first.length <= 5 && parts.length >= 2 ? (two.length > 12 ? first.toUpperCase() : two.toUpperCase()) : first.toUpperCase());
+    // Blindaje: Solo primer nombre para evitar desbordamientos
+    return parts.first.toUpperCase();
   }
 
   bool _isAsset(String v) => v.startsWith('assets/');
@@ -348,7 +347,7 @@ class _InfoSheet extends StatelessWidget {
           const SizedBox(height: 15),
           Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
           const SizedBox(height: 20),
-          const Text("CÓMO FUNCIONA MATCHY", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0)),
+          const FittedBox(fit: BoxFit.scaleDown, child: Text("CÓMO FUNCIONA MATCHY", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0))),
           const SizedBox(height: 15),
 
           Expanded(
@@ -425,15 +424,18 @@ class _InfoSheet extends StatelessWidget {
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(color: Colors.white24),
                     ),
-                    child: const Text(
-                      "RECUERDA QUE EN MATCHY,\nEL QUE INVITA PAGA",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Color(0xFFBEB3FF),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 16,
-                          letterSpacing: 1.0,
-                          fontFamily: 'Poppins'
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        "RECUERDA QUE EN MATCHY,\nEL QUE INVITA PAGA",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: Color(0xFFBEB3FF),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                            letterSpacing: 1.0,
+                            fontFamily: 'Poppins'
+                        ),
                       ),
                     ),
                   ),
@@ -462,7 +464,7 @@ class _InfoSheet extends StatelessWidget {
             children: [
               Icon(icon, color: iconColor, size: 28),
               const SizedBox(width: 10),
-              Text(title, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+              Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5)))),
             ],
           ),
           const SizedBox(height: 12),
@@ -511,7 +513,7 @@ class _NotificacionesSheet extends ConsumerWidget {
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_PanelScreenState.kSheetTopColor, _PanelScreenState.kSheetBottomColor]), borderRadius: const BorderRadius.vertical(top: Radius.circular(30)), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, -5))]),
       child: Column(
         children: [
-          const SizedBox(height: 15), Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 20), const Text("NOTIFICACIONES", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0)), const SizedBox(height: 15),
+          const SizedBox(height: 15), Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 20), const FittedBox(fit: BoxFit.scaleDown, child: Text("NOTIFICACIONES", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0))), const SizedBox(height: 15),
           Expanded(child: notificacionesAsync.when(loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))), error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))), data: (docs) { if (docs.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins'))); return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; final docId = docs[index].id; final leido = data['read'] == true; final titulo = data['title'] ?? 'Notificación'; final cuerpo = data['body'] ?? ''; final type = data['type'] ?? ''; final citaId = data['citaId']; IconData icono = Icons.notifications_rounded; if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded; if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded; return Dismissible(key: Key(docId), direction: DismissDirection.endToStart, background: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)), alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete_outline, color: Colors.white)), onDismissed: (_) => NotificationLogic.deleteNotification(docId), child: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kNotifGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius), border: leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5), boxShadow: _PanelScreenState.kNotifShadow), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), leading: CircleAvatar(backgroundColor: leido ? Colors.white10 : const Color(0xFF6B4EE6), child: Icon(icono, color: Colors.white)), title: Text(titulo, style: TextStyle(color: Colors.white, fontWeight: leido ? FontWeight.normal : FontWeight.bold, fontSize: 15)), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: const TextStyle(color: Colors.white70, fontSize: 13))), trailing: const Icon(Icons.chevron_right, color: Colors.white38), onTap: () {
             NotificationLogic.deleteNotification(docId);
             Navigator.pop(context);
@@ -547,7 +549,7 @@ class _PanelContent extends StatelessWidget {
     required this.userStatus,
     required this.strikes,
     this.bloqueadoHasta,
-    this.racha = 0,
+    required this.racha,
   });
 
   bool get _estaBloqueado {
@@ -635,7 +637,7 @@ class _PanelContent extends StatelessWidget {
                                 boxShadow: _PanelScreenState.kPremiumButtonShadow
                             ),
                             alignment: Alignment.center,
-                            child: const Text('EDITAR PERFIL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5))
+                            child: const FittedBox(fit: BoxFit.scaleDown, child: Text('EDITAR PERFIL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5)))
                         )
                     ),
                   ]
@@ -690,7 +692,7 @@ class _PanelContent extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 26),
-        Text("SITIOS RECOMENDADOS", style: textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+        FittedBox(fit: BoxFit.scaleDown, child: Text("SITIOS RECOMENDADOS", style: textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
         const SizedBox(height: 16),
 
         Padding(
@@ -728,7 +730,7 @@ class _PanelContent extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween, // Separar texto de fuegos
         children: [
-          const Text("RACHAS", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+          Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: const Text("RACHAS", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)))),
 
           // 🔥 3 FUEGOS SIEMPRE VISIBLES
           Row(
@@ -797,24 +799,28 @@ class _BotonPanelPremium extends StatelessWidget {
                 boxShadow: _PanelScreenState.kPremiumButtonShadow
             ),
             alignment: Alignment.center,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (bloqueado) ...[
-                  const Icon(Icons.lock, color: Colors.white54, size: 16),
-                  const SizedBox(width: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (bloqueado) ...[
+                    const Icon(Icons.lock, color: Colors.white54, size: 16),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                      texto,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          letterSpacing: 0.5
+                      )
+                  ),
                 ],
-                Text(
-                    texto,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: bloqueado ? Colors.white54 : Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
-                        letterSpacing: 0.5
-                    )
-                ),
-              ],
+              ),
             )
         )
     );
@@ -857,14 +863,17 @@ class _CategoriaPanelCard extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+                ),
               ),
             ),
           ),

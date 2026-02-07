@@ -1,8 +1,7 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
-// ✅ PANTALLA REPROGRAMAR (CON ALERTA VISUAL ROJA)
-// 🔥 FIX: Reemplazado SnackBar por alerta fija debajo del botón.
-// 🔥 UI: Diseño Premium intacto + Nube de error roja.
-// 🔥 LÓGICA: Bloqueo de botón si ya se reprogramó.
+// ✅ PANTALLA REPROGRAMAR BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables protegidos.
+// 🔥 UI: Bloques informativos (Yellow/Red) intactos para evitar que se encojan.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -24,7 +23,7 @@ class ReprogramarCitaScreen extends StatefulWidget {
 
 class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
   // ===========================================================================
-  // 🔴 ZONA DE CHINCHES MAESTROS 🔴
+  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   // ===========================================================================
   static const double kCardHeight = 180.0;
   static const double kCardBorderRadius = 25.0;
@@ -35,12 +34,13 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
 
   static const Color kGlassColor = Color(0x33FFFFFF);
   static const Color kAccentColor = Color(0xFFE0D4FF);
-  static const Color kPrimaryButtonColor = Color(0xFF6B4EE6); // Referencia base
-  static const double kTitleSize = 24.0;
+  static const Color kPrimaryButtonColor = Color(0xFF6B4EE6);
 
-  // 🔥 ESTILO PREMIUM BOTÓN
+  // Regla de Oro: Título de sección a 20pt
+  static const double kTitleSize = 20.0;
+
   static const List<Color> kBtnSendGradient = [Color(0xFF6B4EE6), Color(0xFF4527A0)];
-  static const List<Color> kBtnDisabledGradient = [Color(0xFF424242), Color(0xFF212121)]; // Gris deshabilitado
+  static const List<Color> kBtnDisabledGradient = [Color(0xFF424242), Color(0xFF212121)];
   static const double kButtonRadius = 18.0;
   static const List<BoxShadow> kButtonShadow = [
     BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))
@@ -111,7 +111,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     });
   }
 
-  // 🔥 HELPER 1: Formatea fecha DateTime a texto (Para selectores)
   String _formatDateWithDay(DateTime dt) {
     const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
     String diaSemana = dias[dt.weekday - 1];
@@ -120,24 +119,18 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     return "$diaSemana/$fechaNum - $hora".toUpperCase();
   }
 
-  // 🔥 HELPER 2: Formatea String "dd/mm/yyyy" a texto (Para la cápsula superior)
   String _formatStoredDate(String dateStr) {
     try {
-      // Asume formato "dd/MM/yyyy" o "d/M/yyyy"
       final parts = dateStr.trim().split('/');
       if (parts.length != 3) return dateStr;
-
       final int day = int.parse(parts[0]);
       final int month = int.parse(parts[1]);
       final int year = int.parse(parts[2]);
       final dt = DateTime(year, month, day);
-
       const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
       String diaSemana = dias[dt.weekday - 1];
-
       String d = day.toString().padLeft(2, '0');
       String m = month.toString().padLeft(2, '0');
-
       return "$diaSemana/$d/$m/$year";
     } catch (_) {
       return dateStr;
@@ -145,9 +138,8 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
   }
 
   Future<void> _enviarReprogramacion() async {
-    // Validación de conteo (Doble check por seguridad)
     final int currentCount = (_citaData?['repro_count'] ?? 0) as int;
-    if (currentCount >= 1) return; // Ya no mostramos SnackBar, el botón estará bloqueado
+    if (currentCount >= 1) return;
 
     if (_opciones.contains(null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -208,7 +200,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("SOLICITUD ENVIADA", style: TextStyle(color: kAccentColor, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
+          title: const FittedBox(fit: BoxFit.scaleDown, child: Text("SOLICITUD ENVIADA", style: TextStyle(color: kAccentColor, fontWeight: FontWeight.w900))),
           content: const Text("LE HEMOS ENVIADO TUS PROPUESTAS A TU MATCHY. TE AVISAREMOS CUANDO CONFIRME UNA.", style: TextStyle(color: Colors.white70), textAlign: TextAlign.center),
           actions: [
             Center(
@@ -235,21 +227,18 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     if (_loading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: kAccentColor)));
     if (_citaData == null) return const Scaffold(backgroundColor: Colors.black, body: Center(child: Text("ERROR CARGANDO CITA", style: TextStyle(color: Colors.white))));
 
-    // Datos generales
     final String lugarFoto = _citaData!['lugarFotoPortada'] ?? _citaData!['lugarFoto'] ?? '';
     final String lugarNombre = _citaData!['lugarNombre'] ?? 'LUGAR';
     final String matchyNombre = _citaData!['matchyNombre'] ?? _citaData!['candidatoNombre'] ?? 'MATCHY';
     final String fechaActual = _citaData!['fecha'] ?? '--/--';
     final String horaActual = _citaData!['hora'] ?? '--:--';
 
-    // Determinar UID
     final user = FirebaseAuth.instance.currentUser;
     final String myUid = user?.uid ?? '';
     final String ownerUid = (_citaData?['ownerUid'] ?? '').toString();
     final String candUid = (_citaData?['matchyUid'] ?? _citaData?['candidatoUid'] ?? '').toString();
     final String uidToShow = (myUid == ownerUid) ? candUid : ownerUid;
 
-    // 🔥 VERIFICACIÓN DE LÍMITE DE REPROGRAMACIÓN
     final int reproCount = (_citaData?['repro_count'] ?? 0) as int;
     final bool limitReached = reproCount >= 1;
 
@@ -266,7 +255,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 0),
               child: Column(
                 children: [
-                  // TARJETA DE CITA (IGUAL)
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     height: kCardHeight,
@@ -329,10 +317,18 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                     ),
                   ),
                   const SizedBox(height: 25),
-                  const Text("REPROGRAMAR CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))])),
+
+                  // BLINDAJE: Título estandarizado a 20pt
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: const Text("REPROGRAMAR CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))])),
+                    ),
+                  ),
                   const SizedBox(height: 15),
 
-                  // INFO CAPSULA
+                  // 🛡️ INFO CAPSULA BLINDADA
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     padding: const EdgeInsets.all(20),
@@ -349,7 +345,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                   ),
                   const SizedBox(height: 30),
 
-                  // BLOQUE RECOMENDACIÓN CHAT
+                  // BLOQUE RECOMENDACIÓN CHAT (INTACTO - SIN BLINDAJE PARA EVITAR ENCOGIMIENTO)
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     padding: const EdgeInsets.all(16),
@@ -392,7 +388,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                   ),
                   const SizedBox(height: 30),
 
-                  // 🔥 BOTÓN PREMIUM (Se deshabilita si limitReached)
+                  // 🛡️ BOTÓN PREMIUM BLINDADO
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     child: GestureDetector(
@@ -400,6 +396,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                       child: Container(
                         width: double.infinity,
                         height: 55,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                               begin: Alignment.topLeft,
@@ -413,22 +410,25 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         alignment: Alignment.center,
                         child: _sending
                             ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text(
-                            limitReached ? "OPCIÓN NO DISPONIBLE" : "ENVIAR REPROGRAMACIÓN",
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', letterSpacing: 0.5)
+                            : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                              limitReached ? "OPCIÓN NO DISPONIBLE" : "ENVIAR REPROGRAMACIÓN",
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', letterSpacing: 0.5)
+                          ),
                         ),
                       ),
                     ),
                   ),
 
-                  // 🔥 AQUÍ ESTÁ EL CAMBIO: ALERTA ROJA FIJA
+                  // ALERTA ROJA FIJA (INTACTA - SIN BLINDAJE PARA EVITAR ENCOGIMIENTO)
                   if (limitReached)
                     Padding(
                       padding: const EdgeInsets.only(top: 20, left: kCardMarginH, right: kCardMarginH),
                       child: Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFD32F2F).withOpacity(0.9), // Rojo intenso semitransparente
+                          color: const Color(0xFFD32F2F).withOpacity(0.9),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: const Color(0xFFFF5252), width: 1.5),
                           boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
@@ -436,7 +436,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         child: const Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Icon(Icons.no_accounts_rounded, color: Colors.white, size: 32), // Simbolo de bloqueo
+                            Icon(Icons.no_accounts_rounded, color: Colors.white, size: 32),
                             SizedBox(width: 15),
                             Expanded(
                               child: Text(
@@ -462,7 +462,6 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
             ),
           ),
 
-          // 2. FADE OUT
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -490,7 +489,11 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
         Icon(icon, color: isAccent ? kAccentColor : Colors.white70, size: 20),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(text, style: TextStyle(color: isAccent ? kAccentColor : Colors.white, fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Poppins', height: 1.1)),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(text, style: TextStyle(color: isAccent ? kAccentColor : Colors.white, fontSize: 15, fontWeight: FontWeight.w700, fontFamily: 'Poppins', height: 1.1)),
+          ),
         ),
       ],
     );
@@ -517,7 +520,13 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
               child: Center(child: Text("${index + 1}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
             ),
             const SizedBox(width: 15),
-            Expanded(child: Text(isSelected ? _formatDateWithDay(date) : "SELECCIONAR OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600, fontSize: 14, fontFamily: 'Poppins'))),
+            Expanded(
+                child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(isSelected ? _formatDateWithDay(date) : "SELECCIONAR OPCIÓN ${index + 1}", style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontWeight: FontWeight.w600, fontSize: 14, fontFamily: 'Poppins'))
+                )
+            ),
             Icon(Icons.calendar_today_rounded, color: isSelected ? kAccentColor : Colors.white24, size: 20),
           ],
         ),
