@@ -1,8 +1,7 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL (BUSCADOR MEJORADO + UI PULIDA)
-// 🔥 FIX: Navegación del buscador lleva a pantalla CON botón de agendar.
-// 🔥 UI: Fondo del buscador unificado con notificaciones.
-// 🔥 UI: Resultados de búsqueda más grandes y legibles.
+// ✅ PANEL CENTRAL (DISEÑO RADICAL - FOTO 3)
+// 🔥 FIX: Eliminada ubicación. Rachas y Editar Perfil ahora son barras gemelas apiladas.
+// 🔥 UI: Simetría perfecta en ancho, alto y sombras.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -28,7 +27,6 @@ import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
-// 🔥 CAMBIO IMPORTANTE: Usamos la pantalla CON BOTÓN para agendar
 import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 // =============================================================================
@@ -268,6 +266,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                       final userStatus = (data?['userStatus'] ?? 'active').toString();
                       final strikes = (data?['strikes'] as num?)?.toInt() ?? 0;
                       final bloqueadoHastaTimestamp = data?['bloqueadoHasta'] as Timestamp?;
+                      final racha = (data?['citas_consecutivas_exitosas'] as num?)?.toInt() ?? 0;
 
                       return _PanelContent(
                         textTheme: textTheme,
@@ -279,6 +278,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                         userStatus: userStatus,
                         strikes: strikes,
                         bloqueadoHasta: bloqueadoHastaTimestamp?.toDate(),
+                        racha: racha,
                       );
                     },
                   ),
@@ -298,7 +298,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   }
 }
 
-// ... _NotificacionesSheet ...
+// ... _NotificacionesSheet ... (IGUAL QUE ANTES)
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
@@ -333,6 +333,7 @@ class _PanelContent extends StatelessWidget {
   final String userStatus;
   final int strikes;
   final DateTime? bloqueadoHasta;
+  final int racha;
 
   const _PanelContent({
     required this.textTheme,
@@ -344,6 +345,7 @@ class _PanelContent extends StatelessWidget {
     required this.userStatus,
     required this.strikes,
     this.bloqueadoHasta,
+    this.racha = 0,
   });
 
   bool get _estaBloqueado {
@@ -399,15 +401,44 @@ class _PanelContent extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(color: _PanelScreenState.kCardBackground, borderRadius: BorderRadius.circular(30), boxShadow: _PanelScreenState.kCardShadow),
           child: Row(children: [
+            // FOTO IZQUIERDA
             ClipRRect(borderRadius: BorderRadius.circular(20), child: Container(width: 110, height: 110, color: Colors.black26, child: fotoWidget)),
             const SizedBox(width: 18),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Row(children: [Text(nombre, style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)), const SizedBox(width: 8), Text(edad, style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900))])),
-              const SizedBox(height: 6),
-              Row(children: [const Icon(Icons.location_on, color: Colors.white70, size: 16), const SizedBox(width: 4), Expanded(child: Text(ubicacion, overflow: TextOverflow.ellipsis, style: textTheme.bodyMedium?.copyWith(color: Colors.white70, fontSize: 14)))]),
-              const SizedBox(height: 12),
-              GestureDetector(onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DatosScreen())), child: Container(height: 36, width: 140, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kPremiumButtonGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius), border: Border.fromBorderSide(_PanelScreenState.kPremiumButtonBorder), boxShadow: _PanelScreenState.kPremiumButtonShadow), alignment: Alignment.center, child: const Text('EDITAR PERFIL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5))))
-            ]))
+
+            // COLUMNA DERECHA
+            Expanded(
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center, // Centrado vertical respecto a la foto
+                  crossAxisAlignment: CrossAxisAlignment.stretch, // 🔥 OCUPAR TODO EL ANCHO
+                  children: [
+                    // NOMBRE Y EDAD
+                    FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Row(children: [Text(nombre, style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)), const SizedBox(width: 8), Text(edad, style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900))])),
+
+                    const SizedBox(height: 12),
+
+                    // 🔥 BARRA RACHAS (ESTILO BOTÓN WIDE)
+                    _buildRachaWideBar(racha),
+
+                    const SizedBox(height: 8), // Pequeña separación entre barras
+
+                    // 🔥 BOTÓN EDITAR PERFIL (ESTILO WIDE)
+                    GestureDetector(
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DatosScreen())),
+                        child: Container(
+                            height: 35, // ALTURA IDÉNTICA
+                            decoration: BoxDecoration(
+                                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kPremiumButtonGradient),
+                                borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius),
+                                border: Border.fromBorderSide(_PanelScreenState.kPremiumButtonBorder),
+                                boxShadow: _PanelScreenState.kPremiumButtonShadow
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('EDITAR PERFIL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5))
+                        )
+                    ),
+                  ]
+              ),
+            )
           ]),
         ),
 
@@ -447,7 +478,6 @@ class _PanelContent extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // 🔥 BOTÓN CITAS PUBLICADAS (CYAN)
               _BotonPanelPremium(
                   texto: "CITAS PUBLICADAS",
                   bloqueado: false,
@@ -461,7 +491,6 @@ class _PanelContent extends StatelessWidget {
         Text("SITIOS RECOMENDADOS", style: textTheme.titleMedium?.copyWith(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
         const SizedBox(height: 16),
 
-        // SITIOS RECOMENDADOS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(children: [
@@ -480,6 +509,51 @@ class _PanelContent extends StatelessWidget {
         ),
         const SizedBox(height: 40),
       ],
+    );
+  }
+
+  // 🔥 HELPER: BARRA DE RACHAS WIDE (GEMELA DEL BOTÓN)
+  Widget _buildRachaWideBar(int count) {
+    return Container(
+      height: 35, // 🔥 MISMA ALTURA QUE BOTÓN
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4), // Fondo oscuro
+        borderRadius: BorderRadius.circular(_PanelScreenState.kPremiumButtonRadius),
+        border: Border.all(color: Colors.white10),
+        boxShadow: _PanelScreenState.kPremiumButtonShadow, // 🔥 MISMA SOMBRA
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Separar texto de fuegos
+        children: [
+          const Text("RACHAS", style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+
+          // 🔥 3 FUEGOS SIEMPRE VISIBLES
+          Row(
+            children: [
+              _buildSingleFire(count >= 1),
+              const SizedBox(width: 2),
+              _buildSingleFire(count >= 2),
+              const SizedBox(width: 2),
+              _buildSingleFire(count >= 3),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSingleFire(bool active) {
+    return ColorFiltered(
+      colorFilter: active
+          ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply) // Normal
+          : const ColorFilter.matrix(<double>[
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0.2126, 0.7152, 0.0722, 0, 0,
+        0,      0,      0,      1, 0,
+      ]), // Gris
+      child: const Text("🔥", style: TextStyle(fontSize: 16)),
     );
   }
 }
