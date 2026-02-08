@@ -1,10 +1,11 @@
 // 📂 lib/screens/home_shell.dart
-// ✅ Shell principal BLINDADO (RESTAURADO Y CORREGIDO)
-// 🔥 FIX: Títulos de navegación restaurados y visibles.
-// 🔥 BLINDAJE: MediaQuery lock para evitar deformación por fuentes del sistema.
+// ✅ Shell principal BLINDADO (CON PORTERO DE BLOQUEO PERMANENTE)
+// 🔥 LOGIC: Si detecta 'blocked_permanent' o Strikes >= 5, clausura la app.
+// 🔥 UI: MediaQuery lock para evitar deformación por fuentes del sistema.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // 🛡️ Añadido para vigilancia de estado
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -14,8 +15,9 @@ import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
+import 'package:proyectos_matchy/screens/bloqueo_screen.dart'; // 🛡️ Importación de la nueva pantalla
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   final int initialIndex;
 
   const HomeShell({
@@ -56,10 +58,10 @@ class HomeShell extends StatefulWidget {
   }
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
   late int _index;
   late final List<Widget> _screens;
 
@@ -113,7 +115,6 @@ class _HomeShellState extends State<HomeShell> {
         .snapshots()
         .listen((snap) {
       if (!mounted || _overlayActivo || snap.docs.isEmpty) return;
-
       final doc = snap.docs.first;
       final data = doc.data();
 
@@ -150,6 +151,32 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // 🛡️ PORTERO NUCLEAR: Escucha cambios en strikes o estatus permanente
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox();
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance.collection(kUsersCollection).doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() ?? {};
+          final userStatus = (data['userStatus'] ?? 'active').toString();
+          final strikes = (data['strikes'] as num?)?.toInt() ?? 0;
+
+          // 🛑 BLOQUEO INEVITABLE: Si tiene 5 strikes o estatus permanente
+          if (userStatus == 'blocked_permanent' || strikes >= 5) {
+            return const BloqueoScreen();
+          }
+        }
+
+        // Si no está bloqueado permanentemente, mostramos la app normal
+        return _buildNormalShell();
+      },
+    );
+  }
+
+  // Estructura original de la Shell envuelta en un método para limpieza
+  Widget _buildNormalShell() {
     return PopScope(
       canPop: _index == 2,
       onPopInvoked: (didPop) {
@@ -191,7 +218,6 @@ class _MatchyBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🛡️ BLINDAJE SUPREMO: MediaQuery.copyWith bloquea el escalado de texto del sistema
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
       child: BottomNavigationBar(
