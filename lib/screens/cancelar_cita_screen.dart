@@ -1,7 +1,7 @@
 // 📂 lib/screens/cancelar_cita_screen.dart
-// ✅ PANTALLA DE CANCELACIÓN BLINDADA (DISEÑO FINAL)
-// 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
-// 🔥 UI: Logo Matchy, Botón Rojo de Castigo y Mini-Termómetro en tiempo real.
+// ✅ PANTALLA DE CANCELACIÓN BLINDADA (LÓGICA DE BLOQUEO ACTIVA)
+// 🔥 LOGIC: -20 Puntos, Strike +1, Bloqueo (x5 días), Racha 0.
+// 🔥 UI: Diseño original preservado. Texto corregido a -20.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -35,7 +35,7 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
   static const double kIconoWarningSize     = 75.0;
   static const double kCirculoWarningSize   = 20.0;
 
-  static const double kTituloFontSize       = 36.0; // TAMAÑO ACTUAL RESPETADO
+  static const double kTituloFontSize       = 36.0;
   static const double kTituloTopGap         = 25.0;
   static const double kDescripcionFontSize  = 18.0;
   static const double kDescripcionTopGap    = 15.0;
@@ -70,18 +70,38 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final userSnapshot = await transaction.get(userRef);
-        int currentScore = (userSnapshot.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-        int newScore = (currentScore - 10).clamp(0, 100);
 
-        transaction.update(userRef, {'confiabilidad': newScore});
+        // 1. Datos Actuales
+        int currentScore = (userSnapshot.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+        int currentStrikes = (userSnapshot.data()?['strikes'] as num?)?.toInt() ?? 0;
+
+        // 2. Cálculo de Penalización (-20 Puntos)
+        int newScore = (currentScore - 20).clamp(0, 100);
+
+        // 3. Cálculo de Bloqueo (Strikes y Días)
+        int newStrikes = currentStrikes + 1;
+        int diasCastigo = newStrikes * 5;
+        DateTime fechaDesbloqueo = DateTime.now().add(Duration(days: diasCastigo));
+
+        // 4. Actualización Atómica
+        transaction.update(userRef, {
+          'confiabilidad': newScore,
+          'strikes': newStrikes,
+          'citas_consecutivas_exitosas': 0, // 🔥 RESET DE RACHA
+          'userStatus': newStrikes >= 5 ? 'blocked_permanent' : 'blocked',
+          'bloqueadoHasta': Timestamp.fromDate(fechaDesbloqueo),
+        });
+
         transaction.update(citaRef, {
           'status': 'cancelled',
           'canceladoPor': user.uid,
           'canceladoAt': FieldValue.serverTimestamp(),
+          'resultado': 'cancelled_penalty',
         });
       });
 
       if (mounted) {
+        // Redirigir al HomeShell (que detectará el bloqueo y mostrará el candado o la pantalla de bloqueo)
         Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 0)),
@@ -89,7 +109,7 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text("Cita cancelada. Tu confiabilidad ha disminuido."),
+              content: Text("Cita cancelada. Se han aplicado las penalizaciones."),
               backgroundColor: Color(0xFFD50000),
             )
         );
@@ -237,10 +257,11 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                                                 ),
                                               ),
                                               SizedBox(height: 2),
+                                              // 🔥 TEXTO CORREGIDO: -20 PUNTOS
                                               FittedBox(
                                                 fit: BoxFit.scaleDown,
                                                 child: Text(
-                                                  "-10% de Confiabilidad",
+                                                  "-20 Puntos de Confiabilidad",
                                                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
                                                 ),
                                               ),
