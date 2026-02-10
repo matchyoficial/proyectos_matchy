@@ -2,6 +2,7 @@
 // ✅ PANTALLA CITAS BLINDADA (ESTRATEGIA ADAPTATIVA)
 // 🔥 BLINDAJE: Títulos de sección a 20pt. Nombres de lugares elásticos.
 // 🔥 UI: Foto usuario CUADRADA (125x125) y lugar Panorámica.
+// 🔥 FIX: Filtro visual 'yoFinalice' para ocultar citas pagadas sin romper lógica global.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -64,7 +65,7 @@ class CitaItem {
   });
 }
 
-// 🔵 SECCIÓN 2: PROVIDER (LÓGICA INTACTA)
+// 🔵 SECCIÓN 2: PROVIDER (LÓGICA CON FILTRO APLICADO)
 final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -106,6 +107,16 @@ final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
     for (final doc in snap.docs) {
       try {
         final data = doc.data() as Map<String, dynamic>;
+
+        // 🔥 FILTRO VISUAL "yoFinalice"
+        // Si en la BD dice que yo ya pagué (Finalized == true),
+        // simplemente IGNORO esta cita y no la agrego a la lista.
+        // La cita sigue existiendo, pero yo ya no la veo.
+        bool yoFinalice = soyOwner
+            ? (data['ownerFinalized'] == true)
+            : (data['matchyFinalized'] == true);
+
+        if (yoFinalice) continue; // ⛔ SALTAR ESTA CITA
 
         final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
         final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
