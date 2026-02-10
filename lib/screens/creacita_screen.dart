@@ -1,6 +1,6 @@
 // 📂 lib/screens/creacita_screen.dart
 // ✅ CREAR CITA BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 BLINDAJE: Títulos estandarizados (30/18), Radio Buttons forzados a 1 línea.
+// 🔥 PASO 2: Captura de coordenadas GPS (latitude/longitude) integrada en el documento de la cita.
 // 🔥 UI: Diseño Premium intacto y código completo.
 
 import 'package:flutter/material.dart';
@@ -24,12 +24,12 @@ class CreaCitaScreen extends StatefulWidget {
 class _CreaCitaScreenState extends State<CreaCitaScreen> {
   // 🛡️ ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN BLINDADA)
   static const double kSizeTituloPantalla = 20.0;
-  static const double kSizeNombreLugar = 30.0; // Estandarizado a 30
-  static const double kSizeDireccion = 18.0;    // Estandarizado a 18
+  static const double kSizeNombreLugar = 30.0;
+  static const double kSizeDireccion = 18.0;
   static const double kSizeSubtitulos = 18.0;
   static const double kSizeTextoBoton = 18.0;
   static const double kSizeRadioOpcion = 13.0;
-  static const double kSizeNotaPie = 14.0; // Ajustado ligeramente para aire
+  static const double kSizeNotaPie = 14.0;
   static const double kAlturaFoto = 210.0;
   static const double kMargenFotoHorizontal = 23.0;
   static const double kRadioFoto = 24.0;
@@ -122,6 +122,10 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     final lugar = widget.lugar;
     final sedeFinal = (_sedeSeleccionada != null) ? _sedeSeleccionada! : SedeData(id: '', nombre: '', direccion: lugar.direccion);
 
+    // 🔥 LOGIC: Determinar coordenadas finales (Sede o Lugar principal)
+    final double finalLat = (_sedeSeleccionada != null) ? (_sedeSeleccionada!.latitude ?? 0.0) : (lugar.latitude ?? 0.0);
+    final double finalLng = (_sedeSeleccionada != null) ? (_sedeSeleccionada!.longitude ?? 0.0) : (lugar.longitude ?? 0.0);
+
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
 
     await docRef.set({
@@ -146,6 +150,9 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       'sedeId': sedeFinal.id,
       'sedeNombre': sedeFinal.nombre,
       'sedeDireccion': sedeFinal.direccion,
+      // 🔥 NUEVOS CAMPOS PARA EL GPS DE DISPUTA
+      'latitude': finalLat,
+      'longitude': finalLng,
     });
     return docRef.id;
   }
@@ -221,13 +228,11 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
                           children: [
-                            // BLINDAJE: Nombre adaptativo a 30pt
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(lugar.nombre.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: kSizeNombreLugar, fontWeight: FontWeight.w900, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 5, offset: Offset(0, 2))])),
                             ),
                             const SizedBox(height: 6),
-                            // BLINDAJE: Dirección adaptativa a 18pt
                             FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(_sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: kSizeDireccion, fontWeight: FontWeight.w500, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),

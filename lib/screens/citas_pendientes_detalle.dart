@@ -1,7 +1,7 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
 // ✅ DETALLE CITA PENDIENTE BLINDADA (ESTRATEGIA ADAPTATIVA)
 // 🔥 BLINDAJE: Nombre 30pt, Dirección 18pt, Títulos 20pt.
-// 🔥 FIX: Al hacer Matchy manual, pasamos 'soyElOwner: true' a MatchScreen.
+// 🔥 FIX: Priorizamos la visualización de 'sedeNombre' y 'sedeDireccion' para evitar confusiones.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -156,17 +156,24 @@ class _CitasPendientesDetalleScreenState
       if (!doc.exists) { setState(() => _cita = null); return; }
       final data = doc.data() ?? {};
 
+      // 1. Priorizar datos de la SEDE elegida en CreaCitaScreen
+      final sedeNombre = _s(data['sedeNombre']).trim();
+      final sedeDireccion = _s(data['sedeDireccion']).trim();
+
+      // 2. Datos del Lugar Root
       final nombreRoot = _s(data['lugarNombre']).trim();
       final dirRoot = _s(data['lugarDireccion']).trim();
       final fotoRoot = _s(data['lugarFotoPortada']).trim();
 
+      // 3. Fallback Legacy
       final lugarMap = (data[kLugarField] is Map) ? Map<String, dynamic>.from(data[kLugarField] as Map) : <String, dynamic>{};
       final nombreViejo = _s(lugarMap[kLugarNombreField]).trim();
       final dirViejo = _s(lugarMap[kLugarDireccionField]).trim();
       final fotoVieja = _s(lugarMap[kLugarFotoPortadaField]).trim();
 
-      final nombreFinal = nombreRoot.isNotEmpty ? nombreRoot : nombreViejo;
-      final dirFinal = dirRoot.isNotEmpty ? dirRoot : dirViejo;
+      // 4. Lógica de selección final (Sede > Root > Legacy)
+      final nombreFinal = sedeNombre.isNotEmpty ? sedeNombre : (nombreRoot.isNotEmpty ? nombreRoot : nombreViejo);
+      final dirFinal = sedeDireccion.isNotEmpty ? sedeDireccion : (dirRoot.isNotEmpty ? dirRoot : dirViejo);
       final fotoFinal = fotoRoot.isNotEmpty ? fotoRoot : fotoVieja.isNotEmpty ? fotoVieja : 'assets/images/perfil1.jpg';
 
       setState(() {
@@ -336,14 +343,14 @@ class _CitasPendientesDetalleScreenState
           Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(22), boxShadow: kCardShadow), child: _fotoLugar(cita.fotoLugar)),
           const SizedBox(height: 20),
 
-          // BLINDAJE: Nombre del lugar a 30pt
+          // BLINDAJE: Nombre del lugar a 30pt (Prioriza Sede)
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(cita.nombreLugar.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: kTextShadow, letterSpacing: 0.5)),
           ),
           const SizedBox(height: 6),
 
-          // BLINDAJE: Dirección a 18pt
+          // BLINDAJE: Dirección a 18pt (Prioriza Sede)
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(cita.direccionLugar, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w500, fontFamily: 'Poppins', shadows: kTextShadow)),

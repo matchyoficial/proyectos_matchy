@@ -1,7 +1,7 @@
 // 📂 lib/screens/match_screen.dart
 // ✅ MATCH SCREEN BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 FIX: Títulos, nombres y lugares adaptativos para evitar desbordamientos.
-// 🔥 LOGIC: Manteniendo lógica de Owner/Matchy y animaciones intactas.
+// 🔥 FIX: Botón 'HABLAR CON MI MATCHY' clonado del Owner (Usa pushReplacement para evitar bucles).
+// 🔥 UI: Diseño, animaciones y lógica intactos.
 
 import 'dart:async';
 import 'dart:io';
@@ -195,6 +195,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) {} finally { _creatingEvent = false; }
   }
 
+  // 🔹 ACCIONES DEL OWNER (Directo a Detalle de Chat - PushReplacement)
   Future<void> _startChatOwner() async {
     if (_navigating) return;
     setState(() => _navigating = true);
@@ -204,7 +205,9 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
       final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
       final tId = await ChatActions.upsertThread(peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: '');
+
       if (!mounted) return;
+      // 🔥 PUSH REPLACEMENT: Destruye el MatchScreen y abre el Chat. Cero bucles.
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
     } catch (_) { if(mounted) setState(() => _navigating = false); }
   }
@@ -219,16 +222,22 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     finally { if (mounted) HomeShell.go(context, index: 1); }
   }
 
+  // 🔹 ACCIONES DEL MATCHY (AHORA CLONADA DEL OWNER)
   Future<void> _startChatMatchy() async {
     if (_navigating) return;
     setState(() => _navigating = true);
     try {
       await HomeShell.consumeEvent();
+
       final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
       final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
+
       final tId = await ChatActions.upsertThread(peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: '');
+
       if (!mounted) return;
+      // 🔥 PUSH REPLACEMENT: Misma lógica del Owner. Va directo al chat y destruye el MatchScreen.
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
+
     } catch (_) { if(mounted) setState(() => _navigating = false); }
   }
 

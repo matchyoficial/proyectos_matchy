@@ -1,5 +1,6 @@
 // 📂 lib/screens/cita_detalle_screen.dart
 // ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
+// 🔥 FIX: Priorizamos 'sedeNombre' y 'sedeDireccion' del documento para mostrar la sede real.
 // 🔥 BLINDAJE REAL: Textos informativos con tamaño fijo (16pt/19pt) y salto de línea.
 // 🔥 UI: Nombres variables protegidos contra desbordamiento lateral.
 
@@ -87,9 +88,18 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   bool _navegandoExito = false;
   StreamSubscription<DocumentSnapshot>? _citaSubscription;
 
+  // 🛡️ Variables locales para reflejar la SEDE seleccionada
+  String _displayNombre = "";
+  String _displayDireccion = "";
+
   @override
   void initState() {
     super.initState();
+
+    // Inicializamos con los datos del widget
+    _displayNombre = widget.lugarNombre;
+    _displayDireccion = widget.lugarDireccion;
+
     _citaSubscription = FirebaseFirestore.instance
         .collection('citas')
         .doc(widget.citaId)
@@ -97,6 +107,18 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         .listen((snapshot) async {
       if (snapshot.exists) {
         final data = snapshot.data() as Map<String, dynamic>;
+
+        // 📍 BLINDAJE: Cargar datos específicos de la sede si existen en el documento
+        final sNom = (data['sedeNombre'] ?? '').toString().trim();
+        final sDir = (data['sedeDireccion'] ?? '').toString().trim();
+
+        if (mounted && (sNom.isNotEmpty || sDir.isNotEmpty)) {
+          setState(() {
+            if (sNom.isNotEmpty) _displayNombre = sNom;
+            if (sDir.isNotEmpty) _displayDireccion = sDir;
+          });
+        }
+
         if (data['status'] == 'finished' && !_navegandoExito && mounted) {
           final resultados = await _distribuirPuntosDeRedencion();
           if (mounted) {
@@ -351,14 +373,15 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                     children: [
                       _buildPanelStyleCard(
                         onTap: () {
-                          final lugarTemp = LugarData(id: widget.citaId, nombre: widget.lugarNombre, direccion: widget.lugarDireccion, fotoPortada: widget.lugarFotoPortada, fotos: [widget.lugarFotoPortada], bio: '', sitioWeb: '', sedes: [], orden: 0);
+                          // 📍 Pasamos los datos reflejados de la sede a la plantilla
+                          final lugarTemp = LugarData(id: widget.citaId, nombre: _displayNombre, direccion: _displayDireccion, fotoPortada: widget.lugarFotoPortada, fotos: [widget.lugarFotoPortada], bio: '', sitioWeb: '', sedes: [], orden: 0);
                           Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugarTemp)));
                         },
                         image: widget.lugarFotoPortada.isNotEmpty
                             ? Image.network(widget.lugarFotoPortada, fit: BoxFit.cover, alignment: Alignment.topCenter)
                             : Container(color: Colors.white10),
-                        title: widget.lugarNombre,
-                        subtitle: widget.lugarDireccion,
+                        title: _displayNombre,
+                        subtitle: _displayDireccion,
                       ),
                       const SizedBox(height: 20),
                       _buildPanelStyleCard(
