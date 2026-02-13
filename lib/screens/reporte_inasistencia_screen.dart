@@ -1,5 +1,5 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
-// ✅ REPORTE DE INASISTENCIA (TEXTOS DE CONSECUENCIAS ACTUALIZADOS)
+// ✅ REPORTE DE INASISTENCIA (FIX: PREMIO DE RACHA EN BOTÓN VERDE)
 // 🔥 CONFIGURACIÓN: Busca los comentarios con el emoji "🔥" para cambiar Tiempo y GPS.
 
 import 'dart:async';
@@ -128,7 +128,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     );
   }
 
-  // 🔹 1. BOTÓN VERDE (GPS - EL ESCUDO INFALIBLE)
+  // 🔹 1. BOTÓN VERDE (GPS - EL ESCUDO INFALIBLE + PREMIO DE RACHA)
   Future<void> _verificarUbicacionYReclamar() async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -165,20 +165,27 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       }
 
       if (gpsAprobado) {
-        // 🔥 REGISTRAMOS EL ESCUDO SAFE EN FIREBASE
+        // 🔥 TRANSACCIÓN DE SEGURIDAD Y PREMIO
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
+          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid); // Referencia al usuario
+
           final doc = await tx.get(citaRef);
           if (!doc.exists) return;
           final cData = doc.data()!;
           bool isOwner = cData['ownerUid'] == user.uid;
 
-          // Marca SAFE_GPS = TRUE. Esto es lo que revisa el Timer para no matarte.
+          // 1. Marca SAFE_GPS = TRUE en la Cita
           if (isOwner) {
             tx.update(citaRef, {'ownerSafeGPS': true, 'status': 'dispute'});
           } else {
             tx.update(citaRef, {'matchySafeGPS': true, 'status': 'dispute'});
           }
+
+          // 2. 🔥 PREMIO: Aumentar racha del usuario (+1 punto de racha exitosa)
+          tx.update(userRef, {
+            'citas_consecutivas_exitosas': FieldValue.increment(1),
+          });
         });
 
         if (mounted) {
@@ -303,7 +310,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         }
       });
       if (mounted) {
-        // 🔥 TEXTO FINAL DETALLADO CON BORRADO DE RACHA
         _mostrarDialogoMatchy(
           titulo: "REPORTE DE SANCIÓN",
           mensaje: "Has admitido tu inasistencia. Se han aplicado las siguientes sanciones:\n\n"
@@ -411,7 +417,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                   Container(height: 90, width: double.infinity, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2)), child: FittedBox(fit: BoxFit.scaleDown, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(_tiempoRestante, style: const TextStyle(color: Color(0xFFFF5252), fontSize: 50, fontFamily: 'monospace', fontWeight: FontWeight.w900, letterSpacing: 2.0))))),
 
                   const SizedBox(height: 25),
-                  // 🔥 GUÍA DE CONSECUENCIAS (TEXTOS EXACTOS ORDENADOS)
+                  // GUÍA DE CONSECUENCIAS
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -421,13 +427,10 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                       children: const [
                         Text("GUÍA DE CONSECUENCIAS", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
                         SizedBox(height: 12),
-                        // VERDE
                         _GuiaItem(icon: Icons.location_pin, color: Color(0xFF00E676), text: "ESTOY AQUÍ: Validación por GPS. Protege tus puntos al 100%, asegura tu racha y evita sanciones."),
                         SizedBox(height: 10),
-                        // AZUL
                         _GuiaItem(icon: Icons.handshake_rounded, color: Color(0xFF64B5F6), text: "ACUERDO MUTUO: Requiere que AMBOS acepten (-10 Pts). ⚠️ Si solo uno (o ninguno) confirma, se aplicará: Bloqueo Temporal, -20 Pts y Borrado de Racha."),
                         SizedBox(height: 10),
-                        // ROJO
                         _GuiaItem(icon: Icons.cancel, color: Color(0xFFFF5252), text: "ASUMO MI FALTA: Cancelación unilateral. -20 Pts + Strike + Borrado de Racha. (Genera BLOQUEO TEMPORAL)."),
                       ],
                     ),
