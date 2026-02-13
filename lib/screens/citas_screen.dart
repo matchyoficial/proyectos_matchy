@@ -1,7 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (TIEMPO REAL + RELOJ AUTOMÁTICO)
-// 🔥 FIX: Agregado "Marcapasos" que actualiza estados cada 30s sin tocar la BD.
-// 🔥 Mantiene arquitectura Split & Merge para cero parpadeo.
+// ✅ PANTALLA CITAS BLINDADA (JERARQUÍA VISUAL CORREGIDA: AZUL > ROJO)
+// 🔥 FIX: Si hay propuesta de acuerdo, la tarjeta es AZUL aunque la hora haya pasado.
+// 🔥 Mantiene: Arquitectura Split & Merge + Reloj Automático.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -73,7 +73,7 @@ final relojProvider = StreamProvider.autoDispose<int>((ref) {
   return Stream.periodic(const Duration(seconds: 30), (i) => i);
 });
 
-// 🛠️ HELPER: PARSEO Y CONVERSIÓN (Ahora recibe 'ahora' para sincronizar)
+// 🛠️ HELPER: PARSEO Y CONVERSIÓN
 CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   try {
     final data = doc.data() as Map<String, dynamic>;
@@ -112,13 +112,14 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       }
     } catch (_) {}
 
-    // 🔥 CÁLCULO DE URGENCIA CON LA HORA ACTUAL EXACTA
+    // CÁLCULO DE URGENCIA
     final diferencia = ahora.difference(fechaReal);
     bool urgente = false;
     if (data['status'] == 'matched') {
       if (diferencia.inMinutes > 0) urgente = true;
     }
 
+    // DETECCIÓN DE PACTO
     bool yoPropuse = soyOwner
         ? (data['ownerPropusoAcuerdo'] == true)
         : (data['matchyPropusoAcuerdo'] == true);
@@ -157,7 +158,6 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
 
 // 🔵 SECCIÓN 2: PROVIDERS
 
-// Provider base: Solo trae los documentos crudos (Raw Data)
 final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -180,13 +180,12 @@ final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>
       .map((s) => s.docs);
 });
 
-// 🚀 MEZCLADOR INTELIGENTE (Escucha Datos + Reloj)
+// 🚀 MEZCLADOR INTELIGENTE
 final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>>>((ref) {
-  // 1. Escuchamos los datos de Firebase
   final ownerRaw = ref.watch(citasRawOwnerProvider);
   final matchyRaw = ref.watch(citasRawMatchyProvider);
 
-  // 2. 🔥 ESCUCHAMOS EL RELOJ (Esto fuerza el re-cálculo cada 30s)
+  // ESCUCHAMOS EL RELOJ
   ref.watch(relojProvider);
   final ahoraMismo = DateTime.now();
 
@@ -197,7 +196,6 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
 
   List<CitaItem> listaFinal = [];
 
-  // Convertimos usando la hora actual para calcular urgencia
   for (var doc in docsOwner) {
     final item = _convertirDoc(doc, true, ahoraMismo);
     if (item != null) listaFinal.add(item);
@@ -387,33 +385,41 @@ class _CitaCard extends StatelessWidget {
     Color colorBoton = Colors.white;
     bool mostrarOverlay = false;
 
+    // DETECCIÓN DE ACUERDO
     bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
     const double cardHeight = 125.0;
 
+    // Colores base (Normal)
     Color bgColor = const Color(0xFF1A1A1A);
     Color borderColor = Colors.transparent;
     ColorFilter? imgFilter;
 
-    if (item.esUrgente) {
-      bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
-      borderColor = const Color(0xFFFF5252);
-      imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
-    } else if (esAcuerdo) {
+    // 🔥 JERARQUÍA INVERTIDA: PRIMERO VALIDAMOS EL ACUERDO (AZUL)
+    if (esAcuerdo) {
+      // 🔵 MODO AZUL (PRIORIDAD ALTA)
       bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
       borderColor = const Color(0xFF448AFF);
       imgFilter = ColorFilter.mode(const Color(0xFF448AFF).withOpacity(0.5), BlendMode.srcATop);
+    } else if (item.esUrgente) {
+      // 🔴 MODO ROJO (Solo si no hay acuerdo)
+      bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
+      borderColor = const Color(0xFFFF5252);
+      imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
     }
 
     if (esPendiente) {
-      if (item.esUrgente) {
-      } else if (esAcuerdo) {
+      if (esAcuerdo) {
+        // PRIORIDAD 1: Mostrar etiqueta de Acuerdo
         mostrarOverlay = true;
         if (item.tengoPropuestaAcuerdo) {
           textoBoton = "ESPERANDO ACUERDO"; colorBoton = Colors.white;
         } else {
           textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
         }
+      } else if (item.esUrgente) {
+        // PRIORIDAD 2: Urgente (No lleva pulsing text porque tiene la etiqueta roja fija)
       } else {
+        // PRIORIDAD 3: Reprogramación Normal
         mostrarOverlay = true;
         if (item.status == 'pending_approval') {
           if (item.isOwner) {
@@ -508,7 +514,37 @@ class _CitaCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (item.esUrgente)
+
+                  // 🔥 LOGICA DE ETIQUETAS: AZUL MATA ROJO
+
+                  // ETIQUETA AZUL (ACUERDO)
+                  if (esAcuerdo)
+                    Container(
+                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
+                      child: Center(
+                        child: Transform.rotate(
+                          angle: -0.2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.white, width: 2),
+                                borderRadius: BorderRadius.circular(8),
+                                color: const Color(0xFF1565C0).withOpacity(0.9)
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  // ETIQUETA ROJA (SIN CONFIRMAR) - Solo si NO es acuerdo
+                  else if (item.esUrgente)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
                       child: Center(
@@ -533,32 +569,9 @@ class _CitaCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  if (esAcuerdo && !item.esUrgente)
-                    Container(
-                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
-                      child: Center(
-                        child: Transform.rotate(
-                          angle: -0.2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                                border: Border.all(color: Colors.white, width: 2),
-                                borderRadius: BorderRadius.circular(8),
-                                color: const Color(0xFF1565C0).withOpacity(0.9)
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA",
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (mostrarOverlay && !item.esUrgente) Container(
+
+                  // OVERLAY CON TEXTO PULSANTE (Solo si no es urgente "puro")
+                  if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(
                     decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
                     child: Center(
                         child: _PulsingText(text: textoBoton, color: colorBoton)
