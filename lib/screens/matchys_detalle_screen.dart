@@ -1,7 +1,7 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY BLINDADO (CONTROL DE HISTORIAL)
-// 🔥 FIX: Nuevo Chinche para ajustar altura de cápsula y mostrar 4 sitios.
-// 🔥 UI: Blindaje adaptativo en títulos y botones.
+// ✅ DETALLE DE MATCHY BLINDADO (CONTROL DE HISTORIAL + POP DETALLE)
+// 🔥 FIX: Implementado click en fotos del historial para mostrar detalle en pop-up.
+// 🔥 UI: Carta de detalle con diseño premium y blindaje adaptativo.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -66,9 +66,77 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
+  // 🔹 NUEVA FUNCIÓN: Muestra la carta pop del historial
+  void _mostrarDetalleCitaHistorica(String foto, String lugar, String fecha) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Foto del lugar con bordes redondeados arriba
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                child: Image.network(
+                  foto,
+                  fit: BoxFit.cover,
+                  height: 250,
+                  width: double.infinity,
+                  errorBuilder: (_, __, ___) => Container(height: 250, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24)),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        lugar.toUpperCase(),
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
+                      child: Text(
+                        "CITA REALIZADA EL: $fecha",
+                        style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFF6B4EE6), Color(0xFF4527A0)]),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: const Text("CERRAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _manejarClickNuevaCita() {
     if (_isUserBlocked) {
-      final dias = _userStrikes * 5;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -106,22 +174,14 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
   // ===========================================================================
   // 🛡️ ZONA DE CHINCHES MAESTROS (CONTROL DE UI)
   // ===========================================================================
-
-  // 1. CAPSULA DE HISTORIAL
-  // 👉 Sube o baja este valor para que quepan 4 fotos perfectamente.
   static const double kHistorialHeight = 280.0;
-  static const double kFotoRatio = 1.4; // Qué tan rectangular es la foto (1.0 es cuadrada)
-
-  // 2. DIMENSIONES CABECERA
+  static const double kFotoRatio = 1.4;
   static const double kFotoSize = 110.0;
   static const double kCardBorderRadius = 25.0;
   static const Color kCapsulaColor = Color(0x33FFFFFF);
-
-  // 3. BOTONES
   static const List<Color> kBtnNuevaCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
   static const List<Color> kBtnBlockedGradient = [Color(0xFF424242), Color(0xFF212121)];
   static const double kButtonRadius = 20.0;
-
   // ===========================================================================
 
   @override
@@ -199,7 +259,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
                   const SizedBox(height: 25),
 
-                  // TÍTULO ESTANDARIZADO 20pt
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: const Text(
@@ -210,7 +269,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 12),
 
-                  // 2. HISTORIAL (CONTROLADO POR CHINCHE)
+                  // 2. HISTORIAL (CON CLICK HABILITADO)
                   Container(
                     height: kHistorialHeight,
                     padding: const EdgeInsets.all(12),
@@ -248,16 +307,20 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                             final fotoLugar = (d['lugarFotoPortada'] ?? '').toString();
                             String fechaMostrable = d['fecha']?.toString() ?? d['fechaHora']?.toString().split(' ').first ?? "Fecha";
 
-                            return ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Stack(fit: StackFit.expand, children: [
-                                Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___)=>Container(color: Colors.grey[800])),
-                                Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.5, 1.0]))),
-                                Positioned(bottom: 8, left: 8, right: 8, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                                  FittedBox(fit: BoxFit.scaleDown, child: Text(nombreLugar.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, fontFamily: 'Poppins'))),
-                                  Text(fechaMostrable, style: const TextStyle(color: Colors.white70, fontSize: 8, fontWeight: FontWeight.bold)),
-                                ]))
-                              ]),
+                            // 🔥 AHORA LOS ELEMENTOS SON CLICKEABLES
+                            return GestureDetector(
+                              onTap: () => _mostrarDetalleCitaHistorica(fotoLugar, nombreLugar, fechaMostrable),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Stack(fit: StackFit.expand, children: [
+                                  Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___)=>Container(color: Colors.grey[800])),
+                                  Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.5, 1.0]))),
+                                  Positioned(bottom: 8, left: 8, right: 8, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                                    FittedBox(fit: BoxFit.scaleDown, child: Text(nombreLugar.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, fontFamily: 'Poppins'))),
+                                    Text(fechaMostrable, style: const TextStyle(color: Colors.white70, fontSize: 8, fontWeight: FontWeight.bold)),
+                                  ]))
+                                ]),
+                              ),
                             );
                           },
                         );
