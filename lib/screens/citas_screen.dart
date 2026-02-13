@@ -1,8 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 BLINDAJE: Títulos de sección a 20pt. Nombres de lugares elásticos.
-// 🔥 UI: Foto usuario CUADRADA (125x125) y lugar Panorámica.
-// 🔥 FIX: Filtro visual 'yoFinalice' para ocultar citas pagadas sin romper lógica global.
+// ✅ PANTALLA CITAS BLINDADA (TIEMPO REAL + RELOJ AUTOMÁTICO)
+// 🔥 FIX: Agregado "Marcapasos" que actualiza estados cada 30s sin tocar la BD.
+// 🔥 Mantiene arquitectura Split & Merge para cero parpadeo.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -41,6 +40,8 @@ class CitaItem {
   final String status;
   final String reproByUid;
   final bool esUrgente;
+  final bool tengoPropuestaAcuerdo;
+  final bool tengoSolicitudAcuerdo;
 
   const CitaItem({
     required this.id,
@@ -62,152 +63,158 @@ class CitaItem {
     required this.status,
     required this.reproByUid,
     required this.esUrgente,
+    required this.tengoPropuestaAcuerdo,
+    required this.tengoSolicitudAcuerdo,
   });
 }
 
-// 🔵 SECCIÓN 2: PROVIDER (LÓGICA CON FILTRO APLICADO)
-final misCitasStreamProvider = StreamProvider<List<CitaItem>>((ref) {
+// ⏱️ RELOJ "MARCAPASOS": Emite una señal cada 30 segundos
+final relojProvider = StreamProvider.autoDispose<int>((ref) {
+  return Stream.periodic(const Duration(seconds: 30), (i) => i);
+});
+
+// 🛠️ HELPER: PARSEO Y CONVERSIÓN (Ahora recibe 'ahora' para sincronizar)
+CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
+  try {
+    final data = doc.data() as Map<String, dynamic>;
+
+    bool yoFinalice = soyOwner
+        ? (data['ownerFinalized'] == true)
+        : (data['matchyFinalized'] == true);
+    if (yoFinalice) return null;
+
+    final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
+    final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
+    final uidUI = soyOwner ? (data['matchyUid'] ?? '') : (data['ownerUid'] ?? '');
+    final edadRaw = soyOwner ? (data['matchyEdad']) : (data['ownerEdad']);
+    final int edadUI = (edadRaw is int) ? edadRaw : int.tryParse(edadRaw.toString()) ?? 0;
+
+    final lNombre = data['LugarNombre'] ?? data['lugarNombre'] ?? 'Lugar';
+    final lDir = data['LugarDireccion'] ?? data['lugarDireccion'] ?? '';
+    final lFoto = data['LugarFotoPortada'] ?? data['lugarFotoPortada'] ?? '';
+
+    final String fTexto = (data['fecha'] ?? '').toString();
+    final String hTexto = (data['hora'] ?? '').toString();
+
+    DateTime fechaReal = DateTime(2099, 1, 1);
+    try {
+      final parts = fTexto.trim().split(RegExp(r'[/ -]'));
+      if (parts.length >= 3) {
+        int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+        String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
+        bool esPM = rawHora.contains("PM");
+        String soloNumeros = rawHora.replaceAll(RegExp(r'[^0-9:]'), '');
+        final timeParts = soloNumeros.split(':');
+        int hora = int.parse(timeParts[0]), min = int.parse(timeParts[1]);
+        if (esPM && hora != 12) hora += 12;
+        if (!esPM && hora == 12) hora = 0;
+        fechaReal = DateTime(y, m, d, hora, min);
+      }
+    } catch (_) {}
+
+    // 🔥 CÁLCULO DE URGENCIA CON LA HORA ACTUAL EXACTA
+    final diferencia = ahora.difference(fechaReal);
+    bool urgente = false;
+    if (data['status'] == 'matched') {
+      if (diferencia.inMinutes > 0) urgente = true;
+    }
+
+    bool yoPropuse = soyOwner
+        ? (data['ownerPropusoAcuerdo'] == true)
+        : (data['matchyPropusoAcuerdo'] == true);
+
+    bool elOtroPropuso = soyOwner
+        ? (data['matchyPropusoAcuerdo'] == true)
+        : (data['ownerPropusoAcuerdo'] == true);
+
+    return CitaItem(
+      id: doc.id,
+      nombreMostrar: nombreUI.toString(),
+      fotoMostrar: fotoUI.toString(),
+      matchyUid: uidUI.toString(),
+      matchyEdad: edadUI,
+      lugarNombre: lNombre.toString(),
+      lugarDireccion: lDir.toString(),
+      fotoLugar: lFoto.toString(),
+      fechaSort: fechaReal,
+      fechaTextoOriginal: fTexto,
+      horaTexto: hTexto,
+      intencion: (data['intencion'] ?? 'Conocernos').toString(),
+      preferencia: (data['preferencia'] ?? 'Ambos').toString(),
+      codigoOwner: (data['codigoOwner'] ?? '---').toString(),
+      codigoMatchy: (data['codigoMatchy'] ?? '---').toString(),
+      isOwner: soyOwner,
+      status: (data['status'] ?? 'matched').toString(),
+      reproByUid: (data['repro_by_uid'] ?? '').toString(),
+      esUrgente: urgente,
+      tengoPropuestaAcuerdo: yoPropuse,
+      tengoSolicitudAcuerdo: elOtroPropuso,
+    );
+  } catch (e) {
+    return null;
+  }
+}
+
+// 🔵 SECCIÓN 2: PROVIDERS
+
+// Provider base: Solo trae los documentos crudos (Raw Data)
+final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
-
-  final controller = StreamController<List<CitaItem>>();
-  List<CitaItem> listaOwner = [];
-  List<CitaItem> listaMatchy = [];
-
-  DateTime parsearManual(String fStr, String hStr) {
-    try {
-      final parts = fStr.trim().split(RegExp(r'[/ -]'));
-      if (parts.length < 3) return DateTime(2099, 1, 1);
-
-      int d = int.parse(parts[0]);
-      int m = int.parse(parts[1]);
-      int y = int.parse(parts[2]);
-
-      String rawHora = hStr.toUpperCase().replaceAll('.', '').trim();
-      bool esPM = rawHora.contains("PM");
-
-      String soloNumeros = rawHora.replaceAll(RegExp(r'[^0-9:]'), '');
-      final timeParts = soloNumeros.split(':');
-      int hora = int.parse(timeParts[0]);
-      int min = int.parse(timeParts[1]);
-
-      if (esPM && hora != 12) hora += 12;
-      if (!esPM && hora == 12) hora = 0;
-
-      return DateTime(y, m, d, hora, min);
-    } catch (e) {
-      return DateTime(2099, 1, 1);
-    }
-  }
-
-  List<CitaItem> procesarSnapshot(QuerySnapshot snap, bool soyOwner) {
-    final lista = <CitaItem>[];
-    final ahora = DateTime.now();
-
-    for (final doc in snap.docs) {
-      try {
-        final data = doc.data() as Map<String, dynamic>;
-
-        // 🔥 FILTRO VISUAL "yoFinalice"
-        // Si en la BD dice que yo ya pagué (Finalized == true),
-        // simplemente IGNORO esta cita y no la agrego a la lista.
-        // La cita sigue existiendo, pero yo ya no la veo.
-        bool yoFinalice = soyOwner
-            ? (data['ownerFinalized'] == true)
-            : (data['matchyFinalized'] == true);
-
-        if (yoFinalice) continue; // ⛔ SALTAR ESTA CITA
-
-        final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
-        final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
-        final uidUI = soyOwner ? (data['matchyUid'] ?? '') : (data['ownerUid'] ?? '');
-        final edadRaw = soyOwner ? (data['matchyEdad']) : (data['ownerEdad']);
-        final int edadUI = (edadRaw is int) ? edadRaw : int.tryParse(edadRaw.toString()) ?? 0;
-
-        final lNombre = data['LugarNombre'] ?? data['lugarNombre'] ?? 'Lugar';
-        final lDir = data['LugarDireccion'] ?? data['lugarDireccion'] ?? '';
-        final lFoto = data['LugarFotoPortada'] ?? data['lugarFotoPortada'] ?? '';
-
-        final String fTexto = (data['fecha'] ?? '').toString();
-        final String hTexto = (data['hora'] ?? '').toString();
-
-        DateTime fechaReal = parsearManual(fTexto, hTexto);
-
-        final diferencia = ahora.difference(fechaReal);
-        bool urgente = false;
-
-        if (data['status'] == 'matched') {
-          if (diferencia.inMinutes > 0) {
-            urgente = true;
-          }
-        }
-
-        lista.add(CitaItem(
-          id: doc.id,
-          nombreMostrar: nombreUI.toString(),
-          fotoMostrar: fotoUI.toString(),
-          matchyUid: uidUI.toString(),
-          matchyEdad: edadUI,
-          lugarNombre: lNombre.toString(),
-          lugarDireccion: lDir.toString(),
-          fotoLugar: lFoto.toString(),
-          fechaSort: fechaReal,
-          fechaTextoOriginal: fTexto,
-          horaTexto: hTexto,
-          intencion: (data['intencion'] ?? 'Conocernos').toString(),
-          preferencia: (data['preferencia'] ?? 'Ambos').toString(),
-          codigoOwner: (data['codigoOwner'] ?? '---').toString(),
-          codigoMatchy: (data['codigoMatchy'] ?? '---').toString(),
-          isOwner: soyOwner,
-          status: (data['status'] ?? 'matched').toString(),
-          reproByUid: (data['repro_by_uid'] ?? '').toString(),
-          esUrgente: urgente,
-        ));
-      } catch (e) {}
-    }
-    return lista;
-  }
-
-  void emitir() {
-    final map = {for (var e in [...listaOwner, ...listaMatchy]) e.id: e};
-    final listaFinal = map.values.toList();
-
-    listaFinal.sort((a, b) {
-      if (a.esUrgente && !b.esUrgente) return -1;
-      if (!a.esUrgente && b.esUrgente) return 1;
-      return a.fechaSort.compareTo(b.fechaSort);
-    });
-
-    if (!controller.isClosed) controller.add(listaFinal);
-  }
-
-  final subOwner = FirebaseFirestore.instance
+  return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('ownerUid', isEqualTo: user.uid)
       .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval'])
       .snapshots()
-      .listen((snap) {
-    listaOwner = procesarSnapshot(snap, true);
-    emitir();
-  });
+      .map((s) => s.docs);
+});
 
-  final subMatchy = FirebaseFirestore.instance
+final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return const Stream.empty();
+  return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('matchyUid', isEqualTo: user.uid)
       .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval'])
       .snapshots()
-      .listen((snap) {
-    listaMatchy = procesarSnapshot(snap, false);
-    emitir();
+      .map((s) => s.docs);
+});
+
+// 🚀 MEZCLADOR INTELIGENTE (Escucha Datos + Reloj)
+final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>>>((ref) {
+  // 1. Escuchamos los datos de Firebase
+  final ownerRaw = ref.watch(citasRawOwnerProvider);
+  final matchyRaw = ref.watch(citasRawMatchyProvider);
+
+  // 2. 🔥 ESCUCHAMOS EL RELOJ (Esto fuerza el re-cálculo cada 30s)
+  ref.watch(relojProvider);
+  final ahoraMismo = DateTime.now();
+
+  if (ownerRaw.isLoading || matchyRaw.isLoading) return const AsyncValue.loading();
+
+  final docsOwner = ownerRaw.value ?? [];
+  final docsMatchy = matchyRaw.value ?? [];
+
+  List<CitaItem> listaFinal = [];
+
+  // Convertimos usando la hora actual para calcular urgencia
+  for (var doc in docsOwner) {
+    final item = _convertirDoc(doc, true, ahoraMismo);
+    if (item != null) listaFinal.add(item);
+  }
+  for (var doc in docsMatchy) {
+    final item = _convertirDoc(doc, false, ahoraMismo);
+    if (item != null) listaFinal.add(item);
+  }
+
+  // Ordenar
+  listaFinal.sort((a, b) {
+    if (a.esUrgente && !b.esUrgente) return -1;
+    if (!a.esUrgente && b.esUrgente) return 1;
+    return a.fechaSort.compareTo(b.fechaSort);
   });
 
-  ref.onDispose(() {
-    subOwner.cancel();
-    subMatchy.cancel();
-    controller.close();
-  });
-
-  return controller.stream;
+  return AsyncValue.data(listaFinal);
 });
 
 // 🔵 SECCIÓN 3: PANTALLA
@@ -256,14 +263,24 @@ class _CitasSplitLayout extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final asyncCitas = ref.watch(misCitasStreamProvider);
+    final asyncCitas = ref.watch(misCitasMezcladasProvider);
 
     return asyncCitas.when(
       loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
       error: (_, __) => const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white))),
       data: (todasLasCitas) {
-        final proximas = todasLasCitas.where((c) => c.status == 'matched' && !c.esUrgente).toList();
-        final pendientes = todasLasCitas.where((c) => c.status == 'reprogramming' || c.status == 'pending_approval' || c.esUrgente == true).toList();
+
+        final proximas = todasLasCitas.where((c) {
+          if (c.esUrgente) return false;
+          if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return false;
+          return c.status == 'matched';
+        }).toList();
+
+        final pendientes = todasLasCitas.where((c) {
+          if (c.esUrgente) return true;
+          if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return true;
+          return c.status == 'reprogramming' || c.status == 'pending_approval';
+        }).toList();
 
         return Column(
           children: [
@@ -295,7 +312,6 @@ class _SeccionCitas extends StatelessWidget {
       decoration: BoxDecoration(color: colorFondo, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
       child: Column(
         children: [
-          // BLINDAJE: Título estandarizado a 20pt
           FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))]))
@@ -332,7 +348,7 @@ class _CitaCard extends StatelessWidget {
   }
 
   void _handleTap(BuildContext context) {
-    if (item.esUrgente) {
+    if (item.esUrgente || item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ReporteInasistenciaScreen(citaId: item.id)));
       return;
     }
@@ -371,25 +387,46 @@ class _CitaCard extends StatelessWidget {
     Color colorBoton = Colors.white;
     bool mostrarOverlay = false;
 
+    bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
     const double cardHeight = 125.0;
 
-    final Color bgColor = item.esUrgente ? const Color(0xFFB71C1C).withOpacity(0.3) : const Color(0xFF1A1A1A);
-    final Color borderColor = item.esUrgente ? const Color(0xFFFF5252) : Colors.transparent;
-    final ColorFilter? imgFilter = item.esUrgente ? ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop) : null;
+    Color bgColor = const Color(0xFF1A1A1A);
+    Color borderColor = Colors.transparent;
+    ColorFilter? imgFilter;
 
-    if (esPendiente && !item.esUrgente) {
-      mostrarOverlay = true;
-      if (item.status == 'pending_approval') {
-        if (item.isOwner) {
-          textoBoton = "ENVIADA"; colorBoton = Colors.white70;
+    if (item.esUrgente) {
+      bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
+      borderColor = const Color(0xFFFF5252);
+      imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
+    } else if (esAcuerdo) {
+      bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
+      borderColor = const Color(0xFF448AFF);
+      imgFilter = ColorFilter.mode(const Color(0xFF448AFF).withOpacity(0.5), BlendMode.srcATop);
+    }
+
+    if (esPendiente) {
+      if (item.esUrgente) {
+      } else if (esAcuerdo) {
+        mostrarOverlay = true;
+        if (item.tengoPropuestaAcuerdo) {
+          textoBoton = "ESPERANDO ACUERDO"; colorBoton = Colors.white;
         } else {
-          textoBoton = "POR ACEPTAR"; colorBoton = Colors.greenAccent;
+          textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
         }
       } else {
-        if (item.reproByUid == myUid) {
-          textoBoton = "ENVIADA"; colorBoton = Colors.white70;
+        mostrarOverlay = true;
+        if (item.status == 'pending_approval') {
+          if (item.isOwner) {
+            textoBoton = "ENVIADA"; colorBoton = Colors.white70;
+          } else {
+            textoBoton = "POR ACEPTAR"; colorBoton = Colors.greenAccent;
+          }
         } else {
-          textoBoton = "RESPONDER"; colorBoton = Colors.greenAccent;
+          if (item.reproByUid == myUid) {
+            textoBoton = "ENVIADA"; colorBoton = Colors.white70;
+          } else {
+            textoBoton = "RESPONDER"; colorBoton = Colors.greenAccent;
+          }
         }
       }
     }
@@ -403,13 +440,12 @@ class _CitaCard extends StatelessWidget {
           color: bgColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-          border: item.esUrgente
+          border: (item.esUrgente || esAcuerdo)
               ? Border.all(color: borderColor, width: 2)
               : (textoBoton == "POR ACEPTAR" || textoBoton == "RESPONDER") ? Border.all(color: Colors.black, width: 1) : null,
         ),
         child: Row(
           children: [
-            // 🔹 LADO IZQUIERDO: LUGAR
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
@@ -431,7 +467,6 @@ class _CitaCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // BLINDAJE: Nombre de lugar adaptativo
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
@@ -442,7 +477,6 @@ class _CitaCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 2),
-                        // BLINDAJE: Fecha adaptativa
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
@@ -457,8 +491,6 @@ class _CitaCard extends StatelessWidget {
                 ],
               ),
             ),
-
-            // 🔹 LADO DERECHO: USUARIO (CUADRADO FIJO 125x125)
             SizedBox(
               width: cardHeight,
               height: cardHeight,
@@ -476,7 +508,6 @@ class _CitaCard extends StatelessWidget {
                       ),
                     ),
                   ),
-
                   if (item.esUrgente)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
@@ -502,8 +533,32 @@ class _CitaCard extends StatelessWidget {
                         ),
                       ),
                     ),
-
-                  if (mostrarOverlay) Container(
+                  if (esAcuerdo && !item.esUrgente)
+                    Container(
+                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
+                      child: Center(
+                        child: Transform.rotate(
+                          angle: -0.2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.white, width: 2),
+                                borderRadius: BorderRadius.circular(8),
+                                color: const Color(0xFF1565C0).withOpacity(0.9)
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (mostrarOverlay && !item.esUrgente) Container(
                     decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
                     child: Center(
                         child: _PulsingText(text: textoBoton, color: colorBoton)
