@@ -1,7 +1,7 @@
 // 📂 lib/screens/lugar_plantilla_screen.dart
 // ✅ LUGAR PLANTILLA BLINDADA (UNIFICADA CON VERSIÓN SIN BOTÓN)
 // 🔥 FIX: Tamaños unificados (Nombre 30 / Dirección 18).
-// 🔥 ADD: Zoom al hacer clic en fotos con fondo degradado de notificaciones.
+// 🔥 ADD: Texto informativo de sedes múltiples debajo del botón.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -187,7 +187,27 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
                         const SizedBox(height: 16)
                       ],
                       if (_isLoadingStatus) const CircularProgressIndicator(color: Colors.white)
-                      else _PremiumButton(text: textoBoton, gradient: _isUserBlocked ? kGradientBlocked : kGradientAction, icon: _isUserBlocked ? Icons.lock : Icons.calendar_month_rounded, onTap: _manejarClickCrearCita),
+                      else ...[
+                        _PremiumButton(text: textoBoton, gradient: _isUserBlocked ? kGradientBlocked : kGradientAction, icon: _isUserBlocked ? Icons.lock : Icons.calendar_month_rounded, onTap: _manejarClickCrearCita),
+
+                        // 🔥 TEXTO INFORMATIVO DE SEDES (Solo si existen 2 o más)
+                        if (lugar.sedes.length >= 2) ...[
+                          const SizedBox(height: 12),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10),
+                            child: Text(
+                              "Si el sitio tiene varias sedes puedes seleccionar la que gustes en el botón de crear cita",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                fontFamily: 'Poppins',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
@@ -213,7 +233,7 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
               controller: _pageCtrl,
               itemCount: fotos.length,
               onPageChanged: (i) => setState(() => _currentPage = i),
-              itemBuilder: (_, i) => GestureDetector(onTap: () => _mostrarFotoZoom(fotos[i]), child: Image.network(fotos[i], fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[800], child: const Icon(Icons.broken_image, color: Colors.white54)))),
+              itemBuilder: (_, i) => GestureDetector(onTap: () => _mostrarFotoZoom(fotos[i]), child: Image.network(fotos[i], fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54)))),
             ),
           ),
         ),

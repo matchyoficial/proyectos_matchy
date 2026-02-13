@@ -487,7 +487,7 @@ class _CitaCard extends StatelessWidget {
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            _fechaAmigable(item.fechaSort),
+                            "${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})",
                             style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
                           ),
                         )

@@ -219,7 +219,7 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
                               ),
                               const SizedBox(height: kDescripcionTopGap),
                               Text(
-                                "Cancelar esta cita afectará negativamente tu reputación en la comunidad Matchy.",
+                                "Cancelar esta cita afectará negativamente tu reputación en la comunidad Matchy. Tu perfil será bloqueado TEMPORALMENTE",
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: Colors.white70,

@@ -1,8 +1,8 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
 // ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 FIX: Captura directa de coordenadas desde Firestore para evitar valores en cero.
 // 🔥 BLINDAJE: Nombres y botones protegidos con FittedBox.
-// 🔥 UI: Nube informativa intacta (14.9pt) para evitar encogimiento.
-// 🔥 UI: Fade Out inferior y diseño premium respetados.
+// 🔥 UI: Nube informativa intacta (14.9pt).
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -108,17 +108,36 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
     final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
 
+    // 1. Obtener datos del Usuario Host
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
     final ownerNombre = (dataUser['nombre'] ?? 'Alguien').toString();
     final ownerEdad = dataUser['edad'] is int ? dataUser['edad'] : 0;
     final ownerFoto = (dataUser['profilePhotoUrl'] ?? '').toString();
 
+    // 2. Obtener datos del Matchy Invitado
     final snapMatchy = await FirebaseFirestore.instance.collection('users').doc(widget.matchyUidInvitado).get();
     final dataMatchy = snapMatchy.data() ?? {};
     final matchyNombre = (dataMatchy['nombre'] ?? 'Matchy').toString();
     final matchyEdad = dataMatchy['edad'] is int ? dataMatchy['edad'] : 0;
     final matchyFoto = (dataMatchy['profilePhotoUrl'] ?? '').toString();
+
+    // 3. Captura fresca de coordenadas desde la fuente (Firebase Lugares)
+    final placeSnap = await FirebaseFirestore.instance.collection('lugares').doc(widget.lugar.id).get();
+    final placeData = placeSnap.data() ?? {};
+
+    double finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
+    double finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
+
+    // Si hay sede, buscamos sus coordenadas específicas dentro del mapa de sedes
+    if (_sedeSeleccionada != null) {
+      final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
+      if (sedesMap.containsKey(_sedeSeleccionada!.id)) {
+        final Map<String, dynamic> sData = Map<String, dynamic>.from(sedesMap[_sedeSeleccionada!.id]);
+        finalLat = (sData['latitude'] ?? sData['latitud'] ?? finalLat).toDouble();
+        finalLng = (sData['longitude'] ?? sData['longitud'] ?? finalLng).toDouble();
+      }
+    }
 
     final codigoOwner = _generarCodigoUnico(user.uid, 'HOST');
     final codigoMatchy = _generarCodigoUnico(widget.matchyUidInvitado, 'GUEST');
@@ -156,6 +175,9 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'sedeId': sedeFinal.id,
       'sedeNombre': sedeFinal.nombre,
       'sedeDireccion': sedeFinal.direccion,
+      // 🔥 GRABACIÓN DE COORDENADAS VERIFICADAS
+      'latitude': finalLat,
+      'longitude': finalLng,
     });
 
     await FirebaseFirestore.instance
@@ -233,7 +255,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // BLINDAJE: Título adaptativo
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
@@ -270,7 +291,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 16),
 
-                      // BLINDAJE: Nombre del lugar
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
@@ -289,7 +309,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // BLINDAJE: Dirección adaptativa
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
@@ -393,7 +412,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 30),
 
-                      // 🔥 NUBE INFORMATIVA ESTILIZADA (RESISTENTE A ENCOGIMIENTO)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 24),
                         padding: const EdgeInsets.all(16),
@@ -414,7 +432,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                                 style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 14.9, // Mantiene su tamaño real sin FittedBox
+                                    fontSize: 14.9,
                                     fontFamily: 'Poppins',
                                     height: 1.3
                                 ),

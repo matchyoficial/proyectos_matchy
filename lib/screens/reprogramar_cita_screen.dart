@@ -360,7 +360,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                         SizedBox(width: 15),
                         Expanded(
                           child: Text(
-                            "¡HOLA! ANTES DE ELEGIR NUEVAS FECHAS, TE SUGERIMOS HABLAR CON TU MATCHY POR EL CHAT PARA ACORDAR LOS HORARIOS Y EVITAR RECHAZOS.",
+                            "¡HOLA! ANTES DE ELEGIR NUEVAS FECHAS, TE SUGERIMOS HABLAR CON TU MATCHY POR EL CHAT PARA ACORDAR LOS HORARIOS, EVITAR RECHAZOS, BLOQUEOS Y CASTIGOS EN TUS RACHAS.",
                             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, fontFamily: 'Poppins', height: 1.3),
                           ),
                         ),

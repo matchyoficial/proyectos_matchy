@@ -23,7 +23,7 @@ import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
 // =============================================================================
 
 const double kCardTitleSize      = 20.0;
-const double kCardSubtitleSize   = 14.0;
+const double kCardSubtitleSize   = 18.0;
 const double kDateFontSize       = 17.0;
 
 const double kFotoSize           = 110.0;
