@@ -1,6 +1,8 @@
 // 📂 lib/screens/creacita_screen.dart
 // ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL)
-// 🔥 FIX: Lógica "Sede-Céntrica": El GPS SIEMPRE se extrae de una sede específica (Seleccionada o Sede 1).
+// 🔥 FIX 1: Lógica "Sede-Céntrica": GPS extraído de sede específica.
+// 🔥 FIX 2: Guardado de lugarId para garantizar carga de biografía y fotos.
+// 🔥 FIX 3: Error de compilación en _BotonPremium (referencia a constante kRadioBoton).
 // 🔥 UI: Diseño Premium intacto.
 
 import 'package:flutter/material.dart';
@@ -36,7 +38,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
   static const double kAlturaLogo = 50.0;
   static const double kEspacioBarraLogo = 35.0;
   static const double kAlturaBoton = 52.0;
-  static const double kRadioBoton = 18.0;
+  static const double kRadioBoton = 18.0; // Usada por el botón
 
   String _fecha = '';
   String _hora = '';
@@ -53,7 +55,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
   @override
   void initState() {
     super.initState();
-    // 🔥 Si solo hay una sede, la seleccionamos automáticamente al inicio.
     if (widget.lugar.sedes.length == 1) {
       _sedeSeleccionada = widget.lugar.sedes.first;
     }
@@ -120,15 +121,12 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
     if (scheduledAt.difference(DateTime.now()).inHours < 12) throw Exception('La cita debe programarse con mínimo 12 horas de anticipación.');
 
-    // 1. Datos del Usuario (Owner)
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
     final ownerNombre = (dataUser['nombre'] ?? '').toString();
     final ownerEdad = dataUser['edad'] is int ? dataUser['edad'] : 0;
     final ownerFoto = (dataUser['profilePhotoUrl'] ?? '').toString();
 
-    // 2. Extracción de Coordenadas "Sede-Céntrica"
-    // Descargamos el documento fresco para asegurar datos reales.
     final placeSnap = await FirebaseFirestore.instance.collection('lugares').doc(widget.lugar.id).get();
     final placeData = placeSnap.data() ?? {};
     final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
@@ -139,39 +137,28 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     String sedeNombreUsado = '';
     String sedeDireccionUsada = '';
 
-    // LÓGICA DE SELECCIÓN DE SEDE (CRÍTICA)
     if (_sedeSeleccionada != null) {
-      // CASO A: Usuario seleccionó una sede específica (o se auto-seleccionó por ser única).
       sedeIdUsada = _sedeSeleccionada!.id;
       sedeNombreUsado = _sedeSeleccionada!.nombre;
       sedeDireccionUsada = _sedeSeleccionada!.direccion;
 
-      // Buscamos los datos de ESA sede en el mapa fresco
       if (sedesMap.containsKey(sedeIdUsada)) {
         final sData = Map<String, dynamic>.from(sedesMap[sedeIdUsada]);
         finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
         finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
       }
     } else {
-      // CASO B: Usuario NO seleccionó nada (Raro, pero posible si falla el init).
-      // Usamos la "Sede 1" por defecto o la primera que encontremos en el mapa.
       if (sedesMap.isNotEmpty) {
-        // Intentamos buscar 'sede_1'
         var sData = sedesMap['sede_1'];
-        if (sData == null) {
-          // Si no existe 'sede_1', agarramos la primera llave disponible.
-          sData = sedesMap.values.first;
-        }
-
+        if (sData == null) sData = sedesMap.values.first;
         if (sData is Map) {
           finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
           finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
-          sedeIdUsada = 'sede_1'; // O la llave real si iteramos
+          sedeIdUsada = 'sede_1';
           sedeNombreUsado = (sData['nombre'] ?? '').toString();
           sedeDireccionUsada = (sData['direccion'] ?? '').toString();
         }
       } else {
-        // Si NO HAY SEDES en absoluto, intentamos leer de la raíz como último recurso.
         finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
         finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
         sedeDireccionUsada = widget.lugar.direccion;
@@ -200,13 +187,13 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'lugarNombre': lugar.nombre,
+      'lugarId': lugar.id, // 🔥 Guardamos el ID real para que la bio cargue
       'lugarDireccion': lugar.direccion,
       'lugarFotoPortada': lugar.fotoPortada,
       'lugarFotos': lugar.fotos.take(8).toList(),
       'sedeId': sedeIdUsada,
       'sedeNombre': sedeNombreUsado,
       'sedeDireccion': sedeDireccionUsada,
-      // 🔥 COORDENADAS EXTRAÍDAS DE LA SEDE ESPECÍFICA
       'latitude': finalLat,
       'longitude': finalLng,
     });
@@ -244,7 +231,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       body: Stack(
         children: [
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
-
           Column(
             children: [
               const SizedBox(height: kEspacioBarraLogo),
@@ -264,7 +250,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: kMargenFotoHorizontal),
                         child: Container(
@@ -277,9 +262,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                               : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
                         ),
                       ),
-
                       const SizedBox(height: 16),
-
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
@@ -296,14 +279,11 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                           ],
                         ),
                       ),
-
                       const SizedBox(height: 25),
-
                       _BotonPremium(text: _fecha.isEmpty ? "SELECCIONAR FECHA" : "FECHA: $_fecha", icon: Icons.calendar_today, width: width * 0.85, fontSize: kSizeTextoBoton, height: kAlturaBoton, onTap: _creating ? null : _seleccionarFecha),
                       const SizedBox(height: 12),
                       _BotonPremium(text: _hora.isEmpty ? "SELECCIONAR HORA" : "HORA: $_hora", icon: Icons.access_time, width: width * 0.85, fontSize: kSizeTextoBoton, height: kAlturaBoton, onTap: _creating ? null : _seleccionarHora),
                       const SizedBox(height: 12),
-
                       if (lugar.sedes.length >= 2)
                         _BotonPremium(
                           text: _sedeSeleccionada == null ? 'SELECCIONAR SEDE' : _sedeSeleccionada!.nombre.toUpperCase(),
@@ -360,18 +340,14 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                             if (sede != null) setState(() => _sedeSeleccionada = sede);
                           },
                         ),
-
                       const SizedBox(height: 25),
-
                       const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Align(alignment: Alignment.centerLeft, child: Text("PREFERENCIA", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: kSizeSubtitulos)))),
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Wrap(spacing: 12, children: [
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Hombres', groupValue: _preferencia, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _preferencia = v))),
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Mujeres', groupValue: _preferencia, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _preferencia = v))),
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Ambos', groupValue: _preferencia, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _preferencia = v))),
                       ])),
-
                       const SizedBox(height: 15),
-
                       const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Align(alignment: Alignment.centerLeft, child: Text("INTENCIÓN", style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: kSizeSubtitulos)))),
                       Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Wrap(spacing: 12, runSpacing: 10, children: [
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Solo hablar', groupValue: _intencion, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _intencion = v))),
@@ -381,13 +357,9 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Una relación', groupValue: _intencion, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _intencion = v))),
                         SizedBox(width: itemWidth, child: _RadioOpcion(label: 'Algo serio', groupValue: _intencion, fontSize: kSizeRadioOpcion, onChanged: (v) => setState(() => _intencion = v))),
                       ])),
-
                       const SizedBox(height: 30),
-
                       _BotonPremium(text: "CREAR TU CITA", width: width * 0.85, isAction: true, isLoading: _creating, fontSize: kSizeTextoBoton, height: kAlturaBoton, onTap: _creating ? null : _onCrearCitaPressed),
-
                       const SizedBox(height: 20),
-
                       const Padding(padding: EdgeInsets.symmetric(horizontal: 36), child: Text('Recuerda: La cita debe programarse con mínimo 12 horas de anticipación.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kSizeNotaPie, fontWeight: FontWeight.w400))),
                     ],
                   ),
@@ -395,12 +367,10 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
               ),
             ],
           ),
-
           Positioned(
             bottom: 0, left: 0, right: 0, height: 100,
             child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0])))),
           ),
-
           const MatchyBackButton(top: 10, left: 16),
         ],
       ),
@@ -425,14 +395,29 @@ class _BotonPremium extends StatelessWidget {
     final gradient = isAction ? const LinearGradient(colors: [Color(0xFF7B1FA2), Color(0xFF4A148C)]) : const LinearGradient(colors: [Color(0xFF5E35B1), Color(0xFF311B92)]);
     return Container(
       width: width, height: height,
-      decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(_CreaCitaScreenState.kRadioBoton), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))], border: Border.all(color: Colors.white12)),
-      child: Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(_CreaCitaScreenState.kRadioBoton), onTap: onTap, child: Center(child: isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)], Text(text, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5, fontFamily: 'Poppins'))]),
-        ),
-      )))),
+      decoration: BoxDecoration(
+          gradient: gradient,
+          // 🔥 FIX: Referencia correcta a la constante de la clase State
+          borderRadius: BorderRadius.circular(_CreaCitaScreenState.kRadioBoton),
+          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
+          border: Border.all(color: Colors.white12)
+      ),
+      child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+              borderRadius: BorderRadius.circular(_CreaCitaScreenState.kRadioBoton),
+              onTap: onTap,
+              child: Center(
+                  child: isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)], Text(text, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5, fontFamily: 'Poppins'))]),
+                    ),
+                  )
+              )
+          )
+      ),
     );
   }
 }
@@ -445,6 +430,6 @@ class _RadioOpcion extends StatelessWidget {
   const _RadioOpcion({required this.label, required this.groupValue, required this.onChanged, this.fontSize = 13});
   @override
   Widget build(BuildContext context) {
-    return Row(children: [Radio<String>(value: label, groupValue: groupValue, onChanged: (v) => onChanged(v!), activeColor: Colors.white, fillColor: MaterialStateProperty.all(Colors.white), visualDensity: VisualDensity.compact), Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, softWrap: false, style: TextStyle(color: Colors.white, fontSize: fontSize, fontFamily: 'Poppins'))))]);
+    return Row(children: [Radio<String>(value: label, groupValue: groupValue, onChanged: (v) => onChanged(v!), activeColor: Colors.white, fillColor: WidgetStateProperty.all(Colors.white), visualDensity: VisualDensity.compact), Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(label, softWrap: false, style: TextStyle(color: Colors.white, fontSize: fontSize, fontFamily: 'Poppins'))))]);
   }
 }

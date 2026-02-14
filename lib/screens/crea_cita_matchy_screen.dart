@@ -2,7 +2,7 @@
 // ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL)
 // 🔥 FIX 1: Lógica "Sede-Céntrica" para GPS (Evita ceros).
 // 🔥 FIX 2: Overflow corregido en el selector de sedes (Lista con scroll).
-// 🔥 FIX 3: Texto informativo optimizado (Justificación corregida para móvil).
+// 🔥 FIX 3: Guardado de lugarId para visualización de información completa del sitio.
 // 🔥 UI: Diseño Premium y responsive.
 
 import 'dart:io';
@@ -29,7 +29,6 @@ class CreaCitaMatchyScreen extends StatefulWidget {
 }
 
 class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
-  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   static const double kAlturaFoto = 210.0;
   static const double kMargenFotoHorizontal = 23.0;
   static const double kRadioFoto = 24.0;
@@ -51,13 +50,11 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
   @override
   void initState() {
     super.initState();
-    // 🔥 Si solo hay una sede, la seleccionamos automáticamente al inicio.
     if (widget.lugar.sedes.length == 1) {
       _sedeSeleccionada = widget.lugar.sedes.first;
     }
   }
 
-  // SELECTORES DE FECHA/HORA
   Future<void> _seleccionarFecha() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -118,21 +115,18 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
     final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
 
-    // 1. Obtener datos del Usuario Host
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
     final ownerNombre = (dataUser['nombre'] ?? 'Alguien').toString();
     final ownerEdad = dataUser['edad'] is int ? dataUser['edad'] : 0;
     final ownerFoto = (dataUser['profilePhotoUrl'] ?? '').toString();
 
-    // 2. Obtener datos del Matchy Invitado
     final snapMatchy = await FirebaseFirestore.instance.collection('users').doc(widget.matchyUidInvitado).get();
     final dataMatchy = snapMatchy.data() ?? {};
     final matchyNombre = (dataMatchy['nombre'] ?? 'Matchy').toString();
     final matchyEdad = dataMatchy['edad'] is int ? dataMatchy['edad'] : 0;
     final matchyFoto = (dataMatchy['profilePhotoUrl'] ?? '').toString();
 
-    // 3. Extracción de Coordenadas "Sede-Céntrica"
     final placeSnap = await FirebaseFirestore.instance.collection('lugares').doc(widget.lugar.id).get();
     final placeData = placeSnap.data() ?? {};
     final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
@@ -143,9 +137,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     String sedeNombreUsado = '';
     String sedeDireccionUsada = '';
 
-    // LÓGICA DE SELECCIÓN DE SEDE (CRÍTICA)
     if (_sedeSeleccionada != null) {
-      // CASO A: Usuario seleccionó una sede específica
       sedeIdUsada = _sedeSeleccionada!.id;
       sedeNombreUsado = _sedeSeleccionada!.nombre;
       sedeDireccionUsada = _sedeSeleccionada!.direccion;
@@ -156,23 +148,17 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
         finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
       }
     } else {
-      // CASO B: Usuario NO seleccionó nada (Fallback inteligente)
       if (sedesMap.isNotEmpty) {
-        // Intentamos buscar 'sede_1'
         var sData = sedesMap['sede_1'];
-        if (sData == null) {
-          sData = sedesMap.values.first; // Si no hay sede_1, toma la primera disponible
-        }
-
+        if (sData == null) sData = sedesMap.values.first;
         if (sData is Map) {
           finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
           finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
-          sedeIdUsada = 'sede_1'; // O la llave real si iteramos
+          sedeIdUsada = 'sede_1';
           sedeNombreUsado = (sData['nombre'] ?? '').toString();
           sedeDireccionUsada = (sData['direccion'] ?? '').toString();
         }
       } else {
-        // Último recurso: Raíz (si no hay sedes definidas en el mapa)
         finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
         finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
         sedeDireccionUsada = widget.lugar.direccion;
@@ -208,13 +194,13 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'lugarNombre': lugar.nombre,
+      'lugarId': lugar.id, // 🔥 ASIGNACIÓN DE IDENTIDAD CLAVE
       'lugarDireccion': lugar.direccion,
       'lugarFotoPortada': lugar.fotoPortada,
       'lugarFotos': lugar.fotos.take(8).toList(),
       'sedeId': sedeIdUsada,
       'sedeNombre': sedeNombreUsado,
       'sedeDireccion': sedeDireccionUsada,
-      // 🔥 GRABACIÓN DE COORDENADAS VERIFICADAS DE LA SEDE
       'latitude': finalLat,
       'longitude': finalLng,
     });
@@ -247,16 +233,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     try {
       final citaId = await _enviarInvitacionFirestore();
       if (!mounted) return;
-
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CitaCreadaScreen(
-          citaId: citaId,
-          lugar: widget.lugar,
-          fecha: _fecha,
-          hora: _hora,
-          preferencia: 'Privada',
-          intencion: 'Cita Matchy'
-      )));
-
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CitaCreadaScreen(citaId: citaId, lugar: widget.lugar, fecha: _fecha, hora: _hora, preferencia: 'Privada', intencion: 'Cita Matchy')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
@@ -281,7 +258,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
         children: [
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
           const MatchyBackButton(top: 10, left: 16),
-
           Column(
             children: [
               const SizedBox(height: espacioBarraLogo),
@@ -298,53 +274,28 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: const Text(
-                            "PLANEA TU CITA CON TU MATCHY",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: kTituloPantallaSize,
-                                fontWeight: FontWeight.bold,
-                                shadows: [Shadow(color: Colors.black, blurRadius: 4)]
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                          child: const Text("PLANEA TU CITA CON TU MATCHY", style: TextStyle(color: Colors.white, fontSize: kTituloPantallaSize, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 4)]), textAlign: TextAlign.center),
                         ),
                       ),
                       const SizedBox(height: 12),
-
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: kMargenFotoHorizontal),
                         child: Container(
                           height: kAlturaFoto,
                           width: double.infinity,
                           clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(kRadioFoto),
-                            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
-                          ),
+                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(kRadioFoto), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))]),
                           child: fotoUrl.isNotEmpty
                               ? Image.network(fotoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover))
                               : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
                         ),
                       ),
-
                       const SizedBox(height: 16),
-
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text(
-                            lugar.nombre.toUpperCase(),
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: kTituloLugarSize,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                              shadows: [Shadow(color: Colors.black, blurRadius: 5, offset: Offset(0, 2))],
-                            ),
-                          ),
+                          child: Text(lugar.nombre.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: kTituloLugarSize, fontWeight: FontWeight.w900, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 5, offset: Offset(0, 2))])),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -352,42 +303,14 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text(
-                            _sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: kDireccionSize,
-                              fontWeight: FontWeight.w500,
-                              height: 1.1,
-                              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                            ),
-                          ),
+                          child: Text(_sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: kDireccionSize, fontWeight: FontWeight.w500, height: 1.1, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
                         ),
                       ),
-
                       const SizedBox(height: 25),
-
-                      _BotonPremium(
-                        text: _fecha.isEmpty ? "SELECCIONAR FECHA" : "FECHA: $_fecha",
-                        icon: Icons.calendar_today,
-                        width: width * 0.85,
-                        fontSize: kTextoBotonSize,
-                        height: kAlturaBoton,
-                        onTap: _sending ? null : _seleccionarFecha,
-                      ),
+                      _BotonPremium(text: _fecha.isEmpty ? "SELECCIONAR FECHA" : "FECHA: $_fecha", icon: Icons.calendar_today, width: width * 0.85, fontSize: kTextoBotonSize, height: kAlturaBoton, onTap: _sending ? null : _seleccionarFecha),
                       const SizedBox(height: 12),
-
-                      _BotonPremium(
-                        text: _hora.isEmpty ? "SELECCIONAR HORA" : "HORA: $_hora",
-                        icon: Icons.access_time,
-                        width: width * 0.85,
-                        fontSize: kTextoBotonSize,
-                        height: kAlturaBoton,
-                        onTap: _sending ? null : _seleccionarHora,
-                      ),
+                      _BotonPremium(text: _hora.isEmpty ? "SELECCIONAR HORA" : "HORA: $_hora", icon: Icons.access_time, width: width * 0.85, fontSize: kTextoBotonSize, height: kAlturaBoton, onTap: _sending ? null : _seleccionarHora),
                       const SizedBox(height: 12),
-
                       if (lugar.sedes.length >= 2)
                         _BotonPremium(
                           text: _sedeSeleccionada == null ? 'SELECCIONAR SEDE' : _sedeSeleccionada!.nombre.toUpperCase(),
@@ -399,22 +322,19 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                             final sede = await showModalBottomSheet<SedeData>(
                               context: context,
                               backgroundColor: Colors.transparent,
-                              isScrollControlled: true, // 🔥 EVITA OVERFLOW EN LISTAS LARGAS
+                              isScrollControlled: true,
                               builder: (_) => SafeArea(
                                 child: Container(
-                                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7), // 🔥 LÍMITE DE ALTURA
+                                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
                                   padding: const EdgeInsets.all(16),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF1E1E2C),
-                                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                                  ),
+                                  decoration: const BoxDecoration(color: Color(0xFF1E1E2C), borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 10), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
                                       const Text("SELECCIONA UNA SEDE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                                       const SizedBox(height: 10),
-                                      Expanded( // 🔥 PERMITE SCROLL SI HAY MUCHAS SEDES
+                                      Expanded(
                                         child: ListView.builder(
                                           shrinkWrap: true,
                                           itemCount: lugar.sedes.length,
@@ -425,10 +345,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                                               child: Container(
                                                 margin: const EdgeInsets.symmetric(vertical: 6),
                                                 padding: const EdgeInsets.all(14),
-                                                decoration: BoxDecoration(
-                                                  gradient: const LinearGradient(colors: [Color(0xFF6A5ACD), Color(0xFF4527A0)]),
-                                                  borderRadius: BorderRadius.circular(16),
-                                                ),
+                                                decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF6A5ACD), Color(0xFF4527A0)]), borderRadius: BorderRadius.circular(16)),
                                                 child: Column(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
@@ -450,30 +367,13 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                             if (sede != null) setState(() => _sedeSeleccionada = sede);
                           },
                         ),
-
                       const SizedBox(height: 40),
-
-                      _BotonPremium(
-                        text: "ENVIAR INVITACIÓN",
-                        width: width * 0.85,
-                        isAction: true,
-                        isLoading: _sending,
-                        fontSize: kTextoBotonSize,
-                        height: kAlturaBoton,
-                        onTap: _sending ? null : _onEnviarInvitacion,
-                      ),
-
+                      _BotonPremium(text: "ENVIAR INVITACIÓN", width: width * 0.85, isAction: true, isLoading: _sending, fontSize: kTextoBotonSize, height: kAlturaBoton, onTap: _sending ? null : _onEnviarInvitacion),
                       const SizedBox(height: 30),
-
-                      // 🔥 FIX DE TEXTO INFORMATIVO (JUSTIFICACIÓN CORREGIDA)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 24),
                         padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.08), // Un poco más sutil
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white12, width: 1),
-                        ),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12, width: 1)),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -482,14 +382,8 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                             Expanded(
                               child: Text(
                                 "Se enviará una notificación a tu Matchy. Hablen por chat antes de fijar la cita para evitar cancelaciones y penalizaciones.",
-                                textAlign: TextAlign.start, // 🔥 Cambio a START para evitar huecos horribles
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500, // Menos pesado se lee mejor
-                                    fontSize: 14,
-                                    fontFamily: 'Poppins',
-                                    height: 1.4 // Más aire entre líneas
-                                ),
+                                textAlign: TextAlign.start,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 14, fontFamily: 'Poppins', height: 1.4),
                               ),
                             ),
                           ],
@@ -501,22 +395,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
               ),
             ],
           ),
-
-          Positioned(
-            bottom: 0, left: 0, right: 0, height: 90,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
-                    stops: const [0.0, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          Positioned(bottom: 0, left: 0, right: 0, height: 90, child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0]))))),
         ],
       ),
     );
@@ -533,59 +412,21 @@ class _BotonPremium extends StatelessWidget {
   final bool isAction;
   final bool isLoading;
 
-  const _BotonPremium({
-    required this.text,
-    this.onTap,
-    required this.width,
-    this.height = 50,
-    this.fontSize = 14,
-    this.icon,
-    this.isAction = false,
-    this.isLoading = false,
-  });
+  const _BotonPremium({required this.text, this.onTap, required this.width, this.height = 50, this.fontSize = 14, this.icon, this.isAction = false, this.isLoading = false});
 
   @override
   Widget build(BuildContext context) {
-    final gradient = isAction
-        ? const LinearGradient(colors: [Color(0xFF7B1FA2), Color(0xFF4A148C)])
-        : const LinearGradient(colors: [Color(0xFF5E35B1), Color(0xFF311B92)]);
-
+    final gradient = isAction ? const LinearGradient(colors: [Color(0xFF7B1FA2), Color(0xFF4A148C)]) : const LinearGradient(colors: [Color(0xFF5E35B1), Color(0xFF311B92)]);
     return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 5, offset: Offset(0, 3))],
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Center(
-            child: isLoading
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)],
-                    Text(
-                      text,
-                      style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+      width: width, height: height,
+      decoration: BoxDecoration(gradient: gradient, borderRadius: BorderRadius.circular(18), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 5, offset: Offset(0, 3))], border: Border.all(color: Colors.white12)),
+      child: Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(18), onTap: onTap, child: Center(child: isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 8)], Text(text, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.5))]),
         ),
-      ),
+      )))),
     );
   }
 }

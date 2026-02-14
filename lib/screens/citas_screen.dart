@@ -1,7 +1,6 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (VISUAL LIMPIA)
-// 🔥 FIX: Eliminado el letrero fijo "REPROGRAMADA" (Solo queda el color morado).
-// 🔥 Mantiene: Jerarquía de colores y lógica funcional.
+// ✅ PANTALLA CITAS BLINDADA (JERARQUÍA: AZUL > ROJO > MORADO > VERDE > NEGRO)
+// 🔥 FIX: Captura de lugarId para visualización de información completa del sitio.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -10,18 +9,17 @@ import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ✅ IMPORTS
 import 'package:proyectos_matchy/screens/cita_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/screens/reporte_inasistencia_screen.dart';
 
-// 🔵 SECCIÓN 1: MODELO
 const String kCitasCollection = 'citas';
 
 class CitaItem {
   final String id;
+  final String lugarId; // 🔥 CLAVE PARA CARGAR INFO DEL SITIO
   final String nombreMostrar;
   final String fotoMostrar;
   final String matchyUid;
@@ -46,6 +44,7 @@ class CitaItem {
 
   const CitaItem({
     required this.id,
+    required this.lugarId, // 🔥
     required this.nombreMostrar,
     required this.fotoMostrar,
     required this.matchyUid,
@@ -70,19 +69,15 @@ class CitaItem {
   });
 }
 
-// ⏱️ RELOJ "MARCAPASOS"
 final relojProvider = StreamProvider.autoDispose<int>((ref) {
   return Stream.periodic(const Duration(seconds: 30), (i) => i);
 });
 
-// 🛠️ HELPER: PARSEO Y CONVERSIÓN
 CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   try {
     final data = doc.data() as Map<String, dynamic>;
 
-    bool yoFinalice = soyOwner
-        ? (data['ownerFinalized'] == true)
-        : (data['matchyFinalized'] == true);
+    bool yoFinalice = soyOwner ? (data['ownerFinalized'] == true) : (data['matchyFinalized'] == true);
     if (yoFinalice) return null;
 
     final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
@@ -94,6 +89,9 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
     final lNombre = data['LugarNombre'] ?? data['lugarNombre'] ?? 'Lugar';
     final lDir = data['LugarDireccion'] ?? data['lugarDireccion'] ?? '';
     final lFoto = data['LugarFotoPortada'] ?? data['lugarFotoPortada'] ?? '';
+
+    // 🔥 Capturamos el ID real del lugar (lugarId es el estándar, id es respaldo)
+    final lId = (data['lugarId'] ?? data['idLugar'] ?? data['lugar_id'] ?? '').toString();
 
     final String fTexto = (data['fecha'] ?? '').toString();
     final String hTexto = (data['hora'] ?? '').toString();
@@ -114,24 +112,18 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       }
     } catch (_) {}
 
-    // CÁLCULO DE URGENCIA
     final diferencia = ahora.difference(fechaReal);
     bool urgente = false;
     if (data['status'] == 'matched') {
       if (diferencia.inMinutes > 0) urgente = true;
     }
 
-    // DETECCIÓN DE PACTO
-    bool yoPropuse = soyOwner
-        ? (data['ownerPropusoAcuerdo'] == true)
-        : (data['matchyPropusoAcuerdo'] == true);
-
-    bool elOtroPropuso = soyOwner
-        ? (data['matchyPropusoAcuerdo'] == true)
-        : (data['ownerPropusoAcuerdo'] == true);
+    bool yoPropuse = soyOwner ? (data['ownerPropusoAcuerdo'] == true) : (data['matchyPropusoAcuerdo'] == true);
+    bool elOtroPropuso = soyOwner ? (data['matchyPropusoAcuerdo'] == true) : (data['ownerPropusoAcuerdo'] == true);
 
     return CitaItem(
       id: doc.id,
+      lugarId: lId, // 🔥 ASIGNADO
       nombreMostrar: nombreUI.toString(),
       fotoMostrar: fotoUI.toString(),
       matchyUid: uidUI.toString(),
@@ -159,8 +151,6 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   }
 }
 
-// 🔵 SECCIÓN 2: PROVIDERS
-
 final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -183,12 +173,9 @@ final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>
       .map((s) => s.docs);
 });
 
-// 🚀 MEZCLADOR INTELIGENTE
 final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>>>((ref) {
   final ownerRaw = ref.watch(citasRawOwnerProvider);
   final matchyRaw = ref.watch(citasRawMatchyProvider);
-
-  // ESCUCHAMOS EL RELOJ
   ref.watch(relojProvider);
   final ahoraMismo = DateTime.now();
 
@@ -198,7 +185,6 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
   final docsMatchy = matchyRaw.value ?? [];
 
   List<CitaItem> listaFinal = [];
-
   for (var doc in docsOwner) {
     final item = _convertirDoc(doc, true, ahoraMismo);
     if (item != null) listaFinal.add(item);
@@ -208,7 +194,6 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
     if (item != null) listaFinal.add(item);
   }
 
-  // Ordenar
   listaFinal.sort((a, b) {
     if (a.esUrgente && !b.esUrgente) return -1;
     if (!a.esUrgente && b.esUrgente) return 1;
@@ -218,7 +203,6 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
   return AsyncValue.data(listaFinal);
 });
 
-// 🔵 SECCIÓN 3: PANTALLA
 class CitasScreen extends ConsumerWidget {
   final bool showBottomNav;
   const CitasScreen({super.key, this.showBottomNav = true});
@@ -270,7 +254,6 @@ class _CitasSplitLayout extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
       error: (_, __) => const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white))),
       data: (todasLasCitas) {
-
         final proximas = todasLasCitas.where((c) {
           if (c.esUrgente) return false;
           if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return false;
@@ -357,7 +340,23 @@ class _CitaCard extends StatelessWidget {
       final codigoParaMostrar = item.isOwner ? item.codigoOwner : item.codigoMatchy;
       final codigoParaValidar = item.isOwner ? item.codigoMatchy : item.codigoOwner;
       Navigator.push(context, MaterialPageRoute(builder: (_) => CitaDetalleScreen(
-        citaId: item.id, lugarNombre: item.lugarNombre, lugarDireccion: item.lugarDireccion, lugarFotoPortada: item.fotoLugar, matchyNombre: item.nombreMostrar, matchyFoto: item.fotoMostrar, matchyUid: item.matchyUid, matchyEdad: item.matchyEdad, fecha: item.fechaTextoOriginal, hora: item.horaTexto, intencion: item.intencion, preferencia: item.preferencia, miCodigoCita: codigoParaMostrar, codigoDelOtro: codigoParaValidar, isOwner: item.isOwner,
+        citaId: item.id,
+        lugarId: item.lugarId, // 🔥 PASAMOS EL ID CORRECTO
+        lugarNombre: item.lugarNombre,
+        lugarDireccion: item.lugarDireccion,
+        lugarFotoPortada: item.fotoLugar,
+        matchyNombre: item.nombreMostrar,
+        matchyFoto: item.fotoMostrar,
+        matchyUid: item.matchyUid,
+        matchyEdad: item.matchyEdad,
+        fecha: item.fechaTextoOriginal,
+        hora: item.horaTexto,
+        intencion: item.intencion,
+        preferencia: item.preferencia,
+        miCodigoCita: codigoParaMostrar,
+        codigoDelOtro: codigoParaValidar,
+        isOwner: item.isOwner,
+        citaDateTime: item.fechaSort,
       )));
       return;
     }
@@ -388,34 +387,26 @@ class _CitaCard extends StatelessWidget {
     Color colorBoton = Colors.white;
     bool mostrarOverlay = false;
 
-    // DETECCIÓN DE ACUERDO
     bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
     const double cardHeight = 125.0;
 
-    // Colores base (Normal / Negro)
     Color bgColor = const Color(0xFF1A1A1A);
     Color borderColor = Colors.transparent;
     ColorFilter? imgFilter;
 
-    // 🔥 JERARQUÍA DE COLORES: AZUL > ROJO > MORADO > VERDE > NEGRO
-
     if (esAcuerdo) {
-      // 1. AZUL (Prioridad Máxima - Acuerdo)
       bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
       borderColor = const Color(0xFF448AFF);
       imgFilter = ColorFilter.mode(const Color(0xFF448AFF).withOpacity(0.5), BlendMode.srcATop);
     } else if (item.esUrgente) {
-      // 2. ROJO (Urgencia)
       bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
       borderColor = const Color(0xFFFF5252);
       imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
     } else if (item.status == 'reprogramming') {
-      // 3. MORADO (Reprogramación) - Solo color
       bgColor = const Color(0xFF6A1B9A).withOpacity(0.3);
       borderColor = Colors.purpleAccent;
       imgFilter = ColorFilter.mode(Colors.purpleAccent.withOpacity(0.4), BlendMode.srcATop);
     } else if (item.isPrivate && item.status == 'pending_approval') {
-      // 4. VERDE (Privada PENDIENTE) - Solo abajo
       bgColor = const Color(0xFF1B5E20).withOpacity(0.3);
       borderColor = Colors.greenAccent;
       imgFilter = ColorFilter.mode(Colors.greenAccent.withOpacity(0.4), BlendMode.srcATop);
@@ -430,7 +421,6 @@ class _CitaCard extends StatelessWidget {
           textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
         }
       } else if (item.esUrgente) {
-        // Nada, el marco rojo es suficiente
       } else {
         mostrarOverlay = true;
         if (item.status == 'pending_approval') {
@@ -478,31 +468,15 @@ class _CitaCard extends StatelessWidget {
                           : Container(color: Colors.grey[900], child: const Icon(Icons.store, color: Colors.white24))
                   ),
                   Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
-
                   Positioned(
                     bottom: 10, left: 10, right: 5,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                              item.lugarNombre.toUpperCase(),
-                              maxLines: 1,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins')
-                          ),
-                        ),
+                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), maxLines: 1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))),
                         const SizedBox(height: 2),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            "${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})",
-                            style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
-                          ),
-                        )
+                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))),
                       ],
                     ),
                   ),
@@ -510,108 +484,27 @@ class _CitaCard extends StatelessWidget {
               ),
             ),
             SizedBox(
-              width: cardHeight,
-              height: cardHeight,
+              width: cardHeight, height: cardHeight,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
-                    child: ColorFiltered(
-                      colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                      child: FotoPerfilUsuario(
-                        uid: item.matchyUid,
-                        fit: BoxFit.cover,
-                        alignment: Alignment.topCenter,
-                      ),
-                    ),
-                  ),
-
-                  // 🔥 ETIQUETAS DE ESTADO (OVERLAYS FIJOS)
-
+                  ClipRRect(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), child: ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter))),
                   if (esAcuerdo)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
-                      child: Center(
-                        child: Transform.rotate(
-                          angle: -0.2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                                border: Border.all(color: Colors.white, width: 2),
-                                borderRadius: BorderRadius.circular(8),
-                                color: const Color(0xFF1565C0).withOpacity(0.9)
-                            ),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA",
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: const Color(0xFF1565C0).withOpacity(0.9)), child: FittedBox(fit: BoxFit.scaleDown, child: Text(item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
                     )
                   else if (item.esUrgente)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
-                      child: Center(
-                        child: Transform.rotate(
-                          angle: -0.2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                                border: Border.all(color: Colors.white, width: 2),
-                                borderRadius: BorderRadius.circular(8),
-                                color: Colors.red.withOpacity(0.8)
-                            ),
-                            child: const FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                "SIN CONFIRMAR",
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.red.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("SIN CONFIRMAR", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
                     )
                   else if (item.isPrivate && item.status == 'pending_approval')
                       Container(
                         decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1B5E20).withOpacity(0.3)),
-                        child: Center(
-                          child: Transform.rotate(
-                            angle: -0.2,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.white, width: 2),
-                                  borderRadius: BorderRadius.circular(8),
-                                  color: Colors.green.withOpacity(0.8)
-                              ),
-                              child: const FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  "PRIVADA",
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                        child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.green.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("PRIVADA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
                       ),
-
-                  // OVERLAY CON TEXTO PULSANTE (Para estados pendientes que no son urgentes puros)
-                  if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(
-                    decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
-                    child: Center(
-                        child: _PulsingText(text: textoBoton, color: colorBoton)
-                    ),
-                  )
+                  if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)), child: Center(child: _PulsingText(text: textoBoton, color: colorBoton)))
                 ],
               ),
             ),
@@ -623,53 +516,14 @@ class _CitaCard extends StatelessWidget {
 }
 
 class _PulsingText extends StatefulWidget {
-  final String text;
-  final Color color;
+  final String text; final Color color;
   const _PulsingText({required this.text, required this.color});
-
-  @override
-  State<_PulsingText> createState() => _PulsingTextState();
+  @override State<_PulsingText> createState() => _PulsingTextState();
 }
 
 class _PulsingTextState extends State<_PulsingText> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            widget.text,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                color: widget.color,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-                shadows: [
-                  Shadow(color: widget.color.withOpacity(0.6), blurRadius: 10, offset: Offset(0, 0))
-                ]
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  late AnimationController _controller; late Animation<double> _scaleAnimation;
+  @override void initState() { super.initState(); _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _scaleAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)); }
+  @override void dispose() { _controller.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) { return ScaleTransition(scale: _scaleAnimation, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: FittedBox(fit: BoxFit.scaleDown, child: Text(widget.text, textAlign: TextAlign.center, style: TextStyle(color: widget.color, fontWeight: FontWeight.w900, fontSize: 12, shadows: [Shadow(color: widget.color.withOpacity(0.6), blurRadius: 10, offset: const Offset(0, 0))]))))); }
 }
