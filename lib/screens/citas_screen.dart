@@ -1,6 +1,6 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (JERARQUÍA: AZUL > ROJO > MORADO > VERDE > NEGRO)
-// 🔥 FIX: Captura de lugarId para visualización de información completa del sitio.
+// ✅ PANTALLA CITAS BLINDADA (ESTADOS: AZUL > ROJO > MORADO > VERDE > NEGRO)
+// 🔥 FIX: Desaparición automática de citas en estado 'mutual_agreement_finish'.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -19,7 +19,7 @@ const String kCitasCollection = 'citas';
 
 class CitaItem {
   final String id;
-  final String lugarId; // 🔥 CLAVE PARA CARGAR INFO DEL SITIO
+  final String lugarId;
   final String nombreMostrar;
   final String fotoMostrar;
   final String matchyUid;
@@ -44,7 +44,7 @@ class CitaItem {
 
   const CitaItem({
     required this.id,
-    required this.lugarId, // 🔥
+    required this.lugarId,
     required this.nombreMostrar,
     required this.fotoMostrar,
     required this.matchyUid,
@@ -89,9 +89,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
     final lNombre = data['LugarNombre'] ?? data['lugarNombre'] ?? 'Lugar';
     final lDir = data['LugarDireccion'] ?? data['lugarDireccion'] ?? '';
     final lFoto = data['LugarFotoPortada'] ?? data['lugarFotoPortada'] ?? '';
-
-    // 🔥 Capturamos el ID real del lugar (lugarId es el estándar, id es respaldo)
-    final lId = (data['lugarId'] ?? data['idLugar'] ?? data['lugar_id'] ?? '').toString();
+    final lId = (data['lugarId'] ?? data['idLugar'] ?? '').toString();
 
     final String fTexto = (data['fecha'] ?? '').toString();
     final String hTexto = (data['hora'] ?? '').toString();
@@ -123,7 +121,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
 
     return CitaItem(
       id: doc.id,
-      lugarId: lId, // 🔥 ASIGNADO
+      lugarId: lId,
       nombreMostrar: nombreUI.toString(),
       fotoMostrar: fotoUI.toString(),
       matchyUid: uidUI.toString(),
@@ -151,13 +149,14 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   }
 }
 
+// 🚀 PROVIDERS FILTRADOS: Ignoran 'mutual_agreement_finish' para que la cita desaparezca
 final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
   return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('ownerUid', isEqualTo: user.uid)
-      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval'])
+      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending'])
       .snapshots()
       .map((s) => s.docs);
 });
@@ -168,7 +167,7 @@ final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>
   return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('matchyUid', isEqualTo: user.uid)
-      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval'])
+      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending'])
       .snapshots()
       .map((s) => s.docs);
 });
@@ -223,20 +222,7 @@ class CitasScreen extends ConsumerWidget {
             logoHeight: 45,
             spaceLogoToScroll: 10,
           ),
-          Positioned(
-            bottom: 0, left: 0, right: 0, height: 90,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
-                    stops: const [0.0, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ),
+          Positioned(bottom: 0, left: 0, right: 0, height: 90, child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0]))))),
         ],
       ),
     );
@@ -263,7 +249,7 @@ class _CitasSplitLayout extends ConsumerWidget {
         final pendientes = todasLasCitas.where((c) {
           if (c.esUrgente) return true;
           if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return true;
-          return c.status == 'reprogramming' || c.status == 'pending_approval';
+          return c.status == 'reprogramming' || c.status == 'pending_approval' || c.status == 'mutual_agreement_pending';
         }).toList();
 
         return Column(
@@ -296,22 +282,9 @@ class _SeccionCitas extends StatelessWidget {
       decoration: BoxDecoration(color: colorFondo, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
       child: Column(
         children: [
-          FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))]))
-          ),
+          FittedBox(fit: BoxFit.scaleDown, child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))]))),
           const SizedBox(height: 12),
-          Expanded(
-            child: citas.isEmpty
-                ? Center(
-                child: Text(
-                    esPendiente ? "No hay solicitudes pendientes." : "No tienes citas próximas.",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white54, fontFamily: 'Poppins', fontSize: 14)
-                )
-            )
-                : ListView.builder(padding: const EdgeInsets.only(bottom: 20), physics: const BouncingScrollPhysics(), itemCount: citas.length, itemBuilder: (ctx, i) => _CitaCard(item: citas[i], esPendiente: esPendiente)),
-          ),
+          Expanded(child: citas.isEmpty ? Center(child: Text(esPendiente ? "No hay solicitudes pendientes." : "No tienes citas próximas.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontFamily: 'Poppins', fontSize: 14))) : ListView.builder(padding: const EdgeInsets.only(bottom: 20), physics: const BouncingScrollPhysics(), itemCount: citas.length, itemBuilder: (ctx, i) => _CitaCard(item: citas[i], esPendiente: esPendiente))),
         ],
       ),
     );
@@ -322,8 +295,6 @@ class _CitaCard extends StatelessWidget {
   final CitaItem item;
   final bool esPendiente;
   const _CitaCard({required this.item, required this.esPendiente});
-
-  bool _isNet(String url) => url.startsWith('http');
 
   String _fechaAmigable(DateTime d) {
     const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -340,23 +311,7 @@ class _CitaCard extends StatelessWidget {
       final codigoParaMostrar = item.isOwner ? item.codigoOwner : item.codigoMatchy;
       final codigoParaValidar = item.isOwner ? item.codigoMatchy : item.codigoOwner;
       Navigator.push(context, MaterialPageRoute(builder: (_) => CitaDetalleScreen(
-        citaId: item.id,
-        lugarId: item.lugarId, // 🔥 PASAMOS EL ID CORRECTO
-        lugarNombre: item.lugarNombre,
-        lugarDireccion: item.lugarDireccion,
-        lugarFotoPortada: item.fotoLugar,
-        matchyNombre: item.nombreMostrar,
-        matchyFoto: item.fotoMostrar,
-        matchyUid: item.matchyUid,
-        matchyEdad: item.matchyEdad,
-        fecha: item.fechaTextoOriginal,
-        hora: item.horaTexto,
-        intencion: item.intencion,
-        preferencia: item.preferencia,
-        miCodigoCita: codigoParaMostrar,
-        codigoDelOtro: codigoParaValidar,
-        isOwner: item.isOwner,
-        citaDateTime: item.fechaSort,
+        citaId: item.id, lugarId: item.lugarId, lugarNombre: item.lugarNombre, lugarDireccion: item.lugarDireccion, lugarFotoPortada: item.fotoLugar, matchyNombre: item.nombreMostrar, matchyFoto: item.fotoMostrar, matchyUid: item.matchyUid, matchyEdad: item.matchyEdad, fecha: item.fechaTextoOriginal, hora: item.horaTexto, intencion: item.intencion, preferencia: item.preferencia, miCodigoCita: codigoParaMostrar, codigoDelOtro: codigoParaValidar, isOwner: item.isOwner, citaDateTime: item.fechaSort,
       )));
       return;
     }
@@ -370,7 +325,7 @@ class _CitaCard extends StatelessWidget {
       return;
     }
     if (item.reproByUid == myUid) {
-      _mostrarDialogoEspera(context, "ESPERANDO RESPUESTA", "Le enviaste una solicitud a ${item.nombreMostrar}.\nTe avisaremos cuando confirme.");
+      _mostrarDialogoEspera(context, "ESPERANDO RESPUESTA", "Le enviaste una solicitud a ${item.nombreMostrar}.");
     } else {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaAceptarScreen(citaId: item.id)));
     }
@@ -420,7 +375,6 @@ class _CitaCard extends StatelessWidget {
         } else {
           textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
         }
-      } else if (item.esUrgente) {
       } else {
         mostrarOverlay = true;
         if (item.status == 'pending_approval') {
@@ -445,12 +399,11 @@ class _CitaCard extends StatelessWidget {
         height: cardHeight,
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(20),
+          color: bgColor, borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
           border: (item.esUrgente || esAcuerdo || item.status == 'reprogramming' || (item.isPrivate && item.status == 'pending_approval'))
               ? Border.all(color: borderColor, width: 2)
-              : (textoBoton == "POR ACEPTAR" || textoBoton == "RESPONDER") ? Border.all(color: Colors.black, width: 1) : null,
+              : null,
         ),
         child: Row(
           children: [
@@ -458,56 +411,13 @@ class _CitaCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  ClipRRect(
-                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)),
-                      child: item.fotoLugar.isNotEmpty && _isNet(item.fotoLugar)
-                          ? ColorFiltered(
-                          colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                          child: Image.network(item.fotoLugar, fit: BoxFit.cover)
-                      )
-                          : Container(color: Colors.grey[900], child: const Icon(Icons.store, color: Colors.white24))
-                  ),
+                  ClipRRect(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), child: item.fotoLugar.isNotEmpty ? ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: Image.network(item.fotoLugar, fit: BoxFit.cover)) : Container(color: Colors.grey[900])),
                   Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
-                  Positioned(
-                    bottom: 10, left: 10, right: 5,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), maxLines: 1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))),
-                        const SizedBox(height: 2),
-                        FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))),
-                      ],
-                    ),
-                  ),
+                  Positioned(bottom: 10, left: 10, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))), Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))])),
                 ],
               ),
             ),
-            SizedBox(
-              width: cardHeight, height: cardHeight,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), child: ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter))),
-                  if (esAcuerdo)
-                    Container(
-                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
-                      child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: const Color(0xFF1565C0).withOpacity(0.9)), child: FittedBox(fit: BoxFit.scaleDown, child: Text(item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
-                    )
-                  else if (item.esUrgente)
-                    Container(
-                      decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
-                      child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.red.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("SIN CONFIRMAR", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
-                    )
-                  else if (item.isPrivate && item.status == 'pending_approval')
-                      Container(
-                        decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1B5E20).withOpacity(0.3)),
-                        child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.green.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("PRIVADA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0)))))),
-                      ),
-                  if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)), child: Center(child: _PulsingText(text: textoBoton, color: colorBoton)))
-                ],
-              ),
-            ),
+            SizedBox(width: cardHeight, height: cardHeight, child: Stack(fit: StackFit.expand, children: [ClipRRect(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), child: ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter))), if (esAcuerdo) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: const Color(0xFF1565C0).withOpacity(0.9)), child: FittedBox(fit: BoxFit.scaleDown, child: Text(item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))) else if (item.esUrgente) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.red.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("SIN CONFIRMAR", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))) else if (item.isPrivate && item.status == 'pending_approval') Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1B5E20).withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.green.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("PRIVADA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))), if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)), child: Center(child: _PulsingText(text: textoBoton, color: colorBoton)))]))
           ],
         ),
       ),

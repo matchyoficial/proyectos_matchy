@@ -1,5 +1,5 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
-// ✅ REPORTE DE INASISTENCIA (FIX: PREMIO DE RACHA EN BOTÓN VERDE)
+// ✅ REPORTE DE INASISTENCIA (FIX: PACTO AZUL CON GATILLO DE AUTO-SANCIÓN)
 // 🔥 CONFIGURACIÓN: Busca los comentarios con el emoji "🔥" para cambiar Tiempo y GPS.
 
 import 'dart:async';
@@ -34,15 +34,68 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   Timer? _timer;
   bool _isLoading = false;
   DateTime? _deadline;
+  StreamSubscription<DocumentSnapshot>? _citaListener; // 🔥 Escucha para el gatillo
+  bool _sancionProcesada = false;
 
   @override
   void initState() {
     super.initState();
     _cargarDatosCita();
+    _iniciarEscuchaGatillo();
   }
 
   @override
-  void dispose() { _timer?.cancel(); super.dispose(); }
+  void dispose() {
+    _timer?.cancel();
+    _citaListener?.cancel();
+    super.dispose();
+  }
+
+  // 🔥 ESCUCHA ACTIVA: Detecta el momento exacto en que el pacto se cierra
+  void _iniciarEscuchaGatillo() {
+    _citaListener = FirebaseFirestore.instance
+        .collection('citas')
+        .doc(widget.citaId)
+        .snapshots()
+        .listen((snap) {
+      if (snap.exists && snap.data()!['status'] == 'mutual_agreement_finish') {
+        _ejecutarAutoSancionAcuerdo();
+      }
+    });
+  }
+
+  // 🔥 AUTO-SANCIÓN: Cada app se descuenta sus propios 10 puntos
+  Future<void> _ejecutarAutoSancionAcuerdo() async {
+    if (_sancionProcesada) return;
+    _sancionProcesada = true;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final userSnap = await tx.get(userRef);
+        if (userSnap.exists) {
+          int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+          tx.update(userRef, {'confiabilidad': (score - 10).clamp(0, 100)});
+        }
+      });
+
+      if (mounted) {
+        _mostrarDialogoMatchy(
+          titulo: "ACUERDO COMPLETADO",
+          mensaje: "Pacto cerrado. Ambos han aceptado la responsabilidad. Se han descontado 10 puntos de tu confiabilidad.",
+          icono: Icons.handshake_rounded,
+          color: const Color(0xFF64B5F6),
+          botonTexto: "ENTENDIDO",
+          onCerrar: () => HomeShell.go(context, index: 1),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error auto-sanción: $e");
+    }
+  }
 
   DateTime _parsearFechaManual(String fStr, String hStr) {
     try {
@@ -71,7 +124,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
 
       // =======================================================================
       // 🔥🔥🔥 CONFIGURACIÓN DE TIEMPO DE ESPERA 🔥🔥🔥
-      // Cambia 'minutes' para pruebas rápidas. Producción: hours: 2
+      // Producción: hours: 2
       // =======================================================================
       _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 5));
       // =======================================================================
@@ -88,7 +141,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       if (diff.isNegative) {
         _timer?.cancel();
         if (mounted) setState(() => _tiempoRestante = "00:00:00");
-        if (!_isLoading) _ejecutarCastigoAutomatico(); // ⏳ EL JUEZ
+        if (!_isLoading) _ejecutarCastigoAutomatico();
       } else {
         final h = diff.inHours.toString().padLeft(2, '0');
         final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
@@ -98,7 +151,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     });
   }
 
-  // 🔹 WIDGET DE DIÁLOGO MATCHY STYLE
   void _mostrarDialogoMatchy({
     required String titulo,
     required String mensaje,
@@ -128,7 +180,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     );
   }
 
-  // 🔹 1. BOTÓN VERDE (GPS - EL ESCUDO INFALIBLE + PREMIO DE RACHA)
   Future<void> _verificarUbicacionYReclamar() async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -151,10 +202,8 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       double dist = Geolocator.distanceBetween(pos.latitude, pos.longitude, lat, lng);
 
-      // LÓGICA DE VALIDACIÓN GPS
       bool gpsAprobado = false;
       if (kModoPruebasGPS) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("🛠️ TEST: Distancia ${dist.toInt()}m (Aprobado Fake)."), backgroundColor: Colors.blue));
         gpsAprobado = true;
       } else {
         if (dist <= kRadioToleranciaMetros) {
@@ -165,24 +214,21 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       }
 
       if (gpsAprobado) {
-        // 🔥 TRANSACCIÓN DE SEGURIDAD Y PREMIO
         await FirebaseFirestore.instance.runTransaction((tx) async {
           final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid); // Referencia al usuario
+          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
 
           final doc = await tx.get(citaRef);
           if (!doc.exists) return;
           final cData = doc.data()!;
           bool isOwner = cData['ownerUid'] == user.uid;
 
-          // 1. Marca SAFE_GPS = TRUE en la Cita
           if (isOwner) {
             tx.update(citaRef, {'ownerSafeGPS': true, 'status': 'dispute'});
           } else {
             tx.update(citaRef, {'matchySafeGPS': true, 'status': 'dispute'});
           }
 
-          // 2. 🔥 PREMIO: Aumentar racha del usuario (+1 punto de racha exitosa)
           tx.update(userRef, {
             'citas_consecutivas_exitosas': FieldValue.increment(1),
           });
@@ -192,7 +238,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
           _mostrarDialogoMatchy(
             titulo: "UBICACIÓN CONFIRMADA",
             mensaje: "¡Excelente! El GPS ha verificado que estás en el lugar correcto.\n\n"
-                "Gracias por tu puntualidad y compromiso. Has asegurado tu asistencia y serás premiado con puntos de racha positiva.\n\n"
+                "Has asegurado tu asistencia y serás premiado con racha positiva.\n\n"
                 "Ahora solo espera a tu Matchy.",
             icono: Icons.check_circle_outline,
             color: const Color(0xFF00E676),
@@ -206,21 +252,16 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  // 🔹 2. BOTÓN AZUL (PACTO DE SANGRE)
+  // 🔹 BOTÓN AZUL (NUEVA LÓGICA DE ESTADOS)
   Future<void> _gestionarBotonAzul() async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
     try {
-      bool pactoCerrado = false;
-
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
-        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-
         final citaSnap = await tx.get(citaRef);
-        final userSnap = await tx.get(userRef);
         if (!citaSnap.exists) throw "Error lectura";
         final cData = citaSnap.data()!;
 
@@ -230,58 +271,38 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
             : (cData['ownerPropusoAcuerdo'] == true);
 
         if (otroPropuso) {
-          // 🔥 PACTO CERRADO
-          pactoCerrado = true;
-          int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-          tx.update(userRef, {'confiabilidad': (score - 10).clamp(0, 100)});
-
+          // 🔥 SE CIERRA EL PACTO: Estado Finish dispara el auto-castigo
           tx.update(citaRef, {
-            'status': 'finished',
-            'resultado': 'mutual_agreement',
+            'status': 'mutual_agreement_finish',
+            soyOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo': true,
             'finalizedAt': FieldValue.serverTimestamp()
           });
         } else {
-          // 🔥 SOLO PROPUESTA
-          if (soyOwner) {
-            tx.update(citaRef, {'ownerPropusoAcuerdo': true});
-          } else {
-            tx.update(citaRef, {'matchyPropusoAcuerdo': true});
-          }
+          // 🔥 PRIMERA PROPUESTA: Estado Pending
+          tx.update(citaRef, {
+            'status': 'mutual_agreement_pending',
+            soyOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo': true,
+          });
         }
       });
 
-      if (mounted) {
-        if (pactoCerrado) {
-          _mostrarDialogoMatchy(
-            titulo: "ACUERDO COMPLETADO",
-            mensaje: "Se ha confirmado el mutuo acuerdo para cancelar la cita.\n\n"
-                "Ambos usuarios han aceptado la responsabilidad. Se han descontado 10 puntos de tu confiabilidad, pero tu historial de bloqueos permanece limpio.\n\n"
-                "¡Gracias por resolverlo pacíficamente!",
-            icono: Icons.handshake_rounded,
-            color: const Color(0xFF64B5F6),
-            botonTexto: "ENTENDIDO",
-            onCerrar: () => HomeShell.go(context, index: 1),
-          );
-        } else {
-          _mostrarDialogoMatchy(
-            titulo: "PROPUESTA ENVIADA",
-            mensaje: "Has propuesto un acuerdo para no asistir.\n\n"
-                "⚠️ IMPORTANTE: Esto NO te salva todavía.\n"
-                "Tu Matchy DEBE aceptar también (marcando azul) antes de que el tiempo acabe.\n\n"
-                "👉 Ve al chat y dile que acepte el acuerdo o ambos perderán 20 puntos y serán bloqueados.",
-            icono: Icons.info_outline,
-            color: const Color(0xFF64B5F6),
-            botonTexto: "ACEPTAR",
-            onCerrar: () => HomeShell.go(context, index: 1),
-          );
-        }
+      // El diálogo de propuesta se muestra aquí. El diálogo de finalización lo muestra el listener.
+      final docCheck = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
+      if (docCheck.data()?['status'] == 'mutual_agreement_pending' && mounted) {
+        _mostrarDialogoMatchy(
+          titulo: "PROPUESTA ENVIADA",
+          mensaje: "Has propuesto un acuerdo. Si tu Matchy acepta, ambos perderán 10 puntos de confiabilidad.",
+          icono: Icons.info_outline,
+          color: const Color(0xFF64B5F6),
+          botonTexto: "ACEPTAR",
+          onCerrar: () => HomeShell.go(context, index: 1),
+        );
       }
 
     } catch (e) { if (mounted) _mostrarError("$e"); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  // 🔹 3. BOTÓN ROJO (CULPABLE)
   Future<void> _ejecutarSentencia(String tipo) async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -301,7 +322,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
             tx.update(userRef, {
               'confiabilidad': (score - 20).clamp(0, 100),
               'strikes': newS,
-              'citas_consecutivas_exitosas': 0, // 🔥 BORRADO DE RACHA
+              'citas_consecutivas_exitosas': 0,
               'userStatus': newS >= 5 ? 'blocked_permanent' : 'blocked',
               'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
             });
@@ -312,13 +333,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       if (mounted) {
         _mostrarDialogoMatchy(
           titulo: "REPORTE DE SANCIÓN",
-          mensaje: "Has admitido tu inasistencia. Se han aplicado las siguientes sanciones:\n\n"
-              "📉 -20 Puntos de confiabilidad.\n"
-              "📉 Tu Racha se ha reiniciado a 0.\n"
-              "⚠️ +1 Strike en tu historial.\n\n"
-              "CONSECUENCIA:\n"
-              "Tu cuenta ha sido BLOQUEADA TEMPORALMENTE. La duración del bloqueo aumenta con cada Strike acumulado.\n\n"
-              "🚫 ¡OJO! Si llegas a 5 Strikes, el bloqueo será PERMANENTE e irreversible.",
+          mensaje: "Has admitido tu inasistencia. Se han aplicado las sanciones correspondientes.",
           icono: Icons.warning_amber_rounded,
           color: const Color(0xFFFF5252),
           botonTexto: "ENTENDIDO",
@@ -329,7 +344,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  // ⏳ EL JUEZ (TIMER 00:00:00)
   Future<void> _ejecutarCastigoAutomatico() async {
     setState(() => _isLoading = true);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -339,24 +353,19 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
         final doc = await tx.get(citaRef);
-        if (!doc.exists) return; // Si la cita no existe, salimos
+        if (!doc.exists) return;
         final data = doc.data()!;
 
-        // 1. REVISIÓN DE SEGURIDAD
         bool soyOwner = data['ownerUid'] == myUid;
         bool safeGPS = soyOwner ? (data['ownerSafeGPS'] == true) : (data['matchySafeGPS'] == true);
-        bool acuerdoCerrado = data['resultado'] == 'mutual_agreement';
-        bool yaFinalizada = data['status'] == 'finished' || data['status'] == 'dispute';
+        bool pactoCerrado = data['status'] == 'mutual_agreement_finish'; // 🔥 RESPETO AL PACTO
+        bool yaFinalizada = data['status'] == 'finished' || data['status'] == 'dispute' || pactoCerrado;
 
         if (yaFinalizada) return;
 
-        // 2. SENTENCIA
         if (safeGPS) {
           tx.update(citaRef, {'status': 'dispute'});
-        } else if (acuerdoCerrado) {
-          // No castigo
         } else {
-          // ❌ CULPABLE: CASTIGO AUTOMÁTICO
           final userRef = FirebaseFirestore.instance.collection('users').doc(myUid);
           final userSnap = await tx.get(userRef);
 
@@ -368,28 +377,17 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
             tx.update(userRef, {
               'confiabilidad': (score - 20).clamp(0, 100),
               'strikes': newS,
-              'citas_consecutivas_exitosas': 0, // 🔥 BORRADO DE RACHA
+              'citas_consecutivas_exitosas': 0,
               'userStatus': newS >= 5 ? 'blocked_permanent' : 'blocked',
               'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
             });
           }
-
           tx.update(citaRef, {'status': 'finished', 'resultado': 'expired_timeout'});
         }
       });
-
       if (mounted) HomeShell.go(context, index: 1);
-
-    } catch (e) {
-      debugPrint("❌ JUEZ ERROR: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("Error en castigo automático: $e"), backgroundColor: Colors.red)
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (e) { debugPrint("❌ JUEZ ERROR: $e"); }
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
   void _mostrarError(String msg) {
@@ -412,12 +410,9 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                   const SizedBox(height: 20),
                   const Icon(Icons.timer_off_outlined, color: Colors.redAccent, size: 50),
                   const Text("TIEMPO RESTANTE", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
-
                   const SizedBox(height: 15),
                   Container(height: 90, width: double.infinity, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2)), child: FittedBox(fit: BoxFit.scaleDown, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(_tiempoRestante, style: const TextStyle(color: Color(0xFFFF5252), fontSize: 50, fontFamily: 'monospace', fontWeight: FontWeight.w900, letterSpacing: 2.0))))),
-
                   const SizedBox(height: 25),
-                  // GUÍA DE CONSECUENCIAS
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -427,16 +422,15 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                       children: const [
                         Text("GUÍA DE CONSECUENCIAS", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
                         SizedBox(height: 12),
-                        _GuiaItem(icon: Icons.location_pin, color: Color(0xFF00E676), text: "ESTOY AQUÍ: Validación por GPS. Protege tus puntos al 100%, asegura tu racha y evita sanciones."),
+                        _GuiaItem(icon: Icons.location_pin, color: Color(0xFF00E676), text: "ESTOY AQUÍ: Validación por GPS. Protege tus puntos al 100% y asegura tu racha."),
                         SizedBox(height: 10),
-                        _GuiaItem(icon: Icons.handshake_rounded, color: Color(0xFF64B5F6), text: "ACUERDO MUTUO: Requiere que AMBOS acepten (-10 Pts). ⚠️ Si solo uno (o ninguno) confirma, se aplicará: Bloqueo Temporal, -20 Pts y Borrado de Racha."),
+                        _GuiaItem(icon: Icons.handshake_rounded, color: Color(0xFF64B5F6), text: "ACUERDO MUTUO: Requiere que AMBOS acepten (-10 Pts). ⚠️ Si solo uno (o ninguno) confirma, se aplicará la sanción máxima por tiempo."),
                         SizedBox(height: 10),
-                        _GuiaItem(icon: Icons.cancel, color: Color(0xFFFF5252), text: "ASUMO MI FALTA: Cancelación unilateral. -20 Pts + Strike + Borrado de Racha. (Genera BLOQUEO TEMPORAL)."),
+                        _GuiaItem(icon: Icons.cancel, color: Color(0xFFFF5252), text: "ASUMO MI FALTA: Cancelación unilateral. -20 Pts + Strike + Borrado de Racha."),
                       ],
                     ),
                   ),
                   const SizedBox(height: 25),
-
                   if (_isLoading) const Padding(padding: EdgeInsets.only(top: 20), child: CircularProgressIndicator(color: Colors.white)) else ...[
                     _SentenciaButton(text: "YO SÍ ASISTÍ, MI MATCHY NO", icon: Icons.person_pin_circle_rounded, gradient: [const Color(0xFF00E676), const Color(0xFF00C853)], onTap: _verificarUbicacionYReclamar),
                     const SizedBox(height: 16),
