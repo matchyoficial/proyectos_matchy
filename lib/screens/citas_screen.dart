@@ -1,8 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
 // ✅ PANTALLA CITAS BLINDADA (VISUAL LIMPIA)
-// 🔥 FIX: "Arriba" todas negras. "Abajo" verdes solo si esperan aprobación.
-// 🔥 FIX: Eliminado el letrero fijo "PRIVADA".
-// 🔥 Mantiene: Lógica de reloj, acuerdos y urgencias intacta.
+// 🔥 FIX: Eliminado el letrero fijo "REPROGRAMADA" (Solo queda el color morado).
+// 🔥 Mantiene: Jerarquía de colores y lógica funcional.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -398,7 +397,7 @@ class _CitaCard extends StatelessWidget {
     Color borderColor = Colors.transparent;
     ColorFilter? imgFilter;
 
-    // 🔥 JERARQUÍA DE COLORES: AZUL > ROJO > VERDE (Solo pendiente) > NEGRO
+    // 🔥 JERARQUÍA DE COLORES: AZUL > ROJO > MORADO > VERDE > NEGRO
 
     if (esAcuerdo) {
       // 1. AZUL (Prioridad Máxima - Acuerdo)
@@ -410,13 +409,17 @@ class _CitaCard extends StatelessWidget {
       bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
       borderColor = const Color(0xFFFF5252);
       imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
+    } else if (item.status == 'reprogramming') {
+      // 3. MORADO (Reprogramación) - Solo color
+      bgColor = const Color(0xFF6A1B9A).withOpacity(0.3);
+      borderColor = Colors.purpleAccent;
+      imgFilter = ColorFilter.mode(Colors.purpleAccent.withOpacity(0.4), BlendMode.srcATop);
     } else if (item.isPrivate && item.status == 'pending_approval') {
-      // 3. VERDE (Privada PENDIENTE DE APROBACIÓN) - Solo abajo y solo si espera respuesta
+      // 4. VERDE (Privada PENDIENTE) - Solo abajo
       bgColor = const Color(0xFF1B5E20).withOpacity(0.3);
       borderColor = Colors.greenAccent;
       imgFilter = ColorFilter.mode(Colors.greenAccent.withOpacity(0.4), BlendMode.srcATop);
     }
-    // SI NO CUMPLE NINGUNA, SE QUEDA NEGRO (Arriba, Confirmada, etc.)
 
     if (esPendiente) {
       if (esAcuerdo) {
@@ -455,7 +458,7 @@ class _CitaCard extends StatelessWidget {
           color: bgColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-          border: (item.esUrgente || esAcuerdo || (item.isPrivate && item.status == 'pending_approval'))
+          border: (item.esUrgente || esAcuerdo || item.status == 'reprogramming' || (item.isPrivate && item.status == 'pending_approval'))
               ? Border.all(color: borderColor, width: 2)
               : (textoBoton == "POR ACEPTAR" || textoBoton == "RESPONDER") ? Border.all(color: Colors.black, width: 1) : null,
         ),
@@ -575,10 +578,34 @@ class _CitaCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
-                  // 🚫 AQUÍ SE ELIMINÓ EL LETRERO FIJO DE "PRIVADA"
+                    )
+                  else if (item.isPrivate && item.status == 'pending_approval')
+                      Container(
+                        decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1B5E20).withOpacity(0.3)),
+                        child: Center(
+                          child: Transform.rotate(
+                            angle: -0.2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.white, width: 2),
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: Colors.green.withOpacity(0.8)
+                              ),
+                              child: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  "PRIVADA",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
-                  // OVERLAY CON TEXTO PULSANTE (Para estados pendientes)
+                  // OVERLAY CON TEXTO PULSANTE (Para estados pendientes que no son urgentes puros)
                   if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(
                     decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
                     child: Center(

@@ -2,6 +2,7 @@
 // ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL)
 // 🔥 FIX 1: Lógica "Sede-Céntrica" para GPS (Evita ceros).
 // 🔥 FIX 2: Overflow corregido en el selector de sedes (Lista con scroll).
+// 🔥 FIX 3: Texto informativo optimizado (Justificación corregida para móvil).
 // 🔥 UI: Diseño Premium y responsive.
 
 import 'dart:io';
@@ -464,29 +465,30 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 
                       const SizedBox(height: 30),
 
+                      // 🔥 FIX DE TEXTO INFORMATIVO (JUSTIFICACIÓN CORREGIDA)
                       Container(
                         margin: const EdgeInsets.symmetric(horizontal: 24),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.white24, width: 1),
+                          color: Colors.white.withOpacity(0.08), // Un poco más sutil
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white12, width: 1),
                         ),
-                        child: const Row(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 28),
-                            SizedBox(width: 15),
+                            const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white70, size: 24),
+                            const SizedBox(width: 14),
                             Expanded(
                               child: Text(
                                 "Se enviará una notificación a tu Matchy. Hablen por chat antes de fijar la cita para evitar cancelaciones y penalizaciones.",
-                                textAlign: TextAlign.justify,
-                                style: TextStyle(
+                                textAlign: TextAlign.start, // 🔥 Cambio a START para evitar huecos horribles
+                                style: const TextStyle(
                                     color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14.9,
+                                    fontWeight: FontWeight.w500, // Menos pesado se lee mejor
+                                    fontSize: 14,
                                     fontFamily: 'Poppins',
-                                    height: 1.3
+                                    height: 1.4 // Más aire entre líneas
                                 ),
                               ),
                             ),
