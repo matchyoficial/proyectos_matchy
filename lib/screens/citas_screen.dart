@@ -1,7 +1,8 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (JERARQUÍA VISUAL CORREGIDA: AZUL > ROJO)
-// 🔥 FIX: Si hay propuesta de acuerdo, la tarjeta es AZUL aunque la hora haya pasado.
-// 🔥 Mantiene: Arquitectura Split & Merge + Reloj Automático.
+// ✅ PANTALLA CITAS BLINDADA (VISUAL LIMPIA)
+// 🔥 FIX: "Arriba" todas negras. "Abajo" verdes solo si esperan aprobación.
+// 🔥 FIX: Eliminado el letrero fijo "PRIVADA".
+// 🔥 Mantiene: Lógica de reloj, acuerdos y urgencias intacta.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -42,6 +43,7 @@ class CitaItem {
   final bool esUrgente;
   final bool tengoPropuestaAcuerdo;
   final bool tengoSolicitudAcuerdo;
+  final bool isPrivate;
 
   const CitaItem({
     required this.id,
@@ -65,10 +67,11 @@ class CitaItem {
     required this.esUrgente,
     required this.tengoPropuestaAcuerdo,
     required this.tengoSolicitudAcuerdo,
+    required this.isPrivate,
   });
 }
 
-// ⏱️ RELOJ "MARCAPASOS": Emite una señal cada 30 segundos
+// ⏱️ RELOJ "MARCAPASOS"
 final relojProvider = StreamProvider.autoDispose<int>((ref) {
   return Stream.periodic(const Duration(seconds: 30), (i) => i);
 });
@@ -150,6 +153,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       esUrgente: urgente,
       tengoPropuestaAcuerdo: yoPropuse,
       tengoSolicitudAcuerdo: elOtroPropuso,
+      isPrivate: data['isPrivate'] == true,
     );
   } catch (e) {
     return null;
@@ -389,27 +393,33 @@ class _CitaCard extends StatelessWidget {
     bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
     const double cardHeight = 125.0;
 
-    // Colores base (Normal)
+    // Colores base (Normal / Negro)
     Color bgColor = const Color(0xFF1A1A1A);
     Color borderColor = Colors.transparent;
     ColorFilter? imgFilter;
 
-    // 🔥 JERARQUÍA INVERTIDA: PRIMERO VALIDAMOS EL ACUERDO (AZUL)
+    // 🔥 JERARQUÍA DE COLORES: AZUL > ROJO > VERDE (Solo pendiente) > NEGRO
+
     if (esAcuerdo) {
-      // 🔵 MODO AZUL (PRIORIDAD ALTA)
+      // 1. AZUL (Prioridad Máxima - Acuerdo)
       bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
       borderColor = const Color(0xFF448AFF);
       imgFilter = ColorFilter.mode(const Color(0xFF448AFF).withOpacity(0.5), BlendMode.srcATop);
     } else if (item.esUrgente) {
-      // 🔴 MODO ROJO (Solo si no hay acuerdo)
+      // 2. ROJO (Urgencia)
       bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
       borderColor = const Color(0xFFFF5252);
       imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
+    } else if (item.isPrivate && item.status == 'pending_approval') {
+      // 3. VERDE (Privada PENDIENTE DE APROBACIÓN) - Solo abajo y solo si espera respuesta
+      bgColor = const Color(0xFF1B5E20).withOpacity(0.3);
+      borderColor = Colors.greenAccent;
+      imgFilter = ColorFilter.mode(Colors.greenAccent.withOpacity(0.4), BlendMode.srcATop);
     }
+    // SI NO CUMPLE NINGUNA, SE QUEDA NEGRO (Arriba, Confirmada, etc.)
 
     if (esPendiente) {
       if (esAcuerdo) {
-        // PRIORIDAD 1: Mostrar etiqueta de Acuerdo
         mostrarOverlay = true;
         if (item.tengoPropuestaAcuerdo) {
           textoBoton = "ESPERANDO ACUERDO"; colorBoton = Colors.white;
@@ -417,9 +427,8 @@ class _CitaCard extends StatelessWidget {
           textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
         }
       } else if (item.esUrgente) {
-        // PRIORIDAD 2: Urgente (No lleva pulsing text porque tiene la etiqueta roja fija)
+        // Nada, el marco rojo es suficiente
       } else {
-        // PRIORIDAD 3: Reprogramación Normal
         mostrarOverlay = true;
         if (item.status == 'pending_approval') {
           if (item.isOwner) {
@@ -446,7 +455,7 @@ class _CitaCard extends StatelessWidget {
           color: bgColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-          border: (item.esUrgente || esAcuerdo)
+          border: (item.esUrgente || esAcuerdo || (item.isPrivate && item.status == 'pending_approval'))
               ? Border.all(color: borderColor, width: 2)
               : (textoBoton == "POR ACEPTAR" || textoBoton == "RESPONDER") ? Border.all(color: Colors.black, width: 1) : null,
         ),
@@ -515,9 +524,8 @@ class _CitaCard extends StatelessWidget {
                     ),
                   ),
 
-                  // 🔥 LOGICA DE ETIQUETAS: AZUL MATA ROJO
+                  // 🔥 ETIQUETAS DE ESTADO (OVERLAYS FIJOS)
 
-                  // ETIQUETA AZUL (ACUERDO)
                   if (esAcuerdo)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)),
@@ -543,7 +551,6 @@ class _CitaCard extends StatelessWidget {
                         ),
                       ),
                     )
-                  // ETIQUETA ROJA (SIN CONFIRMAR) - Solo si NO es acuerdo
                   else if (item.esUrgente)
                     Container(
                       decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)),
@@ -569,8 +576,9 @@ class _CitaCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  // 🚫 AQUÍ SE ELIMINÓ EL LETRERO FIJO DE "PRIVADA"
 
-                  // OVERLAY CON TEXTO PULSANTE (Solo si no es urgente "puro")
+                  // OVERLAY CON TEXTO PULSANTE (Para estados pendientes)
                   if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(
                     decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)),
                     child: Center(
