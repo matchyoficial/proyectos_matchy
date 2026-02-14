@@ -819,7 +819,7 @@ class _InfoSheet extends StatelessWidget {
                       gradient: [const Color(0xFFB71C1C).withOpacity(0.2), Colors.black45],
                       borderColor: Colors.redAccent,
                       content: [
-                        _buildBullet("Si cancelas una cita faltando menos de 12 horas o dejas plantado a tu Matchy, recibes un Strike ❌."),
+                        _buildBullet("Si cancelas una cita o dejas plantado a tu Matchy, recibes un Strike ❌."),
                         const SizedBox(height: 10),
                         _buildStrikeRow("1 Strike", "5 Días de Bloqueo"),
                         _buildStrikeRow("2 Strikes", "10 Días de Bloqueo"),
