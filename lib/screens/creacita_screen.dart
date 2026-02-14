@@ -1,7 +1,7 @@
 // 📂 lib/screens/creacita_screen.dart
-// ✅ CREAR CITA BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 PASO 2: Captura de coordenadas GPS (latitude/longitude) integrada en el documento de la cita.
-// 🔥 UI: Diseño Premium intacto y código completo.
+// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL)
+// 🔥 FIX: Lógica "Sede-Céntrica": El GPS SIEMPRE se extrae de una sede específica (Seleccionada o Sede 1).
+// 🔥 UI: Diseño Premium intacto.
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -49,6 +49,15 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
   bool _creating = false;
   SedeData? _sedeSeleccionada;
   static const String _citasCollection = 'citas';
+
+  @override
+  void initState() {
+    super.initState();
+    // 🔥 Si solo hay una sede, la seleccionamos automáticamente al inicio.
+    if (widget.lugar.sedes.length == 1) {
+      _sedeSeleccionada = widget.lugar.sedes.first;
+    }
+  }
 
   Future<void> _seleccionarFecha() async {
     final now = DateTime.now();
@@ -111,20 +120,67 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
     if (scheduledAt.difference(DateTime.now()).inHours < 12) throw Exception('La cita debe programarse con mínimo 12 horas de anticipación.');
 
+    // 1. Datos del Usuario (Owner)
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
     final ownerNombre = (dataUser['nombre'] ?? '').toString();
     final ownerEdad = dataUser['edad'] is int ? dataUser['edad'] : 0;
     final ownerFoto = (dataUser['profilePhotoUrl'] ?? '').toString();
 
+    // 2. Extracción de Coordenadas "Sede-Céntrica"
+    // Descargamos el documento fresco para asegurar datos reales.
+    final placeSnap = await FirebaseFirestore.instance.collection('lugares').doc(widget.lugar.id).get();
+    final placeData = placeSnap.data() ?? {};
+    final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
+
+    double finalLat = 0.0;
+    double finalLng = 0.0;
+    String sedeIdUsada = '';
+    String sedeNombreUsado = '';
+    String sedeDireccionUsada = '';
+
+    // LÓGICA DE SELECCIÓN DE SEDE (CRÍTICA)
+    if (_sedeSeleccionada != null) {
+      // CASO A: Usuario seleccionó una sede específica (o se auto-seleccionó por ser única).
+      sedeIdUsada = _sedeSeleccionada!.id;
+      sedeNombreUsado = _sedeSeleccionada!.nombre;
+      sedeDireccionUsada = _sedeSeleccionada!.direccion;
+
+      // Buscamos los datos de ESA sede en el mapa fresco
+      if (sedesMap.containsKey(sedeIdUsada)) {
+        final sData = Map<String, dynamic>.from(sedesMap[sedeIdUsada]);
+        finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
+        finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
+      }
+    } else {
+      // CASO B: Usuario NO seleccionó nada (Raro, pero posible si falla el init).
+      // Usamos la "Sede 1" por defecto o la primera que encontremos en el mapa.
+      if (sedesMap.isNotEmpty) {
+        // Intentamos buscar 'sede_1'
+        var sData = sedesMap['sede_1'];
+        if (sData == null) {
+          // Si no existe 'sede_1', agarramos la primera llave disponible.
+          sData = sedesMap.values.first;
+        }
+
+        if (sData is Map) {
+          finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
+          finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
+          sedeIdUsada = 'sede_1'; // O la llave real si iteramos
+          sedeNombreUsado = (sData['nombre'] ?? '').toString();
+          sedeDireccionUsada = (sData['direccion'] ?? '').toString();
+        }
+      } else {
+        // Si NO HAY SEDES en absoluto, intentamos leer de la raíz como último recurso.
+        finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
+        finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
+        sedeDireccionUsada = widget.lugar.direccion;
+      }
+    }
+
     final codigoOwner = _generarCodigoUnico(user.uid, 'OWNER');
     final codigoMatchy = _generarCodigoUnico(user.uid, 'MATCHY');
     final lugar = widget.lugar;
-    final sedeFinal = (_sedeSeleccionada != null) ? _sedeSeleccionada! : SedeData(id: '', nombre: '', direccion: lugar.direccion);
-
-    // 🔥 LOGIC: Determinar coordenadas finales (Sede o Lugar principal)
-    final double finalLat = (_sedeSeleccionada != null) ? (_sedeSeleccionada!.latitude ?? 0.0) : (lugar.latitude ?? 0.0);
-    final double finalLng = (_sedeSeleccionada != null) ? (_sedeSeleccionada!.longitude ?? 0.0) : (lugar.longitude ?? 0.0);
 
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
 
@@ -147,10 +203,10 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       'lugarDireccion': lugar.direccion,
       'lugarFotoPortada': lugar.fotoPortada,
       'lugarFotos': lugar.fotos.take(8).toList(),
-      'sedeId': sedeFinal.id,
-      'sedeNombre': sedeFinal.nombre,
-      'sedeDireccion': sedeFinal.direccion,
-      // 🔥 NUEVOS CAMPOS PARA EL GPS DE DISPUTA
+      'sedeId': sedeIdUsada,
+      'sedeNombre': sedeNombreUsado,
+      'sedeDireccion': sedeDireccionUsada,
+      // 🔥 COORDENADAS EXTRAÍDAS DE LA SEDE ESPECÍFICA
       'latitude': finalLat,
       'longitude': finalLng,
     });

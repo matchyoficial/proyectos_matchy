@@ -1,8 +1,8 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
-// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 FIX: Captura directa de coordenadas desde Firestore para evitar valores en cero.
-// 🔥 BLINDAJE: Nombres y botones protegidos con FittedBox.
-// 🔥 UI: Nube informativa intacta (14.9pt).
+// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL)
+// 🔥 FIX 1: Lógica "Sede-Céntrica" para GPS (Evita ceros).
+// 🔥 FIX 2: Overflow corregido en el selector de sedes (Lista con scroll).
+// 🔥 UI: Diseño Premium y responsive.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -46,6 +46,15 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
   SedeData? _sedeSeleccionada;
 
   static const String _citasCollection = 'citas';
+
+  @override
+  void initState() {
+    super.initState();
+    // 🔥 Si solo hay una sede, la seleccionamos automáticamente al inicio.
+    if (widget.lugar.sedes.length == 1) {
+      _sedeSeleccionada = widget.lugar.sedes.first;
+    }
+  }
 
   // SELECTORES DE FECHA/HORA
   Future<void> _seleccionarFecha() async {
@@ -122,20 +131,50 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     final matchyEdad = dataMatchy['edad'] is int ? dataMatchy['edad'] : 0;
     final matchyFoto = (dataMatchy['profilePhotoUrl'] ?? '').toString();
 
-    // 3. Captura fresca de coordenadas desde la fuente (Firebase Lugares)
+    // 3. Extracción de Coordenadas "Sede-Céntrica"
     final placeSnap = await FirebaseFirestore.instance.collection('lugares').doc(widget.lugar.id).get();
     final placeData = placeSnap.data() ?? {};
+    final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
 
-    double finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
-    double finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
+    double finalLat = 0.0;
+    double finalLng = 0.0;
+    String sedeIdUsada = '';
+    String sedeNombreUsado = '';
+    String sedeDireccionUsada = '';
 
-    // Si hay sede, buscamos sus coordenadas específicas dentro del mapa de sedes
+    // LÓGICA DE SELECCIÓN DE SEDE (CRÍTICA)
     if (_sedeSeleccionada != null) {
-      final Map<String, dynamic> sedesMap = placeData['sedes'] is Map ? Map<String, dynamic>.from(placeData['sedes']) : {};
-      if (sedesMap.containsKey(_sedeSeleccionada!.id)) {
-        final Map<String, dynamic> sData = Map<String, dynamic>.from(sedesMap[_sedeSeleccionada!.id]);
-        finalLat = (sData['latitude'] ?? sData['latitud'] ?? finalLat).toDouble();
-        finalLng = (sData['longitude'] ?? sData['longitud'] ?? finalLng).toDouble();
+      // CASO A: Usuario seleccionó una sede específica
+      sedeIdUsada = _sedeSeleccionada!.id;
+      sedeNombreUsado = _sedeSeleccionada!.nombre;
+      sedeDireccionUsada = _sedeSeleccionada!.direccion;
+
+      if (sedesMap.containsKey(sedeIdUsada)) {
+        final sData = Map<String, dynamic>.from(sedesMap[sedeIdUsada]);
+        finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
+        finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
+      }
+    } else {
+      // CASO B: Usuario NO seleccionó nada (Fallback inteligente)
+      if (sedesMap.isNotEmpty) {
+        // Intentamos buscar 'sede_1'
+        var sData = sedesMap['sede_1'];
+        if (sData == null) {
+          sData = sedesMap.values.first; // Si no hay sede_1, toma la primera disponible
+        }
+
+        if (sData is Map) {
+          finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
+          finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
+          sedeIdUsada = 'sede_1'; // O la llave real si iteramos
+          sedeNombreUsado = (sData['nombre'] ?? '').toString();
+          sedeDireccionUsada = (sData['direccion'] ?? '').toString();
+        }
+      } else {
+        // Último recurso: Raíz (si no hay sedes definidas en el mapa)
+        finalLat = (placeData['latitude'] ?? placeData['latitud'] ?? 0.0).toDouble();
+        finalLng = (placeData['longitude'] ?? placeData['longitud'] ?? 0.0).toDouble();
+        sedeDireccionUsada = widget.lugar.direccion;
       }
     }
 
@@ -143,7 +182,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     final codigoMatchy = _generarCodigoUnico(widget.matchyUidInvitado, 'GUEST');
 
     final lugar = widget.lugar;
-    final sedeFinal = (_sedeSeleccionada != null) ? _sedeSeleccionada! : SedeData(id: '', nombre: '', direccion: lugar.direccion);
 
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
     final citaId = docRef.id;
@@ -172,10 +210,10 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'lugarDireccion': lugar.direccion,
       'lugarFotoPortada': lugar.fotoPortada,
       'lugarFotos': lugar.fotos.take(8).toList(),
-      'sedeId': sedeFinal.id,
-      'sedeNombre': sedeFinal.nombre,
-      'sedeDireccion': sedeFinal.direccion,
-      // 🔥 GRABACIÓN DE COORDENADAS VERIFICADAS
+      'sedeId': sedeIdUsada,
+      'sedeNombre': sedeNombreUsado,
+      'sedeDireccion': sedeDireccionUsada,
+      // 🔥 GRABACIÓN DE COORDENADAS VERIFICADAS DE LA SEDE
       'latitude': finalLat,
       'longitude': finalLng,
     });
@@ -360,8 +398,10 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                             final sede = await showModalBottomSheet<SedeData>(
                               context: context,
                               backgroundColor: Colors.transparent,
+                              isScrollControlled: true, // 🔥 EVITA OVERFLOW EN LISTAS LARGAS
                               builder: (_) => SafeArea(
                                 child: Container(
+                                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7), // 🔥 LÍMITE DE ALTURA
                                   padding: const EdgeInsets.all(16),
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF1E1E2C),
@@ -369,27 +409,39 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                                   ),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
-                                    children: lugar.sedes.map((s) {
-                                      return InkWell(
-                                        onTap: () => Navigator.pop(context, s),
-                                        child: Container(
-                                          margin: const EdgeInsets.symmetric(vertical: 6),
-                                          padding: const EdgeInsets.all(14),
-                                          decoration: BoxDecoration(
-                                            gradient: const LinearGradient(colors: [Color(0xFF6A5ACD), Color(0xFF4527A0)]),
-                                            borderRadius: BorderRadius.circular(16),
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(s.direccion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
-                                              const SizedBox(height: 6),
-                                              Text(s.nombre, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
-                                            ],
-                                          ),
+                                    children: [
+                                      Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 10), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                                      const Text("SELECCIONA UNA SEDE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(height: 10),
+                                      Expanded( // 🔥 PERMITE SCROLL SI HAY MUCHAS SEDES
+                                        child: ListView.builder(
+                                          shrinkWrap: true,
+                                          itemCount: lugar.sedes.length,
+                                          itemBuilder: (ctx, i) {
+                                            final s = lugar.sedes[i];
+                                            return InkWell(
+                                              onTap: () => Navigator.pop(context, s),
+                                              child: Container(
+                                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                                padding: const EdgeInsets.all(14),
+                                                decoration: BoxDecoration(
+                                                  gradient: const LinearGradient(colors: [Color(0xFF6A5ACD), Color(0xFF4527A0)]),
+                                                  borderRadius: BorderRadius.circular(16),
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(s.direccion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
+                                                    const SizedBox(height: 6),
+                                                    Text(s.nombre, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600)),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    }).toList(),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),

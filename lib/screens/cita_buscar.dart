@@ -1,8 +1,8 @@
 // 📂 lib/screens/cita_buscar.dart
-// ✅ CITA BUSCAR — VERSIÓN FINAL Y CORRECTA (BLINDADA)
-// 🔥 FIX: Agregado 'kCardTopMargin' para bajar toda la carta y evitar cortes arriba.
-// 🔥 UI: Dirección subida a 14pt + FittedBox de seguridad.
-// 🔥 WIDGET: Termómetro nativo integrado.
+// ✅ CITA BUSCAR — VERSIÓN FINAL GARANTIZADA
+// 🔥 FIX 1: Título del lugar compactado (height: 0.9) para eliminar "aire" vertical.
+// 🔥 FIX 2: Intención/Preferencia blindadas con Expanded+FittedBox (Se ajustan, NO se cortan).
+// 🔥 UI: Márgenes y estilos sincronizados con Android/iOS.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -28,24 +28,24 @@ class CitaBuscarScreen extends StatefulWidget {
 class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerProviderStateMixin {
 
   // ==============================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS (AJUSTE FINO) 🔴🔴
+  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
   // ==============================================================================
 
-  static const double kCardTopMargin      = 30.0; // 🔥 NUEVO: BAJA TODA LA CARTA 30px
+  static const double kCardTopMargin      = 30.0;
 
-  static const double kCardWidthFactor    = 0.93; // Ancho carta
-  static const double kCardHeightFactor   = 0.81; // Altura carta (81% de pantalla)
+  static const double kCardWidthFactor    = 0.93;
+  static const double kCardHeightFactor   = 0.81;
   static const double kCardBorderRadius   = 24.0;
   static const Color  kCardBackground     = Color(0xFF1A1A1A);
 
-  // --- ALTURAS FIJAS (ELEMENTOS QUE NO DEBEN ENCOGERSE) ---
-  static const double kInfoHeight    = 80.0; // Cápsula Datos
-  static const double kBarHeight     = 55.0; // Cápsula Puntualidad
-  static const double kButtonsHeight = 60.0; // Cápsula Botones
+  // --- ALTURAS FIJAS ---
+  static const double kInfoHeight    = 80.0;
+  static const double kBarHeight     = 55.0;
+  static const double kButtonsHeight = 60.0;
 
   // --- ESPACIADOS ---
-  static const double kGapSmall      = 5.0; // Espacio entre elementos
-  static const double kGapTiny       = 1.0; // Espacio entre barra y botones
+  static const double kGapSmall      = 5.0;
+  static const double kGapTiny       = 1.0;
 
   // ==============================================================================
 
@@ -360,10 +360,10 @@ class _SwipeBundleSolid extends StatelessWidget {
       if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
       if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
       if (!isProfile) Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
-      if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // BLINDAJE: Nombre adaptativo
-        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.0))),
-        const SizedBox(height: 4),
+      if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // 🔥 FIX 1: ALTURA DE LÍNEA REDUCIDA (height: 0.9)
+        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
+        const SizedBox(height: 2), // Reducido de 4 a 2
         // BLINDAJE: Dirección a 14pt adaptativa
         FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeAddress, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins')))
       ]))
@@ -386,7 +386,48 @@ class _SwipeBundleSolid extends StatelessWidget {
               const SizedBox(height: _CitaBuscarScreenState.kGapSmall),
 
               // 2. CÁPSULA INFO (Fija)
-              SizedBox(height: _CitaBuscarScreenState.kInfoHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.95, height: _CitaBuscarScreenState.kInfoHeight, padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(model.fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins')), Text(model.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 21, fontFamily: 'Poppins'))]), const SizedBox(height: 4), Container(height: 1, color: Colors.white12), const SizedBox(height: 4), Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [RichText(text: TextSpan(children: [TextSpan(text: "Intención: ", style: const TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')), TextSpan(text: model.intencion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins'))])), RichText(text: TextSpan(children: [TextSpan(text: "Preferencia: ", style: const TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')), TextSpan(text: model.preferencia, style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins'))]))])]))))),
+              SizedBox(height: _CitaBuscarScreenState.kInfoHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.95, height: _CitaBuscarScreenState.kInfoHeight, padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                // FILA FECHA/HORA
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(model.fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins')), Text(model.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 21, fontFamily: 'Poppins'))]),
+                const SizedBox(height: 4),
+                Container(height: 1, color: Colors.white12),
+                const SizedBox(height: 4),
+                // 🔥 FIX 2: INTENCIÓN Y PREFERENCIA BLINDADAS (Expanded + FittedBox)
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  // INTENCIÓN
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Text("Intención: ", style: TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(model.intencion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // PREFERENCIA
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text("Preferencia: ", style: TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(model.preferencia, style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ])
+              ]))))),
               const SizedBox(height: _CitaBuscarScreenState.kGapSmall),
 
               // 3. FOTO SITIO (Flexible)
