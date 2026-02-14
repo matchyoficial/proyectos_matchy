@@ -1,6 +1,6 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (ESTADOS: AZUL > ROJO > MORADO > VERDE > NEGRO)
-// 🔥 FIX: Desaparición automática de citas en estado 'mutual_agreement_finish'.
+// ✅ PANTALLA CITAS BLINDADA (JUEZ SUPREMO CADA 10s)
+// 🔥 FIX: Espaciado de texto corregido y letreros movidos a la izquierda superior.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -41,6 +41,8 @@ class CitaItem {
   final bool tengoPropuestaAcuerdo;
   final bool tengoSolicitudAcuerdo;
   final bool isPrivate;
+  final DateTime? deadline; // 🔥 Para el Juez
+  final bool amISafeGPS;    // 🔥 Para el Juez
 
   const CitaItem({
     required this.id,
@@ -66,16 +68,21 @@ class CitaItem {
     required this.tengoPropuestaAcuerdo,
     required this.tengoSolicitudAcuerdo,
     required this.isPrivate,
+    required this.deadline,
+    required this.amISafeGPS,
   });
 }
 
+// ⏰ EL PULSO DEL JUEZ: Cada 10 segundos
 final relojProvider = StreamProvider.autoDispose<int>((ref) {
-  return Stream.periodic(const Duration(seconds: 30), (i) => i);
+  return Stream.periodic(const Duration(seconds: 10), (i) => i);
 });
 
 CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   try {
     final data = doc.data() as Map<String, dynamic>;
+
+    if (data['status'] == 'finished') return null;
 
     bool yoFinalice = soyOwner ? (data['ownerFinalized'] == true) : (data['matchyFinalized'] == true);
     if (yoFinalice) return null;
@@ -110,14 +117,20 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       }
     } catch (_) {}
 
+    DateTime? deadline;
+    if (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending' || data['status'] == 'mutual_agreement_finish') {
+      deadline = fechaReal.add(const Duration(minutes: 5));
+    }
+
     final diferencia = ahora.difference(fechaReal);
     bool urgente = false;
-    if (data['status'] == 'matched') {
+    if (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending') {
       if (diferencia.inMinutes > 0) urgente = true;
     }
 
     bool yoPropuse = soyOwner ? (data['ownerPropusoAcuerdo'] == true) : (data['matchyPropusoAcuerdo'] == true);
     bool elOtroPropuso = soyOwner ? (data['matchyPropusoAcuerdo'] == true) : (data['ownerPropusoAcuerdo'] == true);
+    bool myGPS = soyOwner ? (data['gpsCheckOwner'] == true) : (data['gpsCheckMatchy'] == true);
 
     return CitaItem(
       id: doc.id,
@@ -143,20 +156,22 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       tengoPropuestaAcuerdo: yoPropuse,
       tengoSolicitudAcuerdo: elOtroPropuso,
       isPrivate: data['isPrivate'] == true,
+      deadline: deadline,
+      amISafeGPS: myGPS,
     );
   } catch (e) {
     return null;
   }
 }
 
-// 🚀 PROVIDERS FILTRADOS: Ignoran 'mutual_agreement_finish' para que la cita desaparezca
+// 🚀 PROVIDERS
 final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
   return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('ownerUid', isEqualTo: user.uid)
-      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending'])
+      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending', 'mutual_agreement_finish'])
       .snapshots()
       .map((s) => s.docs);
 });
@@ -167,7 +182,7 @@ final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>
   return FirebaseFirestore.instance
       .collection(kCitasCollection)
       .where('matchyUid', isEqualTo: user.uid)
-      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending'])
+      .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending', 'mutual_agreement_finish'])
       .snapshots()
       .map((s) => s.docs);
 });
@@ -206,8 +221,111 @@ class CitasScreen extends ConsumerWidget {
   final bool showBottomNav;
   const CitasScreen({super.key, this.showBottomNav = true});
 
+  // ⚖️ EL JUEZ SUPREMO
+  void _ejecutarLogicaJuez(List<CitaItem> citas, WidgetRef ref) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final now = DateTime.now();
+
+    for (var cita in citas) {
+      // 🔵 CASO 1: ACUERDO MUTUO (Gatillo Finish)
+      if (cita.status == 'mutual_agreement_finish') {
+        _aplicarSentenciaAcuerdo(cita, user);
+        continue;
+      }
+
+      // ⏳ CASO 2: RELOJ AGOTADO (TimeOut)
+      if (cita.deadline != null && now.isAfter(cita.deadline!)) {
+        if (cita.amISafeGPS) {
+          // SALVADO POR GPS
+        } else {
+          // ❌ CULPABLE
+          _aplicarSentenciaAusencia(cita, user);
+        }
+      }
+    }
+  }
+
+  Future<void> _aplicarSentenciaAcuerdo(CitaItem cita, User user) async {
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final citaRef = FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.id);
+        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+        final citaSnap = await tx.get(citaRef);
+        if (citaSnap.data()?['status'] == 'finished') return;
+
+        // 1. Resta Puntos (-10)
+        final userSnap = await tx.get(userRef);
+        int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+        tx.update(userRef, {'confiabilidad': (score - 10).clamp(0, 100)});
+
+        // 2. Notificación
+        final notiRef = userRef.collection('notificaciones').doc();
+        tx.set(notiRef, {
+          'titulo': 'Acuerdo de Cancelación',
+          'mensaje': "Se te han restado -10 puntos por acordar no asistir a la cita con ${cita.nombreMostrar} en ${cita.lugarNombre}.",
+          'fecha': FieldValue.serverTimestamp(),
+          'tipo': 'info'
+        });
+
+        // 3. Cerrar Cita
+        tx.update(citaRef, {
+          'status': 'finished',
+          'resultado': 'mutual_agreement',
+          'finalizedAt': FieldValue.serverTimestamp()
+        });
+      });
+    } catch (e) { debugPrint("Juez Error Acuerdo: $e"); }
+  }
+
+  Future<void> _aplicarSentenciaAusencia(CitaItem cita, User user) async {
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final citaRef = FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.id);
+        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+        final citaSnap = await tx.get(citaRef);
+        if (citaSnap.data()?['status'] == 'finished') return;
+
+        // 1. Castigo Máximo (-20, Strike, Block)
+        final userSnap = await tx.get(userRef);
+        int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+        int strikes = (userSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
+        int newS = strikes + 1;
+
+        tx.update(userRef, {
+          'confiabilidad': (score - 20).clamp(0, 100),
+          'strikes': newS,
+          'citas_consecutivas_exitosas': 0, // 🔥 Racha a 0
+          'userStatus': newS >= 5 ? 'blocked_permanent' : 'blocked',
+          'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
+        });
+
+        // 2. Notificación Roja
+        final notiRef = userRef.collection('notificaciones').doc();
+        tx.set(notiRef, {
+          'titulo': 'Sanción por Inasistencia',
+          'mensaje': "Se te han restado -20 puntos y aplicado bloqueo temporal por no confirmar tu asistencia a la cita con ${cita.nombreMostrar} en ${cita.lugarNombre}.",
+          'fecha': FieldValue.serverTimestamp(),
+          'tipo': 'danger'
+        });
+
+        // 3. Cerrar Cita
+        tx.update(citaRef, {
+          'status': 'finished',
+          'resultado': 'timeout_punished'
+        });
+      });
+    } catch (e) { debugPrint("Juez Error Ausencia: $e"); }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<AsyncValue<List<CitaItem>>>(misCitasMezcladasProvider, (previous, next) {
+      next.whenData((citas) => _ejecutarLogicaJuez(citas, ref));
+    });
+
     return Scaffold(
       body: Stack(
         children: [
@@ -349,6 +467,7 @@ class _CitaCard extends StatelessWidget {
     Color borderColor = Colors.transparent;
     ColorFilter? imgFilter;
 
+    // Lógica de colores del borde y fondo
     if (esAcuerdo) {
       bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
       borderColor = const Color(0xFF448AFF);
@@ -367,6 +486,7 @@ class _CitaCard extends StatelessWidget {
       imgFilter = ColorFilter.mode(Colors.greenAccent.withOpacity(0.4), BlendMode.srcATop);
     }
 
+    // Lógica de texto del botón pulsante
     if (esPendiente) {
       if (esAcuerdo) {
         mostrarOverlay = true;
@@ -393,6 +513,18 @@ class _CitaCard extends StatelessWidget {
       }
     }
 
+    // Si es urgente sin acuerdo, también mostramos letrero
+    if (item.esUrgente && !esAcuerdo) {
+      mostrarOverlay = true;
+      textoBoton = "SIN CONFIRMAR"; colorBoton = Colors.white;
+    }
+
+    // Si es privada pendiente
+    if (item.isPrivate && item.status == 'pending_approval') {
+      mostrarOverlay = true;
+      textoBoton = "PRIVADA"; colorBoton = Colors.white;
+    }
+
     return GestureDetector(
       onTap: () => _handleTap(context),
       child: Container(
@@ -407,20 +539,90 @@ class _CitaCard extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // 👈 LADO IZQUIERDO: FOTO LUGAR + INFO + LETRERO PULSANTE
             Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
                   ClipRRect(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), child: item.fotoLugar.isNotEmpty ? ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: Image.network(item.fotoLugar, fit: BoxFit.cover)) : Container(color: Colors.grey[900])),
                   Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
-                  Positioned(bottom: 10, left: 10, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))), Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))])),
+
+                  // 🔥 FIX ESPACIADO: Eliminado espacio muerto con MainAxisSize.min y sin SizedBox extra.
+                  Positioned(
+                      bottom: 10, left: 10, right: 5,
+                      child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), maxLines: 1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))),
+                            const SizedBox(height: 2), // Pequeñísimo espacio para que no se monten, pero compacto
+                            Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))
+                          ]
+                      )
+                  ),
+
+                  // 🔥 FIX UBICACIÓN LETRERO: Esquina superior izquierda
+                  if (mostrarOverlay)
+                    Positioned(
+                        top: 10, left: 10,
+                        child: _EtiquetaPulsante(texto: textoBoton, colorTexto: colorBoton, esAcuerdo: esAcuerdo, esUrgente: item.esUrgente, esPrivada: item.isPrivate)
+                    )
                 ],
               ),
             ),
-            SizedBox(width: cardHeight, height: cardHeight, child: Stack(fit: StackFit.expand, children: [ClipRRect(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), child: ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter))), if (esAcuerdo) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1565C0).withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: const Color(0xFF1565C0).withOpacity(0.9)), child: FittedBox(fit: BoxFit.scaleDown, child: Text(item.tengoPropuestaAcuerdo ? "ESPERANDO..." : "PROPUESTA", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))) else if (item.esUrgente) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.red.withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.red.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("SIN CONFIRMAR", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))) else if (item.isPrivate && item.status == 'pending_approval') Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: const Color(0xFF1B5E20).withOpacity(0.3)), child: Center(child: Transform.rotate(angle: -0.2, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2), borderRadius: BorderRadius.circular(8), color: Colors.green.withOpacity(0.8)), child: const FittedBox(fit: BoxFit.scaleDown, child: Text("PRIVADA", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.0))))))), if (mostrarOverlay && !(item.esUrgente && !esAcuerdo)) Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)), color: Colors.black.withOpacity(0.6)), child: Center(child: _PulsingText(text: textoBoton, color: colorBoton)))]))
+
+            // 👉 LADO DERECHO: FOTO MATCHY (LIMPIA, SIN LETREROS ENCIMA)
+            SizedBox(
+                width: cardHeight, height: cardHeight,
+                child: ClipRRect(
+                    borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
+                    child: ColorFiltered(
+                        colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+                        child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter)
+                    )
+                )
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// Widget auxiliar para el letrero pulsante unificado (tipo Chip)
+class _EtiquetaPulsante extends StatelessWidget {
+  final String texto;
+  final Color colorTexto;
+  final bool esAcuerdo;
+  final bool esUrgente;
+  final bool esPrivada;
+
+  const _EtiquetaPulsante({required this.texto, required this.colorTexto, required this.esAcuerdo, required this.esUrgente, required this.esPrivada});
+
+  @override
+  Widget build(BuildContext context) {
+    Color bg = Colors.black.withOpacity(0.6);
+    Color border = Colors.transparent;
+
+    if (esAcuerdo) {
+      bg = const Color(0xFF1565C0).withOpacity(0.9);
+      border = Colors.white;
+    } else if (esUrgente) {
+      bg = Colors.red.withOpacity(0.8);
+      border = Colors.white;
+    } else if (esPrivada) {
+      bg = Colors.green.withOpacity(0.8);
+      border = Colors.white;
+    }
+
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: border, width: border == Colors.transparent ? 0 : 1.5)
+        ),
+        child: _PulsingText(text: texto, color: colorTexto)
     );
   }
 }
@@ -435,5 +637,5 @@ class _PulsingTextState extends State<_PulsingText> with SingleTickerProviderSta
   late AnimationController _controller; late Animation<double> _scaleAnimation;
   @override void initState() { super.initState(); _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _scaleAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)); }
   @override void dispose() { _controller.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) { return ScaleTransition(scale: _scaleAnimation, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: FittedBox(fit: BoxFit.scaleDown, child: Text(widget.text, textAlign: TextAlign.center, style: TextStyle(color: widget.color, fontWeight: FontWeight.w900, fontSize: 12, shadows: [Shadow(color: widget.color.withOpacity(0.6), blurRadius: 10, offset: const Offset(0, 0))]))))); }
+  @override Widget build(BuildContext context) { return ScaleTransition(scale: _scaleAnimation, child: Text(widget.text, textAlign: TextAlign.center, style: TextStyle(color: widget.color, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5))); }
 }
