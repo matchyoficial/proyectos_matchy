@@ -3,6 +3,7 @@
 // 🔥 FIX 1: Título del lugar compactado (height: 0.9) para eliminar "aire" vertical.
 // 🔥 FIX 2: Intención/Preferencia blindadas con Expanded+FittedBox (Se ajustan, NO se cortan).
 // 🔥 UI: Márgenes y estilos sincronizados con Android/iOS.
+// 🔥 ADD: Icono 'Ver Perfil' agregado a las esquinas de las fotos.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -356,18 +357,53 @@ class _SwipeBundleSolid extends StatelessWidget {
     if (src.isEmpty) { imgWidget = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover); }
     else if (_isNet(src)) { imgWidget = Image.network(src, fit: BoxFit.cover, alignment: Alignment.topCenter, loadingBuilder: (_, c, p) => p == null ? c : Container(color: Colors.black26, alignment: Alignment.center, child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))), errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)); }
     else { imgWidget = Image.asset(_isAsset(src) ? src : 'assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)); }
-    return GestureDetector(onTap: onTap, child: Container(width: width, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(_CitaBuscarScreenState.kCardBorderRadius), boxShadow: isProfile ? [const BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))] : null), child: Stack(fit: StackFit.expand, children: [imgWidget,
-      if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
-      if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
-      if (!isProfile) Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
-      if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // 🔥 FIX 1: ALTURA DE LÍNEA REDUCIDA (height: 0.9)
-        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
-        const SizedBox(height: 2), // Reducido de 4 a 2
-        // BLINDAJE: Dirección a 14pt adaptativa
-        FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeAddress, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins')))
-      ]))
-    ])));
+
+    // 🔥 STACK CON EL ICONO EN LA ESQUINA SUPERIOR DERECHA
+    return GestureDetector(
+        onTap: onTap,
+        child: Container(
+            width: width,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(_CitaBuscarScreenState.kCardBorderRadius),
+                boxShadow: isProfile ? [const BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))] : null
+            ),
+            child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  imgWidget,
+
+                  // SOMBRAS PARA TEXTOS
+                  if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
+                  if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
+                  if (!isProfile) Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
+                  if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
+                    const SizedBox(height: 2),
+                    FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeAddress, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins')))
+                  ])),
+
+                  // 🔥 ICONO DE "VER PERFIL" (person_search) en la esquina superior derecha
+                  Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.4),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.person_search,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      )
+                  ),
+                ]
+            )
+        )
+    );
   }
 
   @override
