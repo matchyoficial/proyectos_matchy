@@ -1,8 +1,7 @@
 // 📂 lib/screens/citas_screen.dart
 // ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 3 MINUTOS)
-// 🔥 FIX CRÍTICO: _convertirDoc definido explícitamente.
-// 🔥 FIX UI: "Pendientes" alargado para ver 4 tarjetas (Height fijo).
-// 🔥 FIX TYPO: Height 0.9 en títulos para eliminar espacios.
+// 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
+// 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -78,7 +77,7 @@ class CitaItem {
   });
 }
 
-// --- FUNCIÓN DE CONVERSIÓN (GLOBAL PARA EVITAR ERRORES) ---
+// --- FUNCIÓN DE CONVERSIÓN (GLOBAL) ---
 CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   try {
     final data = doc.data() as Map<String, dynamic>;
@@ -233,8 +232,11 @@ class CitasScreen extends ConsumerWidget {
         final citaRef = FirebaseFirestore.instance.collection('citas').doc(cita.id);
 
         final uSnap = await tx.get(userRef);
+        final cSnap = await tx.get(citaRef); // Leemos el estado fresco de la cita
+
         int score = (uSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
 
+        // 1. Cobro al Usuario
         Map<String, dynamic> userUpdates = {'confiabilidad': (score + puntos).clamp(0, 100)};
         if (puntos <= -20) {
           int strikes = (uSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
@@ -246,16 +248,27 @@ class CitasScreen extends ConsumerWidget {
         }
         tx.update(userRef, userUpdates);
 
+        // 2. Notificación
         tx.set(userRef.collection('notifications').doc(), {
           'title': title, 'body': body, 'type': type, 'read': false, 'createdAt': FieldValue.serverTimestamp()
         });
 
+        // 3. Cierre de Cita (LÓGICA BLINDADA DE RELOJ)
         String myField = cita.isOwner ? 'ownerCastigado' : 'matchyCastigado';
-        tx.update(citaRef, {
-          myField: true,
-          'status': 'finished',
-          'resultado': resultado
-        });
+        String otherField = cita.isOwner ? 'matchyCastigado' : 'ownerCastigado';
+        bool elOtroYaEstaCastigado = cSnap.data()?[otherField] == true;
+
+        if (resultado == 'timeout_punished') {
+          // Si es Timeout, SOLO cierro si el otro ya cayó.
+          if (elOtroYaEstaCastigado) {
+            tx.update(citaRef, { myField: true, 'status': 'finished', 'resultado': 'timeout_punished' });
+          } else {
+            tx.update(citaRef, { myField: true }); // Solo me marco yo, espero al otro
+          }
+        } else {
+          // Si es Acuerdo Mutuo, cerramos normal (ya hay estado finish)
+          tx.update(citaRef, { myField: true, 'status': 'finished', 'resultado': resultado });
+        }
       });
     } catch (e) { debugPrint("Juez Error: $e"); }
   }
@@ -281,7 +294,6 @@ class CitasScreen extends ConsumerWidget {
             logoAsset: 'assets/images/logomatchyplano.png',
             topSpacing: 35,
             logoHeight: 45,
-            // 🔥 SCROLL INFINITO HACIA ABAJO (Sin límite de altura artificial)
             scrollContent: const _CitasSplitLayout(),
           ),
           Positioned(bottom: 0, left: 0, right: 0, height: 90, child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0]))))),
@@ -298,9 +310,9 @@ class _CitasSplitLayout extends ConsumerWidget {
     final asyncCitas = ref.watch(misCitasMezcladasProvider);
     final size = MediaQuery.of(context).size;
 
-    // Altura calculada para "Próximas" (60% aprox de la pantalla visible)
+    // Altura calculada para "Próximas" (55% aprox de la pantalla)
     final double heightProximas = size.height * 0.55;
-    // Altura fija para "Pendientes" (Espacio para ~4 tarjetas de 105px + titulos + margenes)
+    // Altura fija para "Pendientes"
     final double heightPendientes = 500.0;
 
     return asyncCitas.when(
@@ -311,20 +323,20 @@ class _CitasSplitLayout extends ConsumerWidget {
         final pendientes = list.where((c) => c.esUrgente || c.tengoSolicitudAcuerdo || c.tengoPropuestaAcuerdo || c.status != 'matched').toList();
 
         return Column(
-          mainAxisSize: MainAxisSize.min, // Deja que el contenido empuje
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 1. PRÓXIMAS (Altura fija proporcional a la pantalla)
+            // 1. PRÓXIMAS
             SizedBox(
                 height: heightProximas,
                 child: _Seccion(titulo: "PRÓXIMAS CITAS", citas: proximas, color: const Color(0x40FFFFFF), esPendiente: false)
             ),
             const SizedBox(height: 15),
-            // 2. PENDIENTES (Altura fija extendida para ver 4 tarjetas)
+            // 2. PENDIENTES
             SizedBox(
                 height: heightPendientes,
                 child: _Seccion(titulo: "PENDIENTES Y POR ACEPTAR", citas: pendientes, color: const Color(0x506B4EE6), esPendiente: true)
             ),
-            const SizedBox(height: 120), // Espacio extra final para scroll
+            const SizedBox(height: 120),
           ],
         );
       },
@@ -454,7 +466,7 @@ class _CitaCard extends StatelessWidget {
       onTap: () => _handleTap(context),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        height: 105, // 🔥 COMPACTO (Caben 4)
+        height: 105, // 🔥 COMPACTO
         decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20), boxShadow: [const BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))], border: mostrarOverlay ? Border.all(color: bordeCard, width: 1.5) : null),
         child: Row(children: [
           // FOTO LUGAR
@@ -464,7 +476,7 @@ class _CitaCard extends StatelessWidget {
 
             // 🔥 TEXTO FIX (Sin espacio muerto)
             Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
-              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', height: 0.9, shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
+              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
               Text("${_fechaAmigable(item.fechaSort)} - ${item.horaTexto}", style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Poppins')),
             ])),
 
