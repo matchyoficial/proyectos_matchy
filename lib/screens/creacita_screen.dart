@@ -1,9 +1,6 @@
 // 📂 lib/screens/creacita_screen.dart
-// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL)
-// 🔥 FIX 1: Lógica "Sede-Céntrica": GPS extraído de sede específica.
-// 🔥 FIX 2: Guardado de lugarId para garantizar carga de biografía y fotos.
-// 🔥 FIX 3: Error de compilación en _BotonPremium (referencia a constante kRadioBoton).
-// 🔥 UI: Diseño Premium intacto.
+// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL + INICIALIZACIÓN DE CAMPOS)
+// 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -196,6 +193,15 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       'sedeDireccion': sedeDireccionUsada,
       'latitude': finalLat,
       'longitude': finalLng,
+
+      // 🔥 CAMPOS DE CONTROL PARA LA NUEVA LÓGICA (NACEN EN FALSE/VACÍO)
+      'ownerPropusoAcuerdo': false,
+      'matchyPropusoAcuerdo': false,
+      'ownerCastigado': false,
+      'matchyCastigado': false,
+      'gpsCheckOwner': false,
+      'gpsCheckMatchy': false,
+      'resultado': '',
     });
     return docRef.id;
   }

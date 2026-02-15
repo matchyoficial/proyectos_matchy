@@ -1,9 +1,6 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
-// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL)
-// 🔥 FIX 1: Lógica "Sede-Céntrica" para GPS (Evita ceros).
-// 🔥 FIX 2: Overflow corregido en el selector de sedes (Lista con scroll).
-// 🔥 FIX 3: Guardado de lugarId para visualización de información completa del sitio.
-// 🔥 UI: Diseño Premium y responsive.
+// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL + INICIALIZACIÓN DE CAMPOS)
+// 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -203,6 +200,15 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'sedeDireccion': sedeDireccionUsada,
       'latitude': finalLat,
       'longitude': finalLng,
+
+      // 🔥 CAMPOS DE CONTROL PARA LA NUEVA LÓGICA (NACEN EN FALSE/VACÍO)
+      'ownerPropusoAcuerdo': false,
+      'matchyPropusoAcuerdo': false,
+      'ownerCastigado': false,
+      'matchyCastigado': false,
+      'gpsCheckOwner': false,
+      'gpsCheckMatchy': false,
+      'resultado': '',
     });
 
     await FirebaseFirestore.instance
