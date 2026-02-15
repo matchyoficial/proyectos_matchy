@@ -1,12 +1,13 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
-// ✅ REPORTE DE INASISTENCIA (BLINDADO: SOLO CAMBIA ESTADOS)
-// 🔥 La lógica de castigo se movió al Juez Supremo en CitasScreen.
+// ✅ REPORTE DE INASISTENCIA (BLINDADO & ANCLAJE DE RED)
+// 🔥 FIX: Sincronizado a 3 MINUTOS (Modo Pruebas) para coincidir con el Juez.
+// 🔥 FIX: Anclaje de Red (Future.delayed) activo.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart'; // 📍 LIBRERÍA GPS
+import 'package:geolocator/geolocator.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
 
 class ReporteInasistenciaScreen extends StatefulWidget {
@@ -19,10 +20,9 @@ class ReporteInasistenciaScreen extends StatefulWidget {
 
 class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   static const double kLogoHeight = 40.0;
-  static const double kRelojFontSize = 53.0;
 
   // ===========================================================================
-  // 🔥 CONFIGURACIÓN DE GPS (TRUE = FAKE/CASA | FALSE = REAL/CALLE)
+  // 🔥 CONFIGURACIÓN DE GPS
   // ===========================================================================
   static const bool kModoPruebasGPS = false;
   static const int kRadioToleranciaMetros = 200;
@@ -32,7 +32,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   Timer? _timer;
   bool _isLoading = false;
   DateTime? _deadline;
-  // 🔥 Eliminado _citaListener: El castigo ahora lo hace CitasScreen
 
   @override
   void initState() {
@@ -71,8 +70,9 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       final h = (data['hora'] ?? '').toString();
       if (f.isEmpty || h.isEmpty) return;
 
-      // 🔥 TIEMPO DE ESPERA (Ajustar según necesidad, ej: 2 horas)
-      _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 5));
+      // 🔥 TIEMPO DE PRUEBAS: 3 MINUTOS EXACTOS
+      // Esto debe coincidir con la lógica de CitasScreen para evitar castigos prematuros.
+      _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 3));
 
       _startTimer();
     } catch (e) { debugPrint("Error: $e"); }
@@ -85,9 +85,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       final diff = _deadline!.difference(DateTime.now());
       if (diff.isNegative) {
         _timer?.cancel();
-        if (mounted) setState(() => _tiempoRestante = "00:00:00");
-        // 🔥 El castigo automático ahora lo maneja el Juez en CitasScreen al detectar timeout.
-        // Aquí solo mostramos ceros.
+        _finalizarPorReloj(); // 🔥 Redirige para que el Juez actúe
       } else {
         final h = diff.inHours.toString().padLeft(2, '0');
         final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
@@ -95,6 +93,13 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         if (mounted) setState(() => _tiempoRestante = "$h:$m:$s");
       }
     });
+  }
+
+  Future<void> _finalizarPorReloj() async {
+    if (mounted) setState(() { _tiempoRestante = "00:00:00"; _isLoading = true; });
+    // Anclaje: Esperamos un momento antes de sacar al usuario
+    await Future.delayed(const Duration(seconds: 2));
+    if (mounted) HomeShell.go(context, index: 1);
   }
 
   void _mostrarDialogoMatchy({
@@ -159,9 +164,12 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
             tx.update(citaRef, {'gpsCheckMatchy': true});
           }
 
-          // Premio inmediato por llegar (opcional, o dejarlo al juez)
+          // Premio inmediato por llegar (Validación positiva)
           tx.update(userRef, {'citas_consecutivas_exitosas': FieldValue.increment(1)});
         });
+
+        // ⚓ ANCLAJE DE RED
+        await Future.delayed(const Duration(seconds: 2));
 
         if (mounted) {
           _mostrarDialogoMatchy(
@@ -203,7 +211,8 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
           // 🔥 SEGUNDO CLICK: GATILLO FINAL
           esCierre = true;
           tx.update(citaRef, {
-            'status': 'mutual_agreement_finish', // EL JUEZ LEERÁ ESTO Y CASTIGARÁ
+            'status': 'mutual_agreement_finish', // EL JUEZ LEERÁ ESTO
+            'resultado': 'mutual_agreement',
             soyOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo': true,
           });
         } else {
@@ -215,11 +224,12 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         }
       });
 
+      // ⚓ ANCLAJE DE RED
+      await Future.delayed(const Duration(seconds: 2));
+
       if (mounted) {
         if (esCierre) {
-          // Mensaje rápido antes de que la cita desaparezca
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Acuerdo cerrado. Procesando sanción..."), backgroundColor: Colors.blue));
-          // Volvemos al home, el Juez hará el resto en background
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Acuerdo cerrado. Procesando..."), backgroundColor: Colors.blue));
           HomeShell.go(context, index: 1);
         } else {
           _mostrarDialogoMatchy(
@@ -237,7 +247,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     finally { if (mounted) setState(() => _isLoading = false); }
   }
 
-  // 🔹 BOTÓN ROJO: Cancelación Unilateral (Mantiene lógica directa)
+  // 🔹 BOTÓN ROJO: Cancelación Unilateral
   Future<void> _ejecutarSentencia(String tipo) async {
     setState(() => _isLoading = true);
     final user = FirebaseAuth.instance.currentUser;
@@ -249,13 +259,14 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         final citaSnap = await tx.get(citaRef);
         final data = citaSnap.data()!;
 
-        // 📝 Registro de Notificación
-        final notiRef = userRef.collection('notificaciones').doc();
+        // 📝 Registro de Notificación (PANEL COMPATIBLE)
+        final notiRef = userRef.collection('notifications').doc();
         tx.set(notiRef, {
-          'titulo': 'Sanción por Cancelación',
-          'mensaje': "Cancelaste unilateralmente la cita con ${data['ownerUid'] == user.uid ? data['matchyNombre'] : data['ownerNombre']} en ${data['lugarNombre']}.",
-          'fecha': FieldValue.serverTimestamp(),
-          'tipo': 'danger'
+          'title': 'Sanción por Cancelación',
+          'body': "Cancelaste unilateralmente la cita con ${data['ownerUid'] == user.uid ? data['matchyNombre'] : data['ownerNombre']}.",
+          'createdAt': FieldValue.serverTimestamp(),
+          'type': 'danger',
+          'read': false,
         });
 
         // Sanción
@@ -272,8 +283,18 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
             'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
           });
         }
-        tx.update(citaRef, {'status': 'finished', 'resultado': 'absent_confessed', 'culpableUid': user.uid});
+
+        // Finalizamos cita
+        tx.update(citaRef, {
+          'status': 'finished',
+          'resultado': 'absent_confessed',
+          'culpableUid': user.uid,
+          data['ownerUid'] == user.uid ? 'ownerCastigado' : 'matchyCastigado': true
+        });
       });
+
+      // ⚓ ANCLAJE DE RED
+      await Future.delayed(const Duration(seconds: 3));
 
       if (mounted) HomeShell.go(context, index: 1);
     } catch (e) { if (mounted) _mostrarError("$e"); }
@@ -321,7 +342,8 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                     ),
                   ),
                   const SizedBox(height: 25),
-                  if (_isLoading) const Padding(padding: EdgeInsets.only(top: 20), child: CircularProgressIndicator(color: Colors.white)) else ...[
+                  if (_isLoading) const Padding(padding: EdgeInsets.only(top: 20), child: Column(children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 10), Text("Procesando...", style: TextStyle(color: Colors.white54))]))
+                  else ...[
                     _SentenciaButton(text: "YO SÍ ASISTÍ, MI MATCHY NO", icon: Icons.person_pin_circle_rounded, gradient: [const Color(0xFF00E676), const Color(0xFF00C853)], onTap: _verificarUbicacionYReclamar),
                     const SizedBox(height: 16),
                     _SentenciaButton(text: "NINGUNO ASISTIÓ / ACUERDO", icon: Icons.handshake_rounded, gradient: [const Color(0xFF64B5F6), const Color(0xFF1976D2)], onTap: _gestionarBotonAzul),

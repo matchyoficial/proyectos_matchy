@@ -1,14 +1,16 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS BLINDADA (JUEZ SUPREMO CADA 10s)
-// 🔥 FIX: Espaciado de texto corregido y letreros movidos a la izquierda superior.
+// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 3 MINUTOS)
+// 🔥 FIX CRÍTICO: _convertirDoc definido explícitamente.
+// 🔥 FIX UI: "Pendientes" alargado para ver 4 tarjetas (Height fijo).
+// 🔥 FIX TYPO: Height 0.9 en títulos para eliminar espacios.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/cita_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
@@ -17,6 +19,7 @@ import 'package:proyectos_matchy/screens/reporte_inasistencia_screen.dart';
 
 const String kCitasCollection = 'citas';
 
+// --- MODELO ---
 class CitaItem {
   final String id;
   final String lugarId;
@@ -41,8 +44,9 @@ class CitaItem {
   final bool tengoPropuestaAcuerdo;
   final bool tengoSolicitudAcuerdo;
   final bool isPrivate;
-  final DateTime? deadline; // 🔥 Para el Juez
-  final bool amISafeGPS;    // 🔥 Para el Juez
+  final DateTime? deadline;
+  final bool amISafeGPS;
+  final bool amIPunished;
 
   const CitaItem({
     required this.id,
@@ -70,22 +74,19 @@ class CitaItem {
     required this.isPrivate,
     required this.deadline,
     required this.amISafeGPS,
+    required this.amIPunished,
   });
 }
 
-// ⏰ EL PULSO DEL JUEZ: Cada 10 segundos
-final relojProvider = StreamProvider.autoDispose<int>((ref) {
-  return Stream.periodic(const Duration(seconds: 10), (i) => i);
-});
-
+// --- FUNCIÓN DE CONVERSIÓN (GLOBAL PARA EVITAR ERRORES) ---
 CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
   try {
     final data = doc.data() as Map<String, dynamic>;
-
     if (data['status'] == 'finished') return null;
 
-    bool yoFinalice = soyOwner ? (data['ownerFinalized'] == true) : (data['matchyFinalized'] == true);
-    if (yoFinalice) return null;
+    // Filtro personal de castigo
+    bool yaPague = soyOwner ? (data['ownerCastigado'] == true) : (data['matchyCastigado'] == true);
+    if (yaPague) return null;
 
     final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
     final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
@@ -93,44 +94,31 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
     final edadRaw = soyOwner ? (data['matchyEdad']) : (data['ownerEdad']);
     final int edadUI = (edadRaw is int) ? edadRaw : int.tryParse(edadRaw.toString()) ?? 0;
 
-    final lNombre = data['LugarNombre'] ?? data['lugarNombre'] ?? 'Lugar';
-    final lDir = data['LugarDireccion'] ?? data['lugarDireccion'] ?? '';
-    final lFoto = data['LugarFotoPortada'] ?? data['lugarFotoPortada'] ?? '';
-    final lId = (data['lugarId'] ?? data['idLugar'] ?? '').toString();
+    final lNombre = data['lugarNombre'] ?? 'Lugar';
+    final lDir = data['lugarDireccion'] ?? '';
+    final lFoto = data['lugarFotoPortada'] ?? '';
+    final lId = (data['lugarId'] ?? '').toString();
 
-    final String fTexto = (data['fecha'] ?? '').toString();
-    final String hTexto = (data['hora'] ?? '').toString();
+    final fTexto = (data['fecha'] ?? '').toString();
+    final hTexto = (data['hora'] ?? '').toString();
 
-    DateTime fechaReal = DateTime(2099, 1, 1);
+    DateTime fechaReal = DateTime(2099);
     try {
       final parts = fTexto.trim().split(RegExp(r'[/ -]'));
-      if (parts.length >= 3) {
-        int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
-        String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
-        bool esPM = rawHora.contains("PM");
-        String soloNumeros = rawHora.replaceAll(RegExp(r'[^0-9:]'), '');
-        final timeParts = soloNumeros.split(':');
-        int hora = int.parse(timeParts[0]), min = int.parse(timeParts[1]);
-        if (esPM && hora != 12) hora += 12;
-        if (!esPM && hora == 12) hora = 0;
-        fechaReal = DateTime(y, m, d, hora, min);
-      }
+      int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+      String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
+      bool esPM = rawHora.contains("PM");
+      final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+      int hh = int.parse(tP[0]), mm = int.parse(tP[1]);
+      if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
+      fechaReal = DateTime(y, m, d, hh, mm);
     } catch (_) {}
 
-    DateTime? deadline;
-    if (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending' || data['status'] == 'mutual_agreement_finish') {
-      deadline = fechaReal.add(const Duration(minutes: 5));
-    }
-
+    // 🔥 JUEZ: 3 MINUTOS
+    final deadline = fechaReal.add(const Duration(minutes: 3));
     final diferencia = ahora.difference(fechaReal);
-    bool urgente = false;
-    if (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending') {
-      if (diferencia.inMinutes > 0) urgente = true;
-    }
-
-    bool yoPropuse = soyOwner ? (data['ownerPropusoAcuerdo'] == true) : (data['matchyPropusoAcuerdo'] == true);
-    bool elOtroPropuso = soyOwner ? (data['matchyPropusoAcuerdo'] == true) : (data['ownerPropusoAcuerdo'] == true);
-    bool myGPS = soyOwner ? (data['gpsCheckOwner'] == true) : (data['gpsCheckMatchy'] == true);
+    // Urgente si ya pasó la hora o estamos en los 3 minutos de gracia
+    final urgente = diferencia.inMinutes > 0 && (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending');
 
     return CitaItem(
       id: doc.id,
@@ -145,46 +133,45 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       fechaSort: fechaReal,
       fechaTextoOriginal: fTexto,
       horaTexto: hTexto,
-      intencion: (data['intencion'] ?? 'Conocernos').toString(),
-      preferencia: (data['preferencia'] ?? 'Ambos').toString(),
-      codigoOwner: (data['codigoOwner'] ?? '---').toString(),
-      codigoMatchy: (data['codigoMatchy'] ?? '---').toString(),
+      intencion: (data['intencion'] ?? '').toString(),
+      preferencia: (data['preferencia'] ?? '').toString(),
+      codigoOwner: (data['codigoOwner'] ?? '').toString(),
+      codigoMatchy: (data['codigoMatchy'] ?? '').toString(),
       isOwner: soyOwner,
       status: (data['status'] ?? 'matched').toString(),
       reproByUid: (data['repro_by_uid'] ?? '').toString(),
       esUrgente: urgente,
-      tengoPropuestaAcuerdo: yoPropuse,
-      tengoSolicitudAcuerdo: elOtroPropuso,
+      tengoPropuestaAcuerdo: soyOwner ? data['ownerPropusoAcuerdo'] == true : data['matchyPropusoAcuerdo'] == true,
+      tengoSolicitudAcuerdo: soyOwner ? data['matchyPropusoAcuerdo'] == true : data['ownerPropusoAcuerdo'] == true,
       isPrivate: data['isPrivate'] == true,
       deadline: deadline,
-      amISafeGPS: myGPS,
+      amISafeGPS: soyOwner ? data['gpsCheckOwner'] == true : data['gpsCheckMatchy'] == true,
+      amIPunished: yaPague,
     );
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
-// 🚀 PROVIDERS
+// --- PROVIDERS ---
+final relojProvider = StreamProvider.autoDispose<int>((ref) {
+  return Stream.periodic(const Duration(seconds: 10), (i) => i);
+});
+
 final citasRawOwnerProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
-  return FirebaseFirestore.instance
-      .collection(kCitasCollection)
+  return FirebaseFirestore.instance.collection(kCitasCollection)
       .where('ownerUid', isEqualTo: user.uid)
       .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending', 'mutual_agreement_finish'])
-      .snapshots()
-      .map((s) => s.docs);
+      .snapshots().map((s) => s.docs);
 });
 
 final citasRawMatchyProvider = StreamProvider.autoDispose<List<DocumentSnapshot>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
-  return FirebaseFirestore.instance
-      .collection(kCitasCollection)
+  return FirebaseFirestore.instance.collection(kCitasCollection)
       .where('matchyUid', isEqualTo: user.uid)
       .where('status', whereIn: ['matched', 'reprogramming', 'pending_approval', 'mutual_agreement_pending', 'mutual_agreement_finish'])
-      .snapshots()
-      .map((s) => s.docs);
+      .snapshots().map((s) => s.docs);
 });
 
 final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>>>((ref) {
@@ -197,8 +184,8 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
 
   final docsOwner = ownerRaw.value ?? [];
   final docsMatchy = matchyRaw.value ?? [];
-
   List<CitaItem> listaFinal = [];
+
   for (var doc in docsOwner) {
     final item = _convertirDoc(doc, true, ahoraMismo);
     if (item != null) listaFinal.add(item);
@@ -208,15 +195,11 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
     if (item != null) listaFinal.add(item);
   }
 
-  listaFinal.sort((a, b) {
-    if (a.esUrgente && !b.esUrgente) return -1;
-    if (!a.esUrgente && b.esUrgente) return 1;
-    return a.fechaSort.compareTo(b.fechaSort);
-  });
-
+  listaFinal.sort((a, b) => a.fechaSort.compareTo(b.fechaSort));
   return AsyncValue.data(listaFinal);
 });
 
+// --- PANTALLA ---
 class CitasScreen extends ConsumerWidget {
   final bool showBottomNav;
   const CitasScreen({super.key, this.showBottomNav = true});
@@ -228,102 +211,66 @@ class CitasScreen extends ConsumerWidget {
     final now = DateTime.now();
 
     for (var cita in citas) {
-      // 🔵 CASO 1: ACUERDO MUTUO (Gatillo Finish)
-      if (cita.status == 'mutual_agreement_finish') {
-        _aplicarSentenciaAcuerdo(cita, user);
-        continue;
-      }
+      if (cita.amIPunished) continue;
 
-      // ⏳ CASO 2: RELOJ AGOTADO (TimeOut)
-      if (cita.deadline != null && now.isAfter(cita.deadline!)) {
+      if (cita.status == 'mutual_agreement_finish') {
+        _sentenciaFinal(cita, user, -10, 'Acuerdo de Cancelación', 'Se restaron -10 pts por acuerdo mutuo.', 'info', 'mutual_agreement');
+      }
+      else if (cita.deadline != null && now.isAfter(cita.deadline!)) {
         if (cita.amISafeGPS) {
-          // SALVADO POR GPS
+          _marcarRecibo(cita);
         } else {
-          // ❌ CULPABLE
-          _aplicarSentenciaAusencia(cita, user);
+          _sentenciaFinal(cita, user, -20, 'Sanción Inasistencia', 'Se restaron -20 pts por no asistir.', 'danger', 'timeout_punished');
         }
       }
     }
   }
 
-  Future<void> _aplicarSentenciaAcuerdo(CitaItem cita, User user) async {
+  Future<void> _sentenciaFinal(CitaItem cita, User user, int puntos, String title, String body, String type, String resultado) async {
     try {
       await FirebaseFirestore.instance.runTransaction((tx) async {
-        final citaRef = FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.id);
         final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        final citaRef = FirebaseFirestore.instance.collection('citas').doc(cita.id);
 
-        final citaSnap = await tx.get(citaRef);
-        if (citaSnap.data()?['status'] == 'finished') return;
+        final uSnap = await tx.get(userRef);
+        int score = (uSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
 
-        // 1. Resta Puntos (-10)
-        final userSnap = await tx.get(userRef);
-        int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-        tx.update(userRef, {'confiabilidad': (score - 10).clamp(0, 100)});
+        Map<String, dynamic> userUpdates = {'confiabilidad': (score + puntos).clamp(0, 100)};
+        if (puntos <= -20) {
+          int strikes = (uSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
+          int newS = strikes + 1;
+          userUpdates['strikes'] = newS;
+          userUpdates['citas_consecutivas_exitosas'] = 0;
+          userUpdates['userStatus'] = newS >= 5 ? 'blocked_permanent' : 'blocked';
+          userUpdates['bloqueadoHasta'] = Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5)));
+        }
+        tx.update(userRef, userUpdates);
 
-        // 2. Notificación
-        final notiRef = userRef.collection('notificaciones').doc();
-        tx.set(notiRef, {
-          'titulo': 'Acuerdo de Cancelación',
-          'mensaje': "Se te han restado -10 puntos por acordar no asistir a la cita con ${cita.nombreMostrar} en ${cita.lugarNombre}.",
-          'fecha': FieldValue.serverTimestamp(),
-          'tipo': 'info'
+        tx.set(userRef.collection('notifications').doc(), {
+          'title': title, 'body': body, 'type': type, 'read': false, 'createdAt': FieldValue.serverTimestamp()
         });
 
-        // 3. Cerrar Cita
+        String myField = cita.isOwner ? 'ownerCastigado' : 'matchyCastigado';
         tx.update(citaRef, {
+          myField: true,
           'status': 'finished',
-          'resultado': 'mutual_agreement',
-          'finalizedAt': FieldValue.serverTimestamp()
+          'resultado': resultado
         });
       });
-    } catch (e) { debugPrint("Juez Error Acuerdo: $e"); }
+    } catch (e) { debugPrint("Juez Error: $e"); }
   }
 
-  Future<void> _aplicarSentenciaAusencia(CitaItem cita, User user) async {
+  Future<void> _marcarRecibo(CitaItem cita) async {
     try {
-      await FirebaseFirestore.instance.runTransaction((tx) async {
-        final citaRef = FirebaseFirestore.instance.collection(kCitasCollection).doc(cita.id);
-        final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-
-        final citaSnap = await tx.get(citaRef);
-        if (citaSnap.data()?['status'] == 'finished') return;
-
-        // 1. Castigo Máximo (-20, Strike, Block)
-        final userSnap = await tx.get(userRef);
-        int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-        int strikes = (userSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
-        int newS = strikes + 1;
-
-        tx.update(userRef, {
-          'confiabilidad': (score - 20).clamp(0, 100),
-          'strikes': newS,
-          'citas_consecutivas_exitosas': 0, // 🔥 Racha a 0
-          'userStatus': newS >= 5 ? 'blocked_permanent' : 'blocked',
-          'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
-        });
-
-        // 2. Notificación Roja
-        final notiRef = userRef.collection('notificaciones').doc();
-        tx.set(notiRef, {
-          'titulo': 'Sanción por Inasistencia',
-          'mensaje': "Se te han restado -20 puntos y aplicado bloqueo temporal por no confirmar tu asistencia a la cita con ${cita.nombreMostrar} en ${cita.lugarNombre}.",
-          'fecha': FieldValue.serverTimestamp(),
-          'tipo': 'danger'
-        });
-
-        // 3. Cerrar Cita
-        tx.update(citaRef, {
-          'status': 'finished',
-          'resultado': 'timeout_punished'
-        });
-      });
-    } catch (e) { debugPrint("Juez Error Ausencia: $e"); }
+      String myField = cita.isOwner ? 'ownerCastigado' : 'matchyCastigado';
+      await FirebaseFirestore.instance.collection('citas').doc(cita.id).update({myField: true});
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen<AsyncValue<List<CitaItem>>>(misCitasMezcladasProvider, (previous, next) {
-      next.whenData((citas) => _ejecutarLogicaJuez(citas, ref));
+    ref.listen<AsyncValue<List<CitaItem>>>(misCitasMezcladasProvider, (prev, next) {
+      next.whenData((list) => _ejecutarLogicaJuez(list, ref));
     });
 
     return Scaffold(
@@ -332,13 +279,10 @@ class CitasScreen extends ConsumerWidget {
           MatchyPageLayout(
             backgroundAsset: 'assets/images/fondo.jpg',
             logoAsset: 'assets/images/logomatchyplano.png',
-            scrollContent: SizedBox(
-              height: MediaQuery.of(context).size.height - 100,
-              child: const _CitasSplitLayout(),
-            ),
             topSpacing: 35,
             logoHeight: 45,
-            spaceLogoToScroll: 10,
+            // 🔥 SCROLL INFINITO HACIA ABAJO (Sin límite de altura artificial)
+            scrollContent: const _CitasSplitLayout(),
           ),
           Positioned(bottom: 0, left: 0, right: 0, height: 90, child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0]))))),
         ],
@@ -349,33 +293,38 @@ class CitasScreen extends ConsumerWidget {
 
 class _CitasSplitLayout extends ConsumerWidget {
   const _CitasSplitLayout();
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncCitas = ref.watch(misCitasMezcladasProvider);
+    final size = MediaQuery.of(context).size;
+
+    // Altura calculada para "Próximas" (60% aprox de la pantalla visible)
+    final double heightProximas = size.height * 0.55;
+    // Altura fija para "Pendientes" (Espacio para ~4 tarjetas de 105px + titulos + margenes)
+    final double heightPendientes = 500.0;
 
     return asyncCitas.when(
-      loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-      error: (_, __) => const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white))),
-      data: (todasLasCitas) {
-        final proximas = todasLasCitas.where((c) {
-          if (c.esUrgente) return false;
-          if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return false;
-          return c.status == 'matched';
-        }).toList();
-
-        final pendientes = todasLasCitas.where((c) {
-          if (c.esUrgente) return true;
-          if (c.tengoPropuestaAcuerdo || c.tengoSolicitudAcuerdo) return true;
-          return c.status == 'reprogramming' || c.status == 'pending_approval' || c.status == 'mutual_agreement_pending';
-        }).toList();
+      loading: () => SizedBox(height: size.height, child: const Center(child: CircularProgressIndicator(color: Colors.white))),
+      error: (_, __) => SizedBox(height: size.height, child: const Center(child: Text("Error cargando citas", style: TextStyle(color: Colors.white)))),
+      data: (list) {
+        final proximas = list.where((c) => !c.esUrgente && !c.tengoSolicitudAcuerdo && !c.tengoPropuestaAcuerdo && c.status == 'matched').toList();
+        final pendientes = list.where((c) => c.esUrgente || c.tengoSolicitudAcuerdo || c.tengoPropuestaAcuerdo || c.status != 'matched').toList();
 
         return Column(
+          mainAxisSize: MainAxisSize.min, // Deja que el contenido empuje
           children: [
-            Expanded(flex: 6, child: _SeccionCitas(titulo: "PRÓXIMAS CITAS", citas: proximas, colorFondo: const Color(0x40FFFFFF), esPendiente: false)),
+            // 1. PRÓXIMAS (Altura fija proporcional a la pantalla)
+            SizedBox(
+                height: heightProximas,
+                child: _Seccion(titulo: "PRÓXIMAS CITAS", citas: proximas, color: const Color(0x40FFFFFF), esPendiente: false)
+            ),
             const SizedBox(height: 15),
-            Expanded(flex: 4, child: _SeccionCitas(titulo: "CITAS PENDIENTES Y POR ACEPTAR", citas: pendientes, colorFondo: const Color(0x506B4EE6), esPendiente: true)),
-            const SizedBox(height: 40),
+            // 2. PENDIENTES (Altura fija extendida para ver 4 tarjetas)
+            SizedBox(
+                height: heightPendientes,
+                child: _Seccion(titulo: "PENDIENTES Y POR ACEPTAR", citas: pendientes, color: const Color(0x506B4EE6), esPendiente: true)
+            ),
+            const SizedBox(height: 120), // Espacio extra final para scroll
           ],
         );
       },
@@ -383,40 +332,59 @@ class _CitasSplitLayout extends ConsumerWidget {
   }
 }
 
-class _SeccionCitas extends StatelessWidget {
-  final String titulo;
-  final List<CitaItem> citas;
-  final Color colorFondo;
-  final bool esPendiente;
-
-  const _SeccionCitas({required this.titulo, required this.citas, required this.colorFondo, required this.esPendiente});
+class _Seccion extends StatelessWidget {
+  final String titulo; final List<CitaItem> citas; final Color color; final bool esPendiente;
+  const _Seccion({required this.titulo, required this.citas, required this.color, required this.esPendiente});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 18),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      decoration: BoxDecoration(color: colorFondo, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
-      child: Column(
-        children: [
-          FittedBox(fit: BoxFit.scaleDown, child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5, shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))]))),
-          const SizedBox(height: 12),
-          Expanded(child: citas.isEmpty ? Center(child: Text(esPendiente ? "No hay solicitudes pendientes." : "No tienes citas próximas.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54, fontFamily: 'Poppins', fontSize: 14))) : ListView.builder(padding: const EdgeInsets.only(bottom: 20), physics: const BouncingScrollPhysics(), itemCount: citas.length, itemBuilder: (ctx, i) => _CitaCard(item: citas[i], esPendiente: esPendiente))),
-        ],
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
+      child: Column(children: [
+        FittedBox(fit: BoxFit.scaleDown, child: Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
+        const SizedBox(height: 12),
+        Expanded(
+            child: citas.isEmpty
+                ? _EmptyState(esPendiente: esPendiente)
+                : ListView.builder(
+                padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(),
+                itemCount: citas.length,
+                itemBuilder: (_, i) => _CitaCard(item: citas[i])
+            )
+        ),
+      ]),
     );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final bool esPendiente;
+  const _EmptyState({required this.esPendiente});
+  @override
+  Widget build(BuildContext context) {
+    if (esPendiente) {
+      return Container(
+        width: double.infinity,
+        decoration: BoxDecoration(color: const Color(0xFF4527A0).withOpacity(0.5), borderRadius: BorderRadius.circular(20)),
+        alignment: Alignment.center,
+        child: const Text("No hay solicitudes pendientes.", style: TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'Poppins')),
+      );
+    }
+    return const Center(child: Text("No tienes citas próximas.", style: TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'Poppins')));
   }
 }
 
 class _CitaCard extends StatelessWidget {
   final CitaItem item;
-  final bool esPendiente;
-  const _CitaCard({required this.item, required this.esPendiente});
+  const _CitaCard({required this.item});
 
   String _fechaAmigable(DateTime d) {
     const List<String> dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-    const List<String> meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const List<String> meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     return "${dias[d.weekday - 1]} ${d.day} de ${meses[d.month - 1]}";
   }
 
@@ -425,15 +393,13 @@ class _CitaCard extends StatelessWidget {
       Navigator.push(context, MaterialPageRoute(builder: (_) => ReporteInasistenciaScreen(citaId: item.id)));
       return;
     }
-    if (!esPendiente) {
-      final codigoParaMostrar = item.isOwner ? item.codigoOwner : item.codigoMatchy;
-      final codigoParaValidar = item.isOwner ? item.codigoMatchy : item.codigoOwner;
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (item.status == 'matched') {
       Navigator.push(context, MaterialPageRoute(builder: (_) => CitaDetalleScreen(
-        citaId: item.id, lugarId: item.lugarId, lugarNombre: item.lugarNombre, lugarDireccion: item.lugarDireccion, lugarFotoPortada: item.fotoLugar, matchyNombre: item.nombreMostrar, matchyFoto: item.fotoMostrar, matchyUid: item.matchyUid, matchyEdad: item.matchyEdad, fecha: item.fechaTextoOriginal, hora: item.horaTexto, intencion: item.intencion, preferencia: item.preferencia, miCodigoCita: codigoParaMostrar, codigoDelOtro: codigoParaValidar, isOwner: item.isOwner, citaDateTime: item.fechaSort,
+        citaId: item.id, lugarId: item.lugarId, lugarNombre: item.lugarNombre, lugarDireccion: item.lugarDireccion, lugarFotoPortada: item.fotoLugar, matchyNombre: item.nombreMostrar, matchyFoto: item.fotoMostrar, matchyUid: item.matchyUid, matchyEdad: item.matchyEdad, fecha: item.fechaTextoOriginal, hora: item.horaTexto, intencion: item.intencion, preferencia: item.preferencia, miCodigoCita: item.isOwner ? item.codigoOwner : item.codigoMatchy, codigoDelOtro: item.isOwner ? item.codigoMatchy : item.codigoOwner, isOwner: item.isOwner, citaDateTime: item.fechaSort,
       )));
       return;
     }
-    final myUid = FirebaseAuth.instance.currentUser?.uid;
     if (item.status == 'pending_approval') {
       if (item.isOwner) {
         _mostrarDialogoEspera(context, "INVITACIÓN ENVIADA", "Esperando que ${item.nombreMostrar} acepte tu invitación.");
@@ -457,185 +423,73 @@ class _CitaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     String textoBoton = "";
-    Color colorBoton = Colors.white;
+    Color colorEtiqueta = Colors.white;
+    Color colorFondoEtiqueta = Colors.black54;
+    Color bordeCard = Colors.transparent;
     bool mostrarOverlay = false;
 
     bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
-    const double cardHeight = 125.0;
 
-    Color bgColor = const Color(0xFF1A1A1A);
-    Color borderColor = Colors.transparent;
-    ColorFilter? imgFilter;
-
-    // Lógica de colores del borde y fondo
-    if (esAcuerdo) {
-      bgColor = const Color(0xFF0D47A1).withOpacity(0.3);
-      borderColor = const Color(0xFF448AFF);
-      imgFilter = ColorFilter.mode(const Color(0xFF448AFF).withOpacity(0.5), BlendMode.srcATop);
-    } else if (item.esUrgente) {
-      bgColor = const Color(0xFFB71C1C).withOpacity(0.3);
-      borderColor = const Color(0xFFFF5252);
-      imgFilter = ColorFilter.mode(const Color(0xFFFF5252).withOpacity(0.6), BlendMode.srcATop);
-    } else if (item.status == 'reprogramming') {
-      bgColor = const Color(0xFF6A1B9A).withOpacity(0.3);
-      borderColor = Colors.purpleAccent;
-      imgFilter = ColorFilter.mode(Colors.purpleAccent.withOpacity(0.4), BlendMode.srcATop);
-    } else if (item.isPrivate && item.status == 'pending_approval') {
-      bgColor = const Color(0xFF1B5E20).withOpacity(0.3);
-      borderColor = Colors.greenAccent;
-      imgFilter = ColorFilter.mode(Colors.greenAccent.withOpacity(0.4), BlendMode.srcATop);
-    }
-
-    // Lógica de texto del botón pulsante
-    if (esPendiente) {
-      if (esAcuerdo) {
-        mostrarOverlay = true;
-        if (item.tengoPropuestaAcuerdo) {
-          textoBoton = "ESPERANDO ACUERDO"; colorBoton = Colors.white;
-        } else {
-          textoBoton = "PROPUESTA DE ACUERDO"; colorBoton = Colors.white;
-        }
-      } else {
-        mostrarOverlay = true;
-        if (item.status == 'pending_approval') {
-          if (item.isOwner) {
-            textoBoton = "ENVIADA"; colorBoton = Colors.white70;
-          } else {
-            textoBoton = "POR ACEPTAR"; colorBoton = Colors.greenAccent;
-          }
-        } else {
-          if (item.reproByUid == myUid) {
-            textoBoton = "ENVIADA"; colorBoton = Colors.white70;
-          } else {
-            textoBoton = "RESPONDER"; colorBoton = Colors.greenAccent;
-          }
-        }
-      }
-    }
-
-    // Si es urgente sin acuerdo, también mostramos letrero
     if (item.esUrgente && !esAcuerdo) {
+      mostrarOverlay = true; textoBoton = "SIN CONFIRMAR";
+      colorFondoEtiqueta = const Color(0xFFFF5252); bordeCard = const Color(0xFFFF5252);
+    } else if (esAcuerdo) {
       mostrarOverlay = true;
-      textoBoton = "SIN CONFIRMAR"; colorBoton = Colors.white;
-    }
-
-    // Si es privada pendiente
-    if (item.isPrivate && item.status == 'pending_approval') {
+      textoBoton = item.tengoPropuestaAcuerdo ? "ESPERANDO ACUERDO" : "PROPUESTA DE ACUERDO";
+      colorFondoEtiqueta = const Color(0xFF448AFF); bordeCard = const Color(0xFF448AFF);
+    } else if (item.status == 'reprogramming') {
+      mostrarOverlay = true; textoBoton = "REPROGRAMACIÓN";
+      colorFondoEtiqueta = Colors.purpleAccent; bordeCard = Colors.purpleAccent;
+    } else if (item.status == 'pending_approval') {
       mostrarOverlay = true;
-      textoBoton = "PRIVADA"; colorBoton = Colors.white;
+      if (item.isOwner) { textoBoton = "ENVIADA"; colorFondoEtiqueta = Colors.grey; }
+      else { textoBoton = "POR ACEPTAR"; colorFondoEtiqueta = const Color(0xFF00E676); }
+    } else if (item.reproByUid == myUid && !item.isOwner) {
+      mostrarOverlay = true; textoBoton = "ENVIADA"; colorFondoEtiqueta = Colors.grey;
+    } else if (item.status == 'reprogramming' && item.reproByUid != myUid) {
+      mostrarOverlay = true; textoBoton = "RESPONDER"; colorFondoEtiqueta = const Color(0xFF00E676);
     }
 
     return GestureDetector(
       onTap: () => _handleTap(context),
       child: Container(
-        height: cardHeight,
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: bgColor, borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-          border: (item.esUrgente || esAcuerdo || item.status == 'reprogramming' || (item.isPrivate && item.status == 'pending_approval'))
-              ? Border.all(color: borderColor, width: 2)
-              : null,
-        ),
-        child: Row(
-          children: [
-            // 👈 LADO IZQUIERDO: FOTO LUGAR + INFO + LETRERO PULSANTE
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), child: item.fotoLugar.isNotEmpty ? ColorFiltered(colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: Image.network(item.fotoLugar, fit: BoxFit.cover)) : Container(color: Colors.grey[900])),
-                  Container(decoration: BoxDecoration(borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), bottomLeft: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.5, 1.0]))),
+        margin: const EdgeInsets.only(bottom: 10),
+        height: 105, // 🔥 COMPACTO (Caben 4)
+        decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20), boxShadow: [const BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))], border: mostrarOverlay ? Border.all(color: bordeCard, width: 1.5) : null),
+        child: Row(children: [
+          // FOTO LUGAR
+          Expanded(child: Stack(fit: StackFit.expand, children: [
+            ClipRRect(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), child: ColorFiltered(colorFilter: mostrarOverlay ? ColorFilter.mode(bordeCard.withOpacity(0.2), BlendMode.srcATop) : const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: item.fotoLugar.isNotEmpty ? Image.network(item.fotoLugar, fit: BoxFit.cover) : Container(color: Colors.grey[900]))),
+            Container(decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black12, Colors.black.withOpacity(0.9)], stops: const [0.4, 1.0]))),
 
-                  // 🔥 FIX ESPACIADO: Eliminado espacio muerto con MainAxisSize.min y sin SizedBox extra.
-                  Positioned(
-                      bottom: 10, left: 10, right: 5,
-                      child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), maxLines: 1, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins'))),
-                            const SizedBox(height: 2), // Pequeñísimo espacio para que no se monten, pero compacto
-                            Text("${_fechaAmigable(item.fechaSort)} (${item.horaTexto.toLowerCase().replaceAll(' ', '')})", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500))
-                          ]
-                      )
-                  ),
+            // 🔥 TEXTO FIX (Sin espacio muerto)
+            Padding(padding: const EdgeInsets.all(10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
+              FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(item.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', height: 0.9, shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
+              Text("${_fechaAmigable(item.fechaSort)} - ${item.horaTexto}", style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Poppins')),
+            ])),
 
-                  // 🔥 FIX UBICACIÓN LETRERO: Esquina superior izquierda
-                  if (mostrarOverlay)
-                    Positioned(
-                        top: 10, left: 10,
-                        child: _EtiquetaPulsante(texto: textoBoton, colorTexto: colorBoton, esAcuerdo: esAcuerdo, esUrgente: item.esUrgente, esPrivada: item.isPrivate)
-                    )
-                ],
-              ),
-            ),
+            // 🔥 LETRERO IZQUIERDA ARRIBA
+            if (mostrarOverlay) Positioned(top: 8, left: 8, child: _EtiquetaPulsante(texto: textoBoton, bg: colorFondoEtiqueta, color: colorEtiqueta))
+          ])),
 
-            // 👉 LADO DERECHO: FOTO MATCHY (LIMPIA, SIN LETREROS ENCIMA)
-            SizedBox(
-                width: cardHeight, height: cardHeight,
-                child: ClipRRect(
-                    borderRadius: const BorderRadius.only(topRight: Radius.circular(20), bottomRight: Radius.circular(20)),
-                    child: ColorFiltered(
-                        colorFilter: imgFilter ?? const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                        child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter)
-                    )
-                )
-            ),
-          ],
-        ),
+          // FOTO MATCHY
+          SizedBox(width: 105, child: ClipRRect(borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover)))
+        ]),
       ),
     );
   }
 }
 
-// Widget auxiliar para el letrero pulsante unificado (tipo Chip)
-class _EtiquetaPulsante extends StatelessWidget {
-  final String texto;
-  final Color colorTexto;
-  final bool esAcuerdo;
-  final bool esUrgente;
-  final bool esPrivada;
-
-  const _EtiquetaPulsante({required this.texto, required this.colorTexto, required this.esAcuerdo, required this.esUrgente, required this.esPrivada});
-
-  @override
-  Widget build(BuildContext context) {
-    Color bg = Colors.black.withOpacity(0.6);
-    Color border = Colors.transparent;
-
-    if (esAcuerdo) {
-      bg = const Color(0xFF1565C0).withOpacity(0.9);
-      border = Colors.white;
-    } else if (esUrgente) {
-      bg = Colors.red.withOpacity(0.8);
-      border = Colors.white;
-    } else if (esPrivada) {
-      bg = Colors.green.withOpacity(0.8);
-      border = Colors.white;
-    }
-
-    return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: border, width: border == Colors.transparent ? 0 : 1.5)
-        ),
-        child: _PulsingText(text: texto, color: colorTexto)
-    );
+class _EtiquetaPulsante extends StatefulWidget {
+  final String texto; final Color color; final Color bg;
+  const _EtiquetaPulsante({required this.texto, required this.color, required this.bg});
+  @override State<_EtiquetaPulsante> createState() => _EtiquetaPulsanteState();
+}
+class _EtiquetaPulsanteState extends State<_EtiquetaPulsante> with SingleTickerProviderStateMixin {
+  late AnimationController _c;
+  @override void initState() { super.initState(); _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 800))..repeat(reverse: true); }
+  @override void dispose() { _c.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) {
+    return FadeTransition(opacity: _c, child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: widget.bg, borderRadius: BorderRadius.circular(8)), child: Text(widget.texto, style: TextStyle(color: widget.color, fontWeight: FontWeight.bold, fontSize: 9, fontFamily: 'Poppins'))));
   }
-}
-
-class _PulsingText extends StatefulWidget {
-  final String text; final Color color;
-  const _PulsingText({required this.text, required this.color});
-  @override State<_PulsingText> createState() => _PulsingTextState();
-}
-
-class _PulsingTextState extends State<_PulsingText> with SingleTickerProviderStateMixin {
-  late AnimationController _controller; late Animation<double> _scaleAnimation;
-  @override void initState() { super.initState(); _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true); _scaleAnimation = Tween<double>(begin: 1.0, end: 1.12).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)); }
-  @override void dispose() { _controller.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) { return ScaleTransition(scale: _scaleAnimation, child: Text(widget.text, textAlign: TextAlign.center, style: TextStyle(color: widget.color, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5))); }
 }
