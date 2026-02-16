@@ -36,7 +36,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _decidirRuta() async {
-    // Pequeña espera para mostrar el logo
+    // Pequeña espera para mostrar el logo y dar tiempo a Firebase Auth
     await Future.delayed(const Duration(seconds: splashSeconds));
     if (!mounted) return;
 

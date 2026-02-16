@@ -2,18 +2,18 @@
 // ✅ Riverpod root
 // ✅ Firebase initializeApp
 // ✅ FIX DatePicker/TimePicker en español: MaterialLocalizations + supportedLocales
+// ✅ FIX BUCLE REGISTRO: Usamos SplashScreen como home para dar tiempo a Firebase.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
-// ✅ LOCALIZACIONES (FIX del error rojo)
+// ✅ LOCALIZACIONES
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// 🛑 CAMBIO ÚNICO: Usamos el Portero (AuthGuard)
-import 'package:proyectos_matchy/widgets/auth_guard.dart';
-// import 'package:proyectos_matchy/screens/splash_screen.dart'; // Ya no se usa directo
+// 🛑 CAMBIO CLAVE: Importamos el Splash, no el AuthGuard directo
+import 'package:proyectos_matchy/screens/splash_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,8 +55,8 @@ class MyApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // ✅ Ruta inicial: El Portero que valida Firebase antes de dejar pasar
-      home: const AuthGuard(),
+      // ✅ Ruta inicial: SplashScreen (Sala de espera de 2s para evitar bucle)
+      home: const SplashScreen(),
     );
   }
 }

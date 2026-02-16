@@ -157,7 +157,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
   // ✅ NUEVAS VALIDACIONES OBLIGATORIAS
   bool _generoOk() => _genero.trim().isNotEmpty;
-  bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty; // Aunque tenga default, validamos por seguridad
+  bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty;
 
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
@@ -498,6 +498,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                               await _syncProfileToFirestore(ref.read(profileFormProvider));
                               await ctrl.saveDraft(); await ctrl.publishProfile(); await ctrl.setOnboardingCompleted(true);
                               if (!mounted) return;
+                              // 🚀 REDIRECCIÓN CORRECTA: A HomeShell
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
                             } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
                             finally { if (mounted) setState(() => _saving = false); }

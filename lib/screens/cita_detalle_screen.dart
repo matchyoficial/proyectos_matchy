@@ -202,7 +202,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
               title: _displayNombre, subtitle: _displayDireccion,
             ),
             const SizedBox(height: 20),
-            _buildPanelStyleCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))), image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter), title: widget.matchyNombre, extraTitle: "${widget.matchyEdad}", subtitle: "Ver perfil completo", footerText: "Toca para ver detalles >"),
+            _buildPanelStyleCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))), image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter), title: widget.matchyNombre, extraTitle: "${widget.matchyEdad}", subtitle: "Ver perfil completo", footerText: ""),
             const SizedBox(height: 20),
             Column(children: [Row(children: [Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))]), const SizedBox(height: 12), Row(children: [Expanded(child: _buildVividCapsule(Icons.star, widget.intencion)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.favorite, widget.preferencia))])]),
             const SizedBox(height: 25),
