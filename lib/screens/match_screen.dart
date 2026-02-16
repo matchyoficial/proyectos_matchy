@@ -371,7 +371,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                             return Transform.scale(scale: pulse, child: SizedBox(width: double.infinity, height: 52.0, child: ElevatedButton(
                                 onPressed: (_navigating) ? null : _startChatMatchy,
                                 style: ElevatedButton.styleFrom(backgroundColor: matchyGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18.0)), elevation: 8.0),
-                                child: const FittedBox(fit: BoxFit.scaleDown, child: Text('HABLAR CON MI MATCHY', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.4)))
+                                child: const FittedBox(fit: BoxFit.scaleDown, child: Text('ESPERA A QUE TU MATCHY TE HABLE POR CHAT', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.4)))
                             )));
                           }),
                           const SizedBox(height: 10),

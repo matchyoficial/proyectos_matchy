@@ -1,18 +1,19 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 BLINDAJE: Título estandarizado a 20pt y nombres protegidos con FittedBox.
-// 🔥 FIX: Mantiene lógica de 'upsertThread' para evitar crash en hilos nuevos.
-// 🔥 UI: Diseño Pro con colores sagrados intactos.
+// ✅ LISTA DE CHATS DEFINITIVA (FIX "YO" + DISEÑO INTACTO)
+// 🔥 FIX: Se elimina el envío de 'Yo' a Firebase usando el nombre real del perfil.
+// 🔥 FIX: Lógica de respaldo para nombres en hilos ya existentes.
+// 🔥 UI: Diseño Pro 100% original mantenido.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Agregado para el perfil
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
+import 'package:proyectos_matchy/state/profile_form_provider.dart'; // ✅ Agregado para el nombre
 
-// UI Model
 class ChatThreadUI {
   final String id;
   final String otherUid;
@@ -33,19 +34,16 @@ class ChatThreadUI {
   });
 }
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget { // ✅ Cambiado a Consumer
   final bool showBottomNav;
   const ChatScreen({super.key, this.showBottomNav = true});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
 
-  // ===========================================================================
-  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
-  // ===========================================================================
   static const double kTopSpacing   = 35.0;
   static const double kLogoHeight   = 45.0;
   static const double kPaddingH     = 20.0;
@@ -56,7 +54,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   static const List<Color> kCardGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
   static const BoxShadow kCardShadow = BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4));
-  // ===========================================================================
 
   Stream<QuerySnapshot> _matchesStream(String uid) {
     return FirebaseFirestore.instance
@@ -88,7 +85,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final mData = m.data() as Map<String, dynamic>;
       final otherUid = m.id;
 
-      String nombre = (mData['nombre'] ?? 'Matchy').toString();
+      String nombreMatch = (mData['nombre'] ?? 'Matchy').toString();
       String foto = (mData['fotoUrl'] ?? mData['foto'] ?? '').toString();
       DateTime? matchDate;
 
@@ -100,6 +97,8 @@ class _ChatScreenState extends State<ChatScreen> {
         matchDate = DateTime.now();
       }
 
+      String nombreFinal = nombreMatch;
+
       if (threadMap.containsKey(otherUid)) {
         final tDoc = threadMap[otherUid]!;
         final tData = tDoc.data() as Map<String, dynamic>;
@@ -108,14 +107,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
         final meta = tData['meta'];
         if (meta is Map && meta.containsKey(otherUid)) {
-          nombre = meta[otherUid]['nombre'] ?? nombre;
+          final String metaNombre = (meta[otherUid]['nombre'] ?? '').toString();
+          // 🔥 Si el nombre en el hilo es "Yo", usamos el nombre del Match como respaldo
+          nombreFinal = (metaNombre.isEmpty || metaNombre == 'Yo') ? nombreMatch : metaNombre;
           foto = meta[otherUid]['foto'] ?? foto;
         }
 
         result.add(ChatThreadUI(
           id: tDoc.id,
           otherUid: otherUid,
-          nombre: nombre,
+          nombre: nombreFinal,
           foto: foto,
           lastText: (tData['lastText'] ?? '').toString(),
           lastAt: lastAt ?? matchDate,
@@ -125,7 +126,7 @@ class _ChatScreenState extends State<ChatScreen> {
         result.add(ChatThreadUI(
           id: '',
           otherUid: otherUid,
-          nombre: nombre,
+          nombre: nombreFinal,
           foto: foto,
           lastText: "¡Nuevo Match! 💖",
           lastAt: matchDate,
@@ -146,6 +147,9 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    // 🔥 Capturamos el perfil para obtener el nombre real
+    final profile = ref.watch(profileFormProvider);
+    final String miNombreReal = profile.nombre.isNotEmpty ? profile.nombre : 'Yo';
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -160,7 +164,6 @@ class _ChatScreenState extends State<ChatScreen> {
               Center(child: SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png'))),
               const SizedBox(height: 20),
 
-              // BLINDAJE: Título estandarizado a 20pt
               Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -222,14 +225,15 @@ class _ChatScreenState extends State<ChatScreen> {
                                 String threadId = t.id;
                                 if (threadId.isEmpty) {
                                   try {
+                                    // 🔥 USAMOS MI NOMBRE REAL EN LUGAR DE 'YO'
                                     threadId = await ChatActions.upsertThread(
                                         peerUid: t.otherUid,
                                         peerNombre: t.nombre,
                                         peerEdad: 0,
                                         peerFoto: t.foto,
-                                        myNombre: 'Yo',
+                                        myNombre: miNombreReal,
                                         myEdad: 0,
-                                        myFoto: ''
+                                        myFoto: profile.profilePhotoUrl ?? ''
                                     );
                                   } catch (e) {
                                     debugPrint("Error obteniendo thread: $e");
@@ -271,7 +275,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          // BLINDAJE: Nombre de Matchy adaptativo
                                           FittedBox(
                                             fit: BoxFit.scaleDown,
                                             alignment: Alignment.centerLeft,
@@ -282,7 +285,6 @@ class _ChatScreenState extends State<ChatScreen> {
                                             ),
                                           ),
                                           const SizedBox(height: 4),
-                                          // BLINDAJE: Previsualización de mensaje adaptativa
                                           FittedBox(
                                             fit: BoxFit.scaleDown,
                                             alignment: Alignment.centerLeft,
