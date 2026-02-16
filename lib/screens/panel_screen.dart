@@ -1,7 +1,7 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL BLINDADO (CONTENIDO RESTAURADO AL 100%)
+// ✅ PANEL CENTRAL BLINDADO (SMART LOADING ACTIVADO)
+// 🔥 FIX: Implementada "Carga Inteligente". Muestra datos inmediatos si existen, spinner solo si está vacío.
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
-// 🔥 FIX: Notificaciones Inteligentes (Check de estado antes de navegar).
 // 🔥 UI: Diseño original intacto.
 
 import 'dart:io';
@@ -313,10 +313,23 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.only(bottom: 80),
-                  child: userDocAsync.when(
-                    loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-                    error: (_, __) => const SizedBox(),
-                    data: (snap) {
+                  child: Builder(
+                    builder: (context) {
+                      // 🔥 SMART LOADING: Estrategia "Datos Primero"
+                      // 1. Si está cargando y NO hay datos en memoria -> Spinner
+                      if (userDocAsync.isLoading && !userDocAsync.hasValue) {
+                        return const Center(child: CircularProgressIndicator(color: Colors.white));
+                      }
+
+                      // 2. Si hay error y no hay datos -> Nada
+                      if (userDocAsync.hasError && !userDocAsync.hasValue) {
+                        return const SizedBox();
+                      }
+
+                      // 3. Si llegamos aquí, usamos los datos (frescos o en caché)
+                      final snap = userDocAsync.value;
+
+                      // --- LÓGICA DE RENDERIZADO ORIGINAL ---
                       final data = snap?.data();
                       final completed = (data?['onboarding_completed'] == true);
                       if (snap != null && snap.exists && !completed) {

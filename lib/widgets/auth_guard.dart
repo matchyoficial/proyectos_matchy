@@ -1,9 +1,9 @@
 // 📂 lib/widgets/auth_guard.dart
-// ✅ GUARDIA DE SEGURIDAD ABSOLUTO (CORREGIDO PARA FLUTTER FRAMEWORK)
-// 🔥 FIX: Uso de addPostFrameCallback para evitar el error "setState called during build".
-// 🔥 FIX: Navegación segura que no choca con el ciclo de vida del widget.
+// ✅ GUARDIA DE SEGURIDAD REACTIVO (DOBLE CANDADO)
+// 🔥 CANDADO 1: StreamBuilder escucha el estado de autenticación en tiempo real.
+// 🔥 CANDADO 2: FutureBuilder verifica la integridad de los datos en Firestore antes de abrir.
+// 🛡️ SEGURIDAD: Previene acceso a cuentas vacías o corruptas.
 
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,95 +11,83 @@ import 'package:proyectos_matchy/screens/registro_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 
-class AuthGuard extends StatefulWidget {
+class AuthGuard extends StatelessWidget {
   const AuthGuard({super.key});
 
-  @override
-  State<AuthGuard> createState() => _AuthGuardState();
-}
+  // 🔹 Lógica del Candado 2: Verificar si los datos existen y están completos
+  Future<bool> _verificarIntegridadDatos(String uid) async {
+    try {
+      // Forzamos lectura del servidor para asegurar que no sea caché vieja corrupta
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
-class _AuthGuardState extends State<AuthGuard> {
-  String _status = "Iniciando...";
+      if (!doc.exists) return false; // El usuario existe en Auth pero no tiene datos -> Incompleto
 
-  @override
-  void initState() {
-    super.initState();
-    // 🔥 FIX: Esperar a que termine el primer frame antes de iniciar lógica pesada
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _validarAccesoCompleto();
-    });
+      final data = doc.data();
+      // Verificamos la bandera maestra
+      return data?['onboarding_completed'] == true;
+    } catch (e) {
+      debugPrint("⚠️ Error verificando integridad: $e");
+      return false; // Ante la duda, bloquear acceso y mandar a datos
+    }
   }
 
-  Future<void> _validarAccesoCompleto() async {
-    // 1. Verificar usuario local
-    final user = FirebaseAuth.instance.currentUser;
+  @override
+  Widget build(BuildContext context) {
+    // 🔒 CANDADO 1: Escucha activa de la sesión (Auth)
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
 
-    if (user == null) {
-      if (mounted) _irALogin();
-      return;
-    }
-
-    // 2. Bucle de Validación
-    int intentos = 0;
-    while (true) {
-      intentos++;
-      try {
-        if (!mounted) return;
-        setState(() => _status = "Validando credenciales... ($intentos)");
-
-        // A. Forzar refresco
-        await user.reload();
-        await user.getIdToken(true);
-
-        // B. Lectura de Prueba
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get(const GetOptions(source: Source.server));
-
-        // C. Éxito -> Navegar
-        if (mounted) {
-          bool onboardingCompleto = false;
-          if (doc.exists) {
-            final data = doc.data();
-            onboardingCompleto = data?['onboarding_completed'] == true;
-          }
-          _navegar(onboardingCompleto);
+        // A. Esperando respuesta inicial de Firebase (Splash)
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _PantallaDeCarga(mensaje: "Conectando...");
         }
-        return;
 
-      } catch (e) {
-        debugPrint("⚠️ Intento $intentos fallido: $e");
-        await Future.delayed(const Duration(seconds: 2));
-      }
-    }
-  }
+        // B. No hay usuario logueado -> Pantalla de Registro
+        if (!snapshot.hasData || snapshot.data == null) {
+          return const RegistroScreen();
+        }
 
-  void _irALogin() {
-    // Usamos pushReplacement para reemplazar el Guard por el Login
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const RegistroScreen()),
+        // C. Hay usuario -> 🔒 CANDADO 2: Verificar integridad de datos
+        final User user = snapshot.data!;
+
+        return FutureBuilder<bool>(
+          future: _verificarIntegridadDatos(user.uid),
+          builder: (context, dataSnapshot) {
+
+            // C.1. Verificando base de datos (Splash)
+            if (dataSnapshot.connectionState == ConnectionState.waiting) {
+              return const _PantallaDeCarga(mensaje: "Verificando perfil...");
+            }
+
+            // C.2. Si perfil completo -> HOME (Entrada permitida)
+            if (dataSnapshot.hasData && dataSnapshot.data == true) {
+              return const HomeShell(initialIndex: 2);
+            }
+
+            // C.3. Si perfil incompleto o nuevo -> DATOS SCREEN
+            return const DatosScreen();
+          },
+        );
+      },
     );
   }
+}
 
-  void _navegar(bool onboardingCompleto) {
-    if (onboardingCompleto) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
-      );
-    } else {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DatosScreen()),
-      );
-    }
-  }
+// 🎨 Widget Privado: Diseño de Carga (Splash) para no repetir código
+class _PantallaDeCarga extends StatelessWidget {
+  final String mensaje;
+  const _PantallaDeCarga({required this.mensaje});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // Fondo imagen
+          // Fondo
           Positioned.fill(
             child: Image.asset(
               'assets/images/fondo.jpg',
@@ -107,18 +95,27 @@ class _AuthGuardState extends State<AuthGuard> {
               errorBuilder: (_,__,___) => Container(color: Colors.black),
             ),
           ),
-
+          // Contenido Centro
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset('assets/images/logomatchyplano.png', height: 80, errorBuilder: (_,__,___) => const Icon(Icons.favorite, size: 80, color: Colors.white)),
+                Image.asset(
+                    'assets/images/logomatchyplano.png',
+                    height: 80,
+                    errorBuilder: (_,__,___) => const Icon(Icons.favorite, size: 80, color: Colors.white)
+                ),
                 const SizedBox(height: 40),
                 const CircularProgressIndicator(color: Color(0xFFBEB3FF)),
                 const SizedBox(height: 20),
                 Text(
-                  _status,
-                  style: const TextStyle(color: Colors.white70, fontFamily: 'Poppins', fontSize: 12, decoration: TextDecoration.none),
+                  mensaje,
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      decoration: TextDecoration.none
+                  ),
                 ),
               ],
             ),

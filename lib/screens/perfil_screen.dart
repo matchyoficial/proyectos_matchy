@@ -1,6 +1,7 @@
 // 📂 lib/screens/perfil_screen.dart
-// ✅ PERFIL (FIX: MANEJO DE ERRORES EN CONTACTO)
-// 🔥 FIX: Agregado try-catch en el diálogo de contacto para evitar que se congele ("piense") si hay error.
+// ✅ PERFIL BLINDADO (FIX: CACHÉ FANTASMA ELIMINADO)
+// 🔥 FIX: Se aplica 'ref.invalidate' para borrar la memoria RAM al cerrar sesión.
+// 🔥 FIX: Se usa 'disconnect' en Google para forzar la elección de cuenta.
 // 🔥 UI: Diseño Premium y lógica intacta.
 
 import 'dart:io';
@@ -77,13 +78,27 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await GoogleSignIn().signOut();
+      // 1. 🔥 LOBOTOMÍA DE MEMORIA: Borramos la caché de Riverpod
+      ref.invalidate(profileFormProvider);
+
+      // 2. 🔥 Desconectar Google (Fuerza selector de cuentas)
+      try {
+        await GoogleSignIn().disconnect();
+      } catch (_) {
+        // Si no estaba conectado con Google, ignoramos el error
+        await GoogleSignIn().signOut();
+      }
+
       await FirebaseAuth.instance.signOut();
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kProfileDraftKey);
       await prefs.remove(_kProfilePublishedKey);
       await prefs.remove(_kOnboardingCompletedKey);
+
+      // Limpieza adicional (aunque invalidate ya lo hizo)
       await ref.read(profileFormProvider.notifier).clearDraft();
+
       if (!mounted) return;
       _goSplash();
     } catch (e) {

@@ -1,5 +1,6 @@
 // 📂 lib/screens/home_shell.dart
-// ✅ Shell principal BLINDADO (CON PORTERO DE BLOQUEO PERMANENTE)
+// ✅ Shell principal BLINDADO (CON INYECCIÓN DE VIDA)
+// 🔥 FIX: Se fuerza la carga de datos del perfil al entrar para evitar "pantalla vacía" tras relogin.
 // 🔥 LOGIC: Si detecta 'blocked_permanent' o Strikes >= 5, clausura la app.
 // 🔥 UI: MediaQuery lock para evitar deformación por fuentes del sistema.
 
@@ -16,6 +17,7 @@ import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
 import 'package:proyectos_matchy/screens/bloqueo_screen.dart'; // 🛡️ Importación de la nueva pantalla
+import 'package:proyectos_matchy/state/profile_form_provider.dart'; // ✅ Importado para la inyección de vida
 
 class HomeShell extends ConsumerStatefulWidget {
   final int initialIndex;
@@ -86,6 +88,15 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       MatchysScreen(showBottomNav: false),
       ChatScreen(showBottomNav: false),
     ];
+
+    // 💉 INYECCIÓN DE VIDA: Revivir datos si la memoria está vacía (Fix Caché Fantasma)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final perfilState = ref.read(profileFormProvider);
+      // Si el nombre está vacío, asumimos que Riverpod está "lobotomizado" y forzamos la carga.
+      if (perfilState.nombre.isEmpty) {
+        ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
+      }
+    });
 
     HomeShell.activeEventOverlay.addListener(() {
       if (HomeShell.activeEventOverlay.value == null) {
