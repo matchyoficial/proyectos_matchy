@@ -1,7 +1,7 @@
 // 📂 lib/screens/splash_screen.dart
-// ✅ Splash definitivo BLINDADO (CACHE-SAFE)
-// ✅ Ahora decide ruta con FIRESTORE si hay sesión (cross-device)
-// ✅ Si NO hay sesión, usa SharedPreferences como fallback
+// ✅ Splash definitivo BLINDADO (LÓGICA CORREGIDA)
+// 🔥 FIX: Rompe el bucle de Registro.
+// 🔥 LOGIC: Si estás logueado pero faltan datos, te manda a DatosScreen, NUNCA a Registro.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -9,9 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:proyectos_matchy/screens/registro_screen.dart';
-
-// 🔴 CHINCHE SHELL SPLASH 1 — ahora vamos a HomeShell, no a Panel directo
 import 'package:proyectos_matchy/screens/home_shell.dart';
+import 'package:proyectos_matchy/screens/datos_screen.dart'; // ✅ Importante para redireccionar correctamente
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,10 +26,7 @@ class SplashScreen extends ConsumerStatefulWidget {
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
   static const int splashSeconds = 2;
-
   static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
-  static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
-
   static const String _kUsersCollection = 'users';
 
   @override
@@ -40,45 +36,50 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _decidirRuta() async {
+    // Pequeña espera para mostrar el logo
     await Future.delayed(const Duration(seconds: splashSeconds));
     if (!mounted) return;
 
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final ok = await _onboardingCompletoDesdeFirestore(user.uid);
 
+    // ---------------------------------------------------------
+    // CASO A: USUARIO LOGUEADO EN FIREBASE
+    // ---------------------------------------------------------
+    if (user != null) {
+      // 1. Cargar datos en memoria (Riverpod) para que la app no se sienta vacía al entrar
       await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
+
+      // 2. Verificar estado del perfil en la Nube
+      final onboardingCompleto = await _checkOnboardingCloud(user.uid);
+
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => ok
-              ? const HomeShell(initialIndex: 2) // ✅ Panel tab
-              : const RegistroScreen(),
-        ),
-      );
+      if (onboardingCompleto) {
+        // ✅ Todo perfecto (Tiene bandera 'onboarding_completed') -> Al Panel
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
+        );
+      } else {
+        // ⚠️ Falta completar perfil -> A Datos (AQUÍ ESTABA EL ERROR ANTES)
+        // Antes te mandaba al Registro. Ahora te manda a llenar lo que falta.
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DatosScreen()),
+        );
+      }
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-
-    final bool flagOnboarding = prefs.getBool(_kOnboardingCompletedKey) ?? false;
-    final bool perfilMinimoOk = await _perfilMinimoValidoLocal(prefs);
-
-    final bool onboardingCompleto = flagOnboarding && perfilMinimoOk;
-
+    // ---------------------------------------------------------
+    // CASO B: USUARIO NO LOGUEADO
+    // ---------------------------------------------------------
     if (!mounted) return;
-
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => onboardingCompleto
-            ? const HomeShell(initialIndex: 2) // ✅ Panel tab
-            : const RegistroScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const RegistroScreen()),
     );
   }
 
-  Future<bool> _onboardingCompletoDesdeFirestore(String uid) async {
+  // 🛡️ Verificación simplificada y robusta
+  Future<bool> _checkOnboardingCloud(String uid) async {
     try {
       final doc = await FirebaseFirestore.instance
           .collection(_kUsersCollection)
@@ -86,76 +87,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           .get();
 
       if (!doc.exists) return false;
-
       final data = doc.data();
-      if (data == null) return false;
 
-      final bool onboarding = (data['onboarding_completed'] == true);
-
-      final nombre = (data['nombre'] ?? '').toString().trim();
-      final edadVal = data['edad'];
-      final edadInt = (edadVal is int)
-          ? edadVal
-          : int.tryParse((edadVal ?? '').toString().trim());
-
-      final pais = (data['pais'] ?? '').toString().trim();
-      final ciudad = (data['ciudad'] ?? '').toString().trim();
-
-      final List photoUrlsRaw =
-      (data['photoUrls'] is List) ? (data['photoUrls'] as List) : [];
-      final List<String> photoUrls = photoUrlsRaw
-          .map((e) => e.toString().trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-
-      final profilePhotoUrl = (data['profilePhotoUrl'] ?? '').toString().trim();
-
-      final bool fotosOk = profilePhotoUrl.isNotEmpty || photoUrls.isNotEmpty;
-
-      final bool perfilOk = nombre.isNotEmpty &&
-          edadInt != null &&
-          edadInt >= 18 &&
-          edadInt <= 99 &&
-          pais.isNotEmpty &&
-          ciudad.isNotEmpty &&
-          fotosOk;
-
-      return onboarding && perfilOk;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> _perfilMinimoValidoLocal(SharedPreferences prefs) async {
-    try {
-      final raw = prefs.getString(_kProfileDraftKey);
-      if (raw == null || raw.isEmpty) return false;
-
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-
-      final nombre = (map['nombre'] ?? '').toString().trim();
-      final edadStr = (map['edad'] ?? '').toString().trim();
-      final pais = (map['paisSeleccionado'] ?? '').toString().trim();
-      final ciudad = (map['ciudadSeleccionada'] ?? '').toString().trim();
-
-      final List fotos =
-      (map['fotosCargadas'] is List) ? (map['fotosCargadas'] as List) : [];
-      final List photoUrls =
-      (map['photoUrls'] is List) ? (map['photoUrls'] as List) : [];
-      final profilePhotoUrl = (map['profilePhotoUrl'] ?? '').toString().trim();
-
-      final edadInt = int.tryParse(edadStr);
-
-      final bool fotosOk =
-          profilePhotoUrl.isNotEmpty || photoUrls.isNotEmpty || fotos.isNotEmpty;
-
-      return nombre.isNotEmpty &&
-          edadInt != null &&
-          edadInt >= 18 &&
-          edadInt <= 99 &&
-          pais.isNotEmpty &&
-          ciudad.isNotEmpty &&
-          fotosOk;
+      // Confiamos en la bandera maestra que pone DatosScreen al guardar.
+      return data?['onboarding_completed'] == true;
     } catch (_) {
       return false;
     }

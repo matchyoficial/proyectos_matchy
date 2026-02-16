@@ -1,8 +1,8 @@
 // 📂 lib/screens/datos_screen.dart
-// ✅ DATOSSCREEN BLINDADO (ESTRATEGIA ADAPTATIVA + FIX ZOOM)
-// 🔥 FIX: Sistema de pellizco (Zoom) corregido en la foto de perfil.
-// 🔥 BLINDAJE: Título a 20pt, títulos de galería e instrucciones protegidos.
-// 🔥 UI: Alineación original de chips (Expanded/Row) preservada con sombras.
+// ✅ DATOSSCREEN BLINDADO (GENERO Y PREFERENCIA OBLIGATORIOS)
+// 🔥 FIX: Agregados asteriscos (*) visuales a Género y Preferencia.
+// 🔥 LOGIC: El botón GUARDAR bloquea y muestra error si faltan estos datos.
+// 🔥 DATA: Estandarización de valores ('Otro', 'NoDecir') para futuro filtro.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -154,8 +154,17 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   }
   bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
   bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+
+  // ✅ NUEVAS VALIDACIONES OBLIGATORIAS
   bool _generoOk() => _genero.trim().isNotEmpty;
+  bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty; // Aunque tenga default, validamos por seguridad
+
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
+
+  // ✅ VALIDACIÓN MAESTRA
+  bool _formularioValido(ProfileFormState s) {
+    return _nombreOk(s) && _edadOk(s) && _paisOk(s) && _ciudadOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
+  }
 
   List<String> _buildDisplayFotos(ProfileFormState s) {
     final out = <String>[];
@@ -427,11 +436,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 20),
                       _buildPaisCiudadSection(paisSeleccionado: paisSafe, ciudadSeleccionada: ciudadSafe, paises: paises, ciudades: ciudades, showPaisError: _mostrarErrores && !_paisOk(state), showCiudadError: _mostrarErrores && !_ciudadOk(state), onPaisChanged: (v) => ctrl.setPais(v), onCiudadChanged: (v) => ctrl.setCiudad(v)),
                       const SizedBox(height: 25),
-                      Align(alignment: Alignment.centerLeft, child: Text('GÉNERO *', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
+                      // ✅ TÍTULO GÉNERO CON * (OBLIGATORIO)
+                      Align(alignment: Alignment.centerLeft, child: Text('GÉNERO *', style: TextStyle(color: (_mostrarErrores && !_generoOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _GeneroSelector(value: _genero, showError: _mostrarErrores && !_generoOk(), onChanged: _saving ? null : (v) => _setGenero(ctrl, v)),
                       const SizedBox(height: 25),
-                      Align(alignment: Alignment.centerLeft, child: Text('PREFERENCIA DE CITAS', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
+                      // ✅ TÍTULO PREFERENCIA CON * (OBLIGATORIO)
+                      Align(alignment: Alignment.centerLeft, child: Text('PREFERENCIA DE CITAS *', style: TextStyle(color: (_mostrarErrores && !_preferenciaOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _PreferenciaCitasSelector(value: _preferenciaCitas, onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v)),
 
@@ -480,7 +491,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 40),
                       GestureDetector(
                         onTap: _saving ? null : () async {
-                          if (ctrl.puedeGuardar) {
+                          // ✅ VALIDACIÓN CENTRALIZADA
+                          if (_formularioValido(ref.read(profileFormProvider))) {
                             setState(() => _saving = true);
                             try {
                               await _syncProfileToFirestore(ref.read(profileFormProvider));
@@ -489,7 +501,20 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
                             } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
                             finally { if (mounted) setState(() => _saving = false); }
-                          } else { setState(() => _mostrarErrores = true); }
+                          } else {
+                            setState(() => _mostrarErrores = true);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(children: const [
+                                    Icon(Icons.error_outline, color: Colors.white),
+                                    SizedBox(width: 10),
+                                    Expanded(child: Text("Faltan datos obligatorios (Nombre, Edad, País, Ciudad, Género, Preferencia o Foto)."))
+                                  ]),
+                                  backgroundColor: Colors.redAccent,
+                                  behavior: SnackBarBehavior.floating,
+                                )
+                            );
+                          }
                         },
                         child: Container(width: MediaQuery.of(context).size.width * 0.7, height: 55, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(30), boxShadow: kChipShadow), alignment: Alignment.center, child: _saving ? const CircularProgressIndicator(color: Colors.black) : const Text('GUARDAR PERFIL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16))),
                       ),
@@ -535,6 +560,7 @@ class _GeneroSelector extends StatelessWidget {
   final String value; final ValueChanged<String>? onChanged; final bool showError;
   const _GeneroSelector({required this.value, required this.onChanged, required this.showError});
   @override Widget build(BuildContext context) {
+    // ✅ VALORES ESTANDARIZADOS PARA FILTRO FUTURO
     final opciones = [{'label': 'Hombre', 'value': 'Hombre'}, {'label': 'Mujer', 'value': 'Mujer'}, {'label': 'Otro', 'value': 'Otro'}, {'label': 'No decir', 'value': 'NoDecir'}];
     return Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: opciones.map((op) {
       final bool sel = op['value'] == value;
@@ -572,7 +598,6 @@ class _SeccionBotonesChipsSimetricos extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(titulo, style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900, shadows: _DatosScreenState.kTextShadow)),
       const SizedBox(height: 12),
-      // 🛡️ ALINEACIÓN ORIGINAL PRESERVADA (Row/Expanded)
       Column(
         children: chunks.map((fila) {
           return Padding(
@@ -627,7 +652,6 @@ class _FotoThumb extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Container(
               width: size, height: size, color: Colors.black,
-              // 🔥 PHOTOVIEW FIX: Prioridad de gestos optimizada para pellizco
               child: isInteractive
                   ? PhotoView(
                 imageProvider: provider,
