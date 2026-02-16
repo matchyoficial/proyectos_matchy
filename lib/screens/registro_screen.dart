@@ -1,8 +1,8 @@
 // 📂 lib/screens/registro_screen.dart
-// ✅ PANTALLA DE ACCESO BLINDADA (PORTERO NUCLEAR)
-// 🔥 BLINDAJE: Botón y footer protegidos con FittedBox.
-// 🔥 UI: Sombras aplicadas a los textos para consistencia premium.
-// 🔥 SEGURIDAD: Lógica de escritura y validación intacta.
+// ✅ PANTALLA DE ACCESO BLINDADA (DISTRIBUCIÓN CONTROLADA)
+// 🔥 FIX: Botón Google al centro, Términos abajo, Logo arriba.
+// 🔥 CONTROL: Sección "Chinches Maestros" para ajustar alturas sin romper el responsive.
+// 🔥 UI: Diseño visual intacto.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -29,13 +29,19 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
   String _statusMessage = "Continuar con Google";
 
   // ==========================================================
-  // 🛡️ ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN UI)
+  // 🛡️ ZONA DE CHINCHES MAESTROS (CONTROL DE POSICIONES)
   // ==========================================================
-  static const double kLogoHeight = 70.0;
-  static const double kLogoTopSpace = 120.0;
-  static const double kButtonVerticalPosition = 0.5;
-  static const double kButtonHeight = 55.0;
-  static const double kButtonWidthPercent = 0.85;
+  // Edita estos números para subir o bajar elementos.
+  // Son "Fuerzas de Empuje" (Mayor número = Más espacio).
+
+  static const int kFuerzaTecho = 2;  // Empuje desde arriba hacia el Logo
+  static const int kFuerzaMedio = 1;  // Empuje entre Logo y Botón
+  static const int kFuerzaSuelo = 3;  // Empuje desde abajo hacia el Texto
+
+  static const double kLogoHeight = 70.0;     // Tamaño del Logo
+  static const double kButtonHeight = 55.0;   // Altura del Botón
+  static const double kButtonWidthPercent = 0.85; // Ancho del botón (85% de pantalla)
+  static const double kEspacioBotonTexto = 15.0; // Separación fija entre botón y texto
 
   static const List<Shadow> kTextShadow = [
     Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 1))
@@ -145,75 +151,92 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // 1. Fondo
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
 
-          Positioned(
-            top: kLogoTopSpace,
-            left: 0, right: 0,
-            child: Center(child: Image.asset('assets/images/logo_matchy2.png', height: kLogoHeight)),
-          ),
+          // 2. Contenido Elástico
+          SafeArea(
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // A. RESORTE TECHO: Empuja el logo hacia abajo
+                  Spacer(flex: kFuerzaTecho),
 
-          Positioned(
-            top: (size.height * kButtonVerticalPosition) - (kButtonHeight / 2),
-            left: (size.width - buttonWidth) / 2,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: buttonWidth,
-                  height: kButtonHeight,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : () => _signInWithGoogle(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      elevation: 8,
-                      shadowColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      // 🛡️ BLINDAJE: Contenido del botón elástico
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: _loading
-                            ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purple)),
-                            const SizedBox(width: 15),
-                            Text(_statusMessage, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, shadows: kTextShadow)),
-                          ],
-                        )
-                            : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset('assets/images/ic_google.png', height: 24, errorBuilder: (_,__,___) => const Icon(Icons.login, color: Colors.grey)),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Continuar con Google',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow),
+                  // B. LOGO
+                  Image.asset('assets/images/logo_matchy2.png', height: kLogoHeight),
+
+                  // C. RESORTE MEDIO: Separa el Logo del Botón
+                  Spacer(flex: kFuerzaMedio),
+
+                  // D. GRUPO BOTÓN + TEXTO (Se mueven juntos)
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: buttonWidth,
+                        height: kButtonHeight,
+                        child: ElevatedButton(
+                          onPressed: _loading ? null : () => _signInWithGoogle(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black87,
+                            elevation: 8,
+                            shadowColor: Colors.black,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: _loading
+                                  ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purple)),
+                                  const SizedBox(width: 15),
+                                  Text(_statusMessage, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, shadows: kTextShadow)),
+                                ],
+                              )
+                                  : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset('assets/images/ic_google.png', height: 24, errorBuilder: (_,__,___) => const Icon(Icons.login, color: Colors.grey)),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Continuar con Google',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+
+                      // Separación pequeña fija entre botón y texto
+                      const SizedBox(height: kEspacioBotonTexto),
+
+                      // Texto de términos
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            "Al continuar aceptas nuestros Términos y Condiciones",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11, shadows: kTextShadow),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 15),
-                // 🛡️ BLINDAJE: Texto informativo protegido
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      "Al continuar aceptas nuestros Términos y Condiciones",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11, shadows: kTextShadow),
-                    ),
-                  ),
-                ),
-              ],
+
+                  // E. RESORTE SUELO: Empuja todo hacia arriba desde el fondo
+                  Spacer(flex: kFuerzaSuelo),
+                ],
+              ),
             ),
           ),
         ],
