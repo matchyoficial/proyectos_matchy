@@ -1,7 +1,8 @@
 // 📂 lib/screens/match_screen.dart
-// ✅ MATCH SCREEN BLINDADA (ESTRATEGIA ADAPTATIVA)
-// 🔥 FIX: Botón 'HABLAR CON MI MATCHY' clonado del Owner (Usa pushReplacement para evitar bucles).
-// 🔥 UI: Diseño, animaciones y lógica intactos.
+// ✅ MATCH SCREEN (SOLUCIÓN QUIRÚRGICA)
+// 🔥 FIX: Botón Verde (Matchy) ahora es un "Link Tonto" a la lista de chats.
+// ❌ LÓGICA ELIMINADA: El botón verde YA NO toca Firebase ni crea hilos.
+// 🔥 UI: Diseño 100% original mantenido.
 
 import 'dart:async';
 import 'dart:io';
@@ -14,6 +15,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
+import 'package:proyectos_matchy/screens/chat_screen.dart'; // ✅ IMPORTADO PARA NAVEGACIÓN SIMPLE
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
@@ -165,6 +167,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   }
 
   Future<void> _createCandidateEventOnce({required String action}) async {
+    // ⚠️ Esta función SOLO la usa el Owner ahora.
     if (!widget.soyElOwner) return;
     if (_eventCreated || _creatingEvent) return;
     _creatingEvent = true;
@@ -195,7 +198,7 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     } catch (_) {} finally { _creatingEvent = false; }
   }
 
-  // 🔹 ACCIONES DEL OWNER (Directo a Detalle de Chat - PushReplacement)
+  // 🔹 ACCIONES DEL OWNER (Mantiene lógica completa)
   Future<void> _startChatOwner() async {
     if (_navigating) return;
     setState(() => _navigating = true);
@@ -207,7 +210,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
       final tId = await ChatActions.upsertThread(peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: '');
 
       if (!mounted) return;
-      // 🔥 PUSH REPLACEMENT: Destruye el MatchScreen y abre el Chat. Cero bucles.
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
     } catch (_) { if(mounted) setState(() => _navigating = false); }
   }
@@ -222,23 +224,19 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
     finally { if (mounted) HomeShell.go(context, index: 1); }
   }
 
-  // 🔹 ACCIONES DEL MATCHY (AHORA CLONADA DEL OWNER)
+  // 🔹 ACCIONES DEL MATCHY (SOLO NAVEGACIÓN SIMPLE)
+  // 🟢 BOTÓN VERDE "ESPERA A QUE TU MATCHY TE HABLE..."
+  // 🔥 CERO LÓGICA, SOLO VA A LA LISTA DE CHATS
   Future<void> _startChatMatchy() async {
     if (_navigating) return;
     setState(() => _navigating = true);
-    try {
-      await HomeShell.consumeEvent();
 
-      final suN = _primerNombre(_stablePeerNombre.isNotEmpty ? _stablePeerNombre : widget.candidatoNombre);
-      final suF = _stablePeerFoto.isNotEmpty ? _stablePeerFoto : widget.candidatoFotoAsset;
+    // Solo consumimos el evento para liberar la UI si es necesario
+    try { HomeShell.consumeEvent().ignore(); } catch (_) {}
 
-      final tId = await ChatActions.upsertThread(peerUid: widget.candidatoId, peerNombre: suN, peerEdad: 0, peerFoto: suF, myNombre: 'Yo', myEdad: 0, myFoto: '');
-
-      if (!mounted) return;
-      // 🔥 PUSH REPLACEMENT: Misma lógica del Owner. Va directo al chat y destruye el MatchScreen.
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ChatDetalleScreen(id: tId, otherUid: widget.candidatoId, nombre: suN, edad: '', foto: suF)));
-
-    } catch (_) { if(mounted) setState(() => _navigating = false); }
+    if (!mounted) return;
+    // NAVEGACIÓN DIRECTA A LISTA DE CHATS (Sin crear hilos, sin firebase)
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const ChatScreen()));
   }
 
   Future<void> _irACitasMatchy() async {
@@ -383,7 +381,6 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
                         ],
 
                         const SizedBox(height: 14.0),
-                        // Mensaje de suerte (Estandarizado a 15pt y adaptativo)
                         FittedBox(fit: BoxFit.scaleDown, child: Text('BUENA SUERTE CON TU CITA', textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withOpacity(0.92), fontSize: 15.0, fontFamily: 'Poppins', fontWeight: FontWeight.w900, height: 1.15, shadows: [Shadow(blurRadius: 10.0, color: Colors.black.withOpacity(0.45), offset: const Offset(0.0, 2.0))]))),
                         const SizedBox(height: 6.0),
                         const FittedBox(fit: BoxFit.scaleDown, child: Text('RECUERDA EN MATCHY EL QUE INVITA PAGA.\nBUENA SUERTE EN TU CITA.', textAlign: TextAlign.center, style: TextStyle(color: noteRed, fontSize: 12.0, fontFamily: 'Poppins', fontWeight: FontWeight.w900, height: 1.25, letterSpacing: 0.2))),
