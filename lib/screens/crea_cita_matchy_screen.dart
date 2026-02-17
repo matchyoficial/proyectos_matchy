@@ -1,9 +1,12 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
 // ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL + INICIALIZACIÓN DE CAMPOS)
 // 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
+// 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 
 import 'dart:io';
+import 'dart:ui'; // 🔥 Para el efecto de desenfoque
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart'; // 🔥 Para los rodillos modernos
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -70,23 +73,100 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     }
   }
 
+  // 🔥 MISMO SELECTOR EMERGENTE CENTRAL (12H RODILLO)
   Future<void> _seleccionarHora() async {
-    final now = TimeOfDay.now();
-    final picked = await showTimePicker(
+    int selHora = 7;
+    int selMin = 0;
+    int selAmPm = 1; // Default PM
+
+    await showDialog(
       context: context,
-      initialTime: _pickedTime ?? now,
-      builder: (context, child) => Localizations.override(context: context, locale: const Locale('es', 'ES'), child: child!),
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              height: 320,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E2C),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white10),
+                  boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 20, offset: Offset(0, 10))]
+              ),
+              child: Column(
+                children: [
+                  const Text("SELECCIONA LA HORA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5)),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white10),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: CupertinoPicker(
+                            scrollController: FixedExtentScrollController(initialItem: 6),
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selHora = index + 1,
+                            children: List.generate(12, (i) => Center(child: Text("${i + 1}", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)))),
+                          ),
+                        ),
+                        const Text(":", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 25, fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: CupertinoPicker(
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selMin = index,
+                            children: List.generate(60, (i) => Center(child: Text(i.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)))),
+                          ),
+                        ),
+                        Expanded(
+                          child: CupertinoPicker(
+                            scrollController: FixedExtentScrollController(initialItem: 1),
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selAmPm = index,
+                            children: const [
+                              Center(child: Text("AM", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900))),
+                              Center(child: Text("PM", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 14))),
+                      Container(width: 1, height: 20, color: Colors.white10),
+                      TextButton(
+                        onPressed: () {
+                          int finalHour = selHora;
+                          if (selAmPm == 1 && finalHour != 12) finalHour += 12;
+                          if (selAmPm == 0 && finalHour == 12) finalHour = 0;
+
+                          setState(() {
+                            _pickedTime = TimeOfDay(hour: finalHour, minute: selMin);
+                            final amPmStr = selAmPm == 0 ? 'AM' : 'PM';
+                            _hora = '$selHora:${selMin.toString().padLeft(2, '0')} $amPmStr';
+                          });
+                          Navigator.pop(context);
+                        },
+                        child: const Text("ESTABLECER", style: TextStyle(color: Color(0xFFBEB3FF), fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.0)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
-    if (picked != null) {
-      final hour = picked.hour;
-      final minute = picked.minute.toString().padLeft(2, '0');
-      final amPm = hour < 12 ? 'AM' : 'PM';
-      final displayHour = hour % 12 == 0 ? 12 : hour % 12;
-      setState(() {
-        _pickedTime = picked;
-        _hora = '$displayHour:$minute $amPm';
-      });
-    }
   }
 
   String _generarCodigoUnico(String uid, String tipo) {
@@ -191,7 +271,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'lugarNombre': lugar.nombre,
-      'lugarId': lugar.id, // 🔥 ASIGNACIÓN DE IDENTIDAD CLAVE
+      'lugarId': lugar.id,
       'lugarDireccion': lugar.direccion,
       'lugarFotoPortada': lugar.fotoPortada,
       'lugarFotos': lugar.fotos.take(8).toList(),
@@ -200,8 +280,6 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'sedeDireccion': sedeDireccionUsada,
       'latitude': finalLat,
       'longitude': finalLng,
-
-      // 🔥 CAMPOS DE CONTROL PARA LA NUEVA LÓGICA (NACEN EN FALSE/VACÍO)
       'ownerPropusoAcuerdo': false,
       'matchyPropusoAcuerdo': false,
       'ownerCastigado': false,
@@ -409,15 +487,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
 }
 
 class _BotonPremium extends StatelessWidget {
-  final String text;
-  final VoidCallback? onTap;
-  final double width;
-  final double height;
-  final double fontSize;
-  final IconData? icon;
-  final bool isAction;
-  final bool isLoading;
-
+  final String text; final VoidCallback? onTap; final double width; final double height; final double fontSize; final IconData? icon; final bool isAction; final bool isLoading;
   const _BotonPremium({required this.text, this.onTap, required this.width, this.height = 50, this.fontSize = 14, this.icon, this.isAction = false, this.isLoading = false});
 
   @override
