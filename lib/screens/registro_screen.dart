@@ -1,8 +1,8 @@
 // 📂 lib/screens/registro_screen.dart
-// ✅ PANTALLA DE ACCESO BLINDADA (DISTRIBUCIÓN CONTROLADA)
-// 🔥 FIX: Botón Google al centro, Términos abajo, Logo arriba.
-// 🔥 CONTROL: Sección "Chinches Maestros" para ajustar alturas sin romper el responsive.
-// 🔥 UI: Diseño visual intacto.
+// ✅ PANTALLA DE ACCESO BLINDADA (LOGICA CORREGIDA)
+// 🔥 FIX: Eliminado bucle infinito que bloqueaba la persistencia de sesión.
+// 🔥 FIX: Escritura en Firestore garantizada antes de navegar.
+// 🔥 UI: Diseño visual y "Chinches Maestros" intactos.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -31,17 +31,14 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
   // ==========================================================
   // 🛡️ ZONA DE CHINCHES MAESTROS (CONTROL DE POSICIONES)
   // ==========================================================
-  // Edita estos números para subir o bajar elementos.
-  // Son "Fuerzas de Empuje" (Mayor número = Más espacio).
-
   static const int kFuerzaTecho = 2;  // Empuje desde arriba hacia el Logo
   static const int kFuerzaMedio = 1;  // Empuje entre Logo y Botón
   static const int kFuerzaSuelo = 3;  // Empuje desde abajo hacia el Texto
 
   static const double kLogoHeight = 70.0;     // Tamaño del Logo
   static const double kButtonHeight = 55.0;   // Altura del Botón
-  static const double kButtonWidthPercent = 0.85; // Ancho del botón (85% de pantalla)
-  static const double kEspacioBotonTexto = 15.0; // Separación fija entre botón y texto
+  static const double kButtonWidthPercent = 0.85; // Ancho del botón (85%)
+  static const double kEspacioBotonTexto = 15.0; // Separación fija
 
   static const List<Shadow> kTextShadow = [
     Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(0, 1))
@@ -66,79 +63,99 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
     );
   }
 
-  Future<bool> _autenticarYValidarContraFuego(User user) async {
-    int intento = 0;
-    while (true) {
-      intento++;
-      try {
-        if (intento > 1) {
-          if (mounted) setState(() => _statusMessage = "Asegurando conexión... ($intento)");
-          await Future.delayed(const Duration(seconds: 2));
-          await user.reload();
-          await user.getIdToken(true);
-        }
+  // 🛡️ LÓGICA CORREGIDA: Sin bucles infinitos, lectura directa y segura
+  Future<bool> _gestionarUsuarioEnFirestore(User user) async {
+    try {
+      // 1. Referencia al documento del usuario
+      final userRef = _db.collection('users').doc(user.uid);
 
-        final docSnapshot = await _db.collection('users').doc(user.uid).get(const GetOptions(source: Source.server));
+      // 2. Leemos UNA VEZ de manera autoritativa (servidor)
+      final docSnapshot = await userRef.get(const GetOptions(source: Source.server));
 
-        if (docSnapshot.exists) {
-          await _db.collection('users').doc(user.uid).update({
-            'lastLoginAt': FieldValue.serverTimestamp(),
-          });
-          final data = docSnapshot.data();
-          return data?['onboarding_completed'] == true;
-        } else {
-          await _db.collection('users').doc(user.uid).set({
-            'uid': user.uid,
-            'email': user.email,
-            'nombre': user.displayName ?? '',
-            'profilePhotoUrl': user.photoURL ?? '',
-            'provider': 'google',
-            'createdAt': FieldValue.serverTimestamp(),
-            'onboarding_completed': false,
-            'lastLoginAt': FieldValue.serverTimestamp(),
-          });
-          return false;
-        }
-      } catch (e) {
-        debugPrint("⚠️ Intento $intento fallido. Error: $e");
-        if (intento > 10) await Future.delayed(const Duration(seconds: 3));
+      if (docSnapshot.exists) {
+        // A. USUARIO EXISTENTE: Solo actualizamos la última vez que entró
+        await userRef.update({
+          'lastLoginAt': FieldValue.serverTimestamp(),
+        });
+
+        final data = docSnapshot.data();
+        // Retornamos si ya completó el onboarding
+        return data?['onboarding_completed'] == true;
+
+      } else {
+        // B. USUARIO NUEVO: Creamos el registro desde cero
+        await userRef.set({
+          'uid': user.uid,
+          'email': user.email,
+          'nombre': user.displayName ?? '',
+          'profilePhotoUrl': user.photoURL ?? '',
+          'provider': 'google',
+          'createdAt': FieldValue.serverTimestamp(),
+          'onboarding_completed': false, // Importante: Nuevo usuario = false
+          'lastLoginAt': FieldValue.serverTimestamp(),
+        });
+
+        return false; // Es nuevo, así que no ha completado onboarding
       }
+    } catch (e) {
+      debugPrint("⚠️ Error en Firestore: $e");
+      rethrow; // Lanzamos el error para que lo maneje el try/catch principal
     }
   }
 
   Future<void> _signInWithGoogle(BuildContext context) async {
     if (_loading) return;
+
     setState(() {
       _loading = true;
       _statusMessage = "Cargando...";
     });
 
     try {
+      // 1. INICIO GOOGLE (Nativo)
       final googleUser = await GoogleSignIn().signIn();
+
       if (googleUser == null) {
+        // Usuario canceló la ventana de Google
         setState(() { _loading = false; _statusMessage = "Continuar con Google"; });
         return;
       }
 
+      // 2. OBTENER CREDENCIALES
       final auth = await googleUser.authentication;
-      final cred = GoogleAuthProvider.credential(accessToken: auth.accessToken, idToken: auth.idToken);
+      final cred = GoogleAuthProvider.credential(
+          accessToken: auth.accessToken,
+          idToken: auth.idToken
+      );
 
+      // 3. IMPACTAR FIREBASE (El momento crítico)
+      if (mounted) setState(() => _statusMessage = "Autenticando...");
+
+      // Guardamos la sesión en Firebase Authentication
       final userCred = await _auth.signInWithCredential(cred);
       final user = userCred.user;
-      if (user == null) throw Exception('Error crítico de autenticación.');
 
+      if (user == null) throw Exception('No se pudo obtener el usuario.');
+
+      // 4. GESTIÓN FIRESTORE (Sin bucles raros)
       if (mounted) setState(() => _statusMessage = "Verificando cuenta...");
-      await user.getIdToken(true);
-      final esUsuarioCompleto = await _autenticarYValidarContraFuego(user);
 
+      // Esta función ahora es sólida y lineal
+      final esUsuarioCompleto = await _gestionarUsuarioEnFirestore(user);
+
+      // 5. NAVEGACIÓN FINAL
+      // Solo navegamos si todo lo anterior salió bien
       if (esUsuarioCompleto) {
         _irHomeShellPanel(context);
       } else {
         _irADatos(context);
       }
+
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error de acceso: $e'), backgroundColor: Colors.red)
+      );
       setState(() { _loading = false; _statusMessage = "Reintentar"; });
     }
   }
@@ -161,16 +178,16 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // A. RESORTE TECHO: Empuja el logo hacia abajo
+                  // A. RESORTE TECHO
                   Spacer(flex: kFuerzaTecho),
 
                   // B. LOGO
                   Image.asset('assets/images/logo_matchy2.png', height: kLogoHeight),
 
-                  // C. RESORTE MEDIO: Separa el Logo del Botón
+                  // C. RESORTE MEDIO
                   Spacer(flex: kFuerzaMedio),
 
-                  // D. GRUPO BOTÓN + TEXTO (Se mueven juntos)
+                  // D. GRUPO BOTÓN + TEXTO
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -215,10 +232,8 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
                         ),
                       ),
 
-                      // Separación pequeña fija entre botón y texto
                       const SizedBox(height: kEspacioBotonTexto),
 
-                      // Texto de términos
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: FittedBox(
@@ -233,7 +248,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
                     ],
                   ),
 
-                  // E. RESORTE SUELO: Empuja todo hacia arriba desde el fondo
+                  // E. RESORTE SUELO
                   Spacer(flex: kFuerzaSuelo),
                 ],
               ),

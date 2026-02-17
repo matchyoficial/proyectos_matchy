@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "694566552502-g6as3i6gan3smo7cc3cvh3a4eed6790d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.matchy.matchy20.flutter",
+            "certificate_hash": "1b49d3e36f5cf17754cc30eff4b0854bb6bd1ac0"
+          }
+        },
+        {
+          "client_id": "694566552502-gr71o7sbo4u6r47g5js6oef2bfjuupvu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.matchy.matchy20.flutter",
+            "certificate_hash": "2a3e4bb55dc2e44f7b4e1b57a8436394766463e5"
+          }
+        },
+        {
           "client_id": "694566552502-qrg19gt695v7ki3nm9houbga7pgd81h6.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -1,8 +1,7 @@
 // 📂 lib/main.dart
-// ✅ Riverpod root
-// ✅ Firebase initializeApp
-// ✅ FIX DatePicker/TimePicker en español: MaterialLocalizations + supportedLocales
-// ✅ FIX BUCLE REGISTRO: Usamos SplashScreen como home para dar tiempo a Firebase.
+// ✅ MAIN LIMPIO: Configuraciones globales y punto de entrada.
+// ✅ LOCALIZACIONES: Español configurado correctamente.
+// ✅ HOME: Apunta a SplashScreen, que ahora actúa como el "Portero Maestro".
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +11,7 @@ import 'firebase_options.dart';
 // ✅ LOCALIZACIONES
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-// 🛑 CAMBIO CLAVE: Importamos el Splash, no el AuthGuard directo
+// Importamos el Portero (Splash)
 import 'package:proyectos_matchy/screens/splash_screen.dart';
 
 Future<void> main() async {
@@ -39,23 +38,23 @@ class MyApp extends StatelessWidget {
       title: 'Matchy',
       theme: ThemeData(useMaterial3: true),
 
-      // 🔴 CHINCHE MAIN LOCALE 1 — idioma base de la app
+      // 🔴 IDIOMA BASE
       locale: const Locale('es', 'ES'),
 
-      // 🔴 CHINCHE MAIN LOCALE 2 — idiomas soportados
+      // 🔴 IDIOMAS SOPORTADOS
       supportedLocales: const [
         Locale('es', 'ES'),
         Locale('en', 'US'),
       ],
 
-      // 🔴 CHINCHE MAIN LOCALE 3 — delegates obligatorios
+      // 🔴 DELEGATES
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // ✅ Ruta inicial: SplashScreen (Sala de espera de 2s para evitar bucle)
+      // ✅ EL PORTERO: Aquí inicia la lógica de sincronización
       home: const SplashScreen(),
     );
   }

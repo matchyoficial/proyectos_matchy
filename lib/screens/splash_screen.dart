@@ -1,8 +1,10 @@
 // 📂 lib/screens/splash_screen.dart
-// ✅ SPLASH "CANDADO ESTRICTO" (CORREGIDO - SIN LETRA Ñ)
-// 🔥 FIX: Renombrado _buildDiseñoSplash a _buildDisenoSplash para evitar error de compilación.
-// 🔥 GARANTÍA: El mismo código de seguridad estricta, ahora compilable.
+// ✅ SPLASH "SINCRONIZACIÓN ESTRICTA" (ARQUITECTURA PROFESIONAL)
+// 🔥 FIX VISUAL: Garantiza 3 segundos de logo usando Future.wait.
+// 🔥 FIX LÓGICO: Espera la señal 'first' de Firebase. No adivina, sabe.
+// 🔥 RESULTADO: Jamás salta a registro por error ni deja de mostrar el logo.
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,75 +23,63 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
+  // Tiempo mínimo OBLIGATORIO que el logo estará en pantalla
+  static const int _minSeconds = 3;
   static const String _kUsersCollection = 'users';
-  bool _navigating = false; // Semáforo para evitar doble navegación
 
   @override
-  Widget build(BuildContext context) {
-    // 🛡️ EL CENTINELA: StreamBuilder escucha directamente al núcleo de Auth
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-
-        // 1. ESTADO: CARGANDO (Firebase está leyendo el disco)
-        // Mientras la conexión esté esperando, mostramos el diseño estático.
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildDisenoSplash();
-        }
-
-        // 2. ESTADO: RESPUESTA RECIBIDA
-        // Apenas tenemos dato (sea User o null), ejecutamos la lógica UNA VEZ.
-        if (!_navigating) {
-          _navigating = true; // Bloqueamos para que no se repita
-
-          // Usamos addPostFrameCallback para navegar DESPUÉS de que se dibuje el frame
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _gestionarNavegacion(snapshot.data);
-          });
-        }
-
-        // Mientras navegamos, seguimos mostrando el logo para que no parpadee blanco
-        return _buildDisenoSplash();
-      },
-    );
+  void initState() {
+    super.initState();
+    _iniciarArranqueSincronizado();
   }
 
-  Future<void> _gestionarNavegacion(User? user) async {
+  Future<void> _iniciarArranqueSincronizado() async {
+    // 🛡️ EL CANDADO DE TIEMPO Y DATOS
+    // Lanzamos dos tareas al aire y esperamos a que AMBAS aterricen.
+    // 1. Tarea Visual: Esperar 3 segundos.
+    // 2. Tarea Datos: Obtener el primer estado válido de Firebase (User o Null).
+
+    final resultados = await Future.wait([
+      Future.delayed(const Duration(seconds: _minSeconds)), // [0]
+      FirebaseAuth.instance.authStateChanges().first,       // [1]
+    ]);
+
+    // Aquí ya pasaron al menos 3 segundos Y Firebase ya respondió.
+    // Es imposible que falle por velocidad.
+
+    final user = resultados[1] as User?;
+
+    if (!mounted) return;
+
     if (user == null) {
-      // ❌ CASO B: NO HAY USUARIO (Confirmado 100% por Firebase)
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const RegistroScreen()),
-      );
+      // ❌ NO HAY SESIÓN: Vamos a Registro
+      _irA(const RegistroScreen());
     } else {
-      // ✅ CASO A: HAY USUARIO (Confirmado 100% por Firebase)
-      try {
-        // 1. Inyectamos vida a la memoria (Riverpod)
-        await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
+      // ✅ HAY SESIÓN: Verificamos datos del usuario
+      await _procesarUsuarioLogueado(user);
+    }
+  }
 
-        // 2. Verificamos la integridad de los datos en la Nube
-        final perfilCompleto = await _checkOnboardingCloud(user.uid);
+  Future<void> _procesarUsuarioLogueado(User user) async {
+    try {
+      // 1. Inyectamos datos en Riverpod
+      await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
 
-        if (!mounted) return;
+      // 2. Verificamos Firestore (Registro completo)
+      final perfilCompleto = await _checkOnboardingCloud(user.uid);
 
-        if (perfilCompleto) {
-          // -> AL PANEL
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
-          );
-        } else {
-          // -> A DATOS (Usuario existe pero no terminó registro)
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const DatosScreen()),
-          );
-        }
-      } catch (e) {
-        // Si falla la lectura de datos, por seguridad mandamos a DatosScreen
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DatosScreen()),
-        );
+      if (!mounted) return;
+
+      if (perfilCompleto) {
+        // Todo perfecto -> Panel
+        _irA(const HomeShell(initialIndex: 2));
+      } else {
+        // Falta completar perfil -> Datos
+        _irA(const DatosScreen());
       }
+    } catch (e) {
+      // Si falla algo crítico (ej. internet), mandamos a Datos por seguridad
+      if (mounted) _irA(const DatosScreen());
     }
   }
 
@@ -99,15 +89,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           .collection(_kUsersCollection)
           .doc(uid)
           .get();
-
-      if (!doc.exists) return false;
-      return doc.data()?['onboarding_completed'] == true;
+      return doc.exists && doc.data()?['onboarding_completed'] == true;
     } catch (_) {
       return false;
     }
   }
 
-  Widget _buildDisenoSplash() {
+  void _irA(Widget screen) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => screen),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // WIDGET PURAMENTE VISUAL
     return Scaffold(
       body: Container(
         width: double.infinity,
@@ -125,10 +121,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
               Image.asset(
                 'assets/images/logo_matchy.png',
                 height: 200,
-                errorBuilder: (_,__,___) => const SizedBox(),
+                // Si la imagen falla, muestra algo para saber que el código corre
+                errorBuilder: (_,__,___) => const Icon(Icons.favorite, size: 80, color: Colors.white),
               ),
               const SizedBox(height: 40),
-              // Indicador visual: "No te has trabado, estoy esperando a Firebase"
               const CircularProgressIndicator(
                 color: Color(0xFFBEB3FF),
                 strokeWidth: 3,
