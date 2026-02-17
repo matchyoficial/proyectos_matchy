@@ -176,9 +176,27 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       final d = mySnap.data() ?? {};
       nombre = _pickNombreFromUserDoc(d); edad = _pickEdadFromUserDoc(d); foto = _pickFotoFromUserDoc(d);
     } catch (_) {}
+
+    // 1. Registro de candidato original
     await FirebaseFirestore.instance.collection(kCitasCol).doc(model.citaId).collection(kSubCandidatos).doc(uid).set({
       'uid': uid, 'createdAt': FieldValue.serverTimestamp(), 'nombre': nombre, 'edad': edad, 'foto': foto, 'citaId': model.citaId, 'ownerUid': model.ownerUid,
     }, SetOptions(merge: true));
+
+    // 🔥 NOTIFICACIÓN GOLDEN TICKET AL DUEÑO
+    if (model.ownerUid.isNotEmpty && model.ownerUid != 'unknown') {
+      await FirebaseFirestore.instance
+          .collection(kUsersCol)
+          .doc(model.ownerUid)
+          .collection('notifications')
+          .add({
+        'type': 'golden_ticket',
+        'title': '¡NUEVO CANDIDATO!',
+        'body': '$nombre está interesada en ir contigo a tu cita en ${model.placeName}',
+        'citaId': model.citaId,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
   }
 
   String _s(dynamic v) => v is String ? v : (v?.toString() ?? '');
@@ -376,7 +394,7 @@ class _SwipeBundleSolid extends StatelessWidget {
                   // SOMBRAS PARA TEXTOS
                   if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
                   if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
-                  if (!isProfile) Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
+                  if (!isProfile) Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
                   if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
                     FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
                     const SizedBox(height: 2),

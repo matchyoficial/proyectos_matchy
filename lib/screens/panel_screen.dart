@@ -3,6 +3,7 @@
 // 🔥 FIX: Implementada "Carga Inteligente". Muestra datos inmediatos si existen, spinner solo si está vacío.
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
 // 🔥 UI: Diseño original intacto.
+// 🔥 INTEGRACIÓN: Diseño Golden Ticket y navegación a CitasPendientesDetalle.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -19,6 +20,7 @@ import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
 import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
+import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart'; // 🔥 Import para Golden Ticket
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
@@ -71,11 +73,17 @@ class NotificationLogic {
 
   // 🔥 CHECK INTELIGENTE: Verifica estado de la cita antes de navegar
   static Future<void> handleTap(BuildContext context, String docId, String type, String? citaId) async {
-    // 1. Borrar notificación visualmente para que no estorbe
+    // 1. Borrar notificación visualmente para que no estorbe (AUTODESTRUCCIÓN)
     deleteNotification(docId);
     Navigator.pop(context); // Cerrar sheet
 
     if (citaId == null) return;
+
+    // 🔥 CASO GOLDEN TICKET: Navegación directa al detalle
+    if (type == 'golden_ticket') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => CitasPendientesDetalleScreen(citaId: citaId)));
+      return;
+    }
 
     // 2. Casos Informativos (Solo ir a la pestaña Citas)
     if (type == 'cita_aceptada' || type == 'repro_accepted') {
@@ -151,6 +159,10 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   static const Color kSheetBottomColor = Colors.black;
 
   static const List<Color> kNotifGradient = [Color(0xFF4A3B75), Color(0xFF1F1F1F)];
+
+  // 🔥 GRADIENTE GOLDEN TICKET
+  static const List<Color> kGoldenGradient = [Color(0xFFFFC107), Color(0xFFFFD54F)];
+
   static const double kNotifRadius = 22.0;
   static const List<BoxShadow> kNotifShadow = [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))];
 
@@ -960,7 +972,29 @@ class _NotificacionesSheet extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: 15), Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 20), const FittedBox(fit: BoxFit.scaleDown, child: Text("NOTIFICACIONES", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0))), const SizedBox(height: 15),
-          Expanded(child: notificacionesAsync.when(loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))), error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))), data: (docs) { if (docs.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins'))); return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; final docId = docs[index].id; final leido = data['read'] == true; final titulo = data['title'] ?? 'Notificación'; final cuerpo = data['body'] ?? ''; final type = data['type'] ?? ''; final citaId = data['citaId']; IconData icono = Icons.notifications_rounded; if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded; if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded; return Dismissible(key: Key(docId), direction: DismissDirection.endToStart, background: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)), alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete_outline, color: Colors.white)), onDismissed: (_) => NotificationLogic.deleteNotification(docId), child: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kNotifGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius), border: leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5), boxShadow: _PanelScreenState.kNotifShadow), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), leading: CircleAvatar(backgroundColor: leido ? Colors.white10 : const Color(0xFF6B4EE6), child: Icon(icono, color: Colors.white)), title: Text(titulo, style: TextStyle(color: Colors.white, fontWeight: leido ? FontWeight.normal : FontWeight.bold, fontSize: 15)), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: const TextStyle(color: Colors.white70, fontSize: 13))), trailing: const Icon(Icons.chevron_right, color: Colors.white38),
+          Expanded(child: notificacionesAsync.when(loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))), error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))), data: (docs) { if (docs.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins'))); return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; final docId = docs[index].id; final leido = data['read'] == true; final titulo = data['title'] ?? 'Notificación'; final cuerpo = data['body'] ?? ''; final type = data['type'] ?? ''; final citaId = data['citaId'];
+
+          // 🔥 DISEÑO GOLDEN TICKET
+          if (type == 'golden_ticket') {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: _PanelScreenState.kGoldenGradient),
+                borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
+                boxShadow: _PanelScreenState.kNotifShadow,
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                leading: const CircleAvatar(backgroundColor: Colors.black, child: Icon(Icons.star, color: Color(0xFFFFC107))),
+                title: Text(titulo, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
+                subtitle: Text(cuerpo, style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.black45),
+                onTap: () => NotificationLogic.handleTap(context, docId, type, citaId),
+              ),
+            );
+          }
+
+          IconData icono = Icons.notifications_rounded; if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded; if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded; return Dismissible(key: Key(docId), direction: DismissDirection.endToStart, background: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)), alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete_outline, color: Colors.white)), onDismissed: (_) => NotificationLogic.deleteNotification(docId), child: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kNotifGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius), border: leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5), boxShadow: _PanelScreenState.kNotifShadow), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), leading: CircleAvatar(backgroundColor: leido ? Colors.white10 : const Color(0xFF6B4EE6), child: Icon(icono, color: Colors.white)), title: Text(titulo, style: TextStyle(color: Colors.white, fontWeight: leido ? FontWeight.normal : FontWeight.bold, fontSize: 15)), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: const TextStyle(color: Colors.white70, fontSize: 13))), trailing: const Icon(Icons.chevron_right, color: Colors.white38),
               onTap: () => NotificationLogic.handleTap(context, docId, type, citaId) // 🔥 USO DEL MANEJADOR INTELIGENTE
           ))); }); })),
         ],

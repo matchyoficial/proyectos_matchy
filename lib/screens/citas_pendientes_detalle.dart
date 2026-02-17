@@ -4,6 +4,7 @@
 // 🔥 UI: Título centrado, Reloj Neón estilo "Sin Bloqueo", Sombras Premium.
 // 🔥 UI: Cápsula adaptable, Letrero de "Aún no hay postulados" incluido.
 // 🔥 LOGIC: 100% Intacta.
+// 🎫 STATUS: Destino oficial de Notificaciones Golden Ticket.
 
 import 'dart:async';
 import 'dart:ui';
@@ -543,7 +544,7 @@ class _ButtonFinalDelete extends StatelessWidget {
 class _PopupInfoItem extends StatelessWidget {
   final IconData icon; final String label; final String value;
   const _PopupInfoItem({required this.icon, required this.label, required this.value});
-  @override Widget build(BuildContext context) {
+  @override build(BuildContext context) {
     return Column(children: [Icon(icon, color: Colors.white54, size: 20), const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)), Text(value.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]);
   }
 }
