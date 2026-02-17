@@ -1,20 +1,16 @@
 // 📂 lib/screens/splash_screen.dart
-// ✅ Splash definitivo BLINDADO (LÓGICA CORREGIDA)
-// 🔥 FIX: Rompe el bucle de Registro.
-// 🔥 LOGIC: Si estás logueado pero faltan datos, te manda a DatosScreen, NUNCA a Registro.
+// ✅ SPLASH "CANDADO ESTRICTO" (CORREGIDO - SIN LETRA Ñ)
+// 🔥 FIX: Renombrado _buildDiseñoSplash a _buildDisenoSplash para evitar error de compilación.
+// 🔥 GARANTÍA: El mismo código de seguridad estricta, ahora compilable.
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-import 'package:proyectos_matchy/screens/registro_screen.dart';
-import 'package:proyectos_matchy/screens/home_shell.dart';
-import 'package:proyectos_matchy/screens/datos_screen.dart'; // ✅ Importante para redireccionar correctamente
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'package:proyectos_matchy/screens/registro_screen.dart';
+import 'package:proyectos_matchy/screens/home_shell.dart';
+import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
@@ -25,60 +21,78 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> {
-  static const int splashSeconds = 2;
-  static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
   static const String _kUsersCollection = 'users';
+  bool _navigating = false; // Semáforo para evitar doble navegación
 
   @override
-  void initState() {
-    super.initState();
-    _decidirRuta();
+  Widget build(BuildContext context) {
+    // 🛡️ EL CENTINELA: StreamBuilder escucha directamente al núcleo de Auth
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+
+        // 1. ESTADO: CARGANDO (Firebase está leyendo el disco)
+        // Mientras la conexión esté esperando, mostramos el diseño estático.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildDisenoSplash();
+        }
+
+        // 2. ESTADO: RESPUESTA RECIBIDA
+        // Apenas tenemos dato (sea User o null), ejecutamos la lógica UNA VEZ.
+        if (!_navigating) {
+          _navigating = true; // Bloqueamos para que no se repita
+
+          // Usamos addPostFrameCallback para navegar DESPUÉS de que se dibuje el frame
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _gestionarNavegacion(snapshot.data);
+          });
+        }
+
+        // Mientras navegamos, seguimos mostrando el logo para que no parpadee blanco
+        return _buildDisenoSplash();
+      },
+    );
   }
 
-  Future<void> _decidirRuta() async {
-    // Pequeña espera para mostrar el logo y dar tiempo a Firebase Auth
-    await Future.delayed(const Duration(seconds: splashSeconds));
-    if (!mounted) return;
-
-    final user = FirebaseAuth.instance.currentUser;
-
-    // ---------------------------------------------------------
-    // CASO A: USUARIO LOGUEADO EN FIREBASE
-    // ---------------------------------------------------------
-    if (user != null) {
-      // 1. Cargar datos en memoria (Riverpod) para que la app no se sienta vacía al entrar
-      await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
-
-      // 2. Verificar estado del perfil en la Nube
-      final onboardingCompleto = await _checkOnboardingCloud(user.uid);
-
+  Future<void> _gestionarNavegacion(User? user) async {
+    if (user == null) {
+      // ❌ CASO B: NO HAY USUARIO (Confirmado 100% por Firebase)
       if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const RegistroScreen()),
+      );
+    } else {
+      // ✅ CASO A: HAY USUARIO (Confirmado 100% por Firebase)
+      try {
+        // 1. Inyectamos vida a la memoria (Riverpod)
+        await ref.read(profileFormProvider.notifier).bootstrapFromFirestore();
 
-      if (onboardingCompleto) {
-        // ✅ Todo perfecto (Tiene bandera 'onboarding_completed') -> Al Panel
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
-        );
-      } else {
-        // ⚠️ Falta completar perfil -> A Datos (AQUÍ ESTABA EL ERROR ANTES)
-        // Antes te mandaba al Registro. Ahora te manda a llenar lo que falta.
+        // 2. Verificamos la integridad de los datos en la Nube
+        final perfilCompleto = await _checkOnboardingCloud(user.uid);
+
+        if (!mounted) return;
+
+        if (perfilCompleto) {
+          // -> AL PANEL
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeShell(initialIndex: 2)),
+          );
+        } else {
+          // -> A DATOS (Usuario existe pero no terminó registro)
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const DatosScreen()),
+          );
+        }
+      } catch (e) {
+        // Si falla la lectura de datos, por seguridad mandamos a DatosScreen
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const DatosScreen()),
         );
       }
-      return;
     }
-
-    // ---------------------------------------------------------
-    // CASO B: USUARIO NO LOGUEADO
-    // ---------------------------------------------------------
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const RegistroScreen()),
-    );
   }
 
-  // 🛡️ Verificación simplificada y robusta
   Future<bool> _checkOnboardingCloud(String uid) async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -87,19 +101,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           .get();
 
       if (!doc.exists) return false;
-      final data = doc.data();
-
-      // Confiamos en la bandera maestra que pone DatosScreen al guardar.
-      return data?['onboarding_completed'] == true;
+      return doc.data()?['onboarding_completed'] == true;
     } catch (_) {
       return false;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildDisenoSplash() {
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           image: DecorationImage(
             image: AssetImage('assets/images/fondo.jpg'),
@@ -107,9 +119,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           ),
         ),
         child: Center(
-          child: Image.asset(
-            'assets/images/logo_matchy.png',
-            height: 200,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset(
+                'assets/images/logo_matchy.png',
+                height: 200,
+                errorBuilder: (_,__,___) => const SizedBox(),
+              ),
+              const SizedBox(height: 40),
+              // Indicador visual: "No te has trabado, estoy esperando a Firebase"
+              const CircularProgressIndicator(
+                color: Color(0xFFBEB3FF),
+                strokeWidth: 3,
+              ),
+            ],
           ),
         ),
       ),
