@@ -2,6 +2,7 @@
 // ✅ PANTALLA DE CANCELACIÓN BLINDADA (LÓGICA DE BLOQUEO + NOTIFICACIÓN ALERTA)
 // 🔥 LOGIC: -20 Puntos, Strike +1, Bloqueo (x5 días), Racha 0.
 // 🔥 NOTIF: Envía alerta roja al otro usuario con fecha y lugar.
+// 🔒 FIX: Botón "Reprogramar" se bloquea si faltan menos de 12h + Burbuja de Alerta.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -58,6 +59,69 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
   // ===========================================================================
 
   bool _isLoading = false;
+  DateTime? _citaDateTime; // Variable para almacenar la fecha y calcular las 12h
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCitaDate();
+  }
+
+  // 🔥 Carga la fecha de la cita para validar la regla de las 12 horas
+  Future<void> _fetchCitaDate() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        final fechaStr = data['fecha'] as String? ?? '';
+
+        // Parseo simple DD/MM/YYYY (ajustar según formato real en DB)
+        final partes = fechaStr.trim().split(RegExp(r'[/ -]'));
+        if (partes.length >= 3) {
+          final dt = DateTime(
+            int.parse(partes[2]), // Año
+            int.parse(partes[1]), // Mes
+            int.parse(partes[0]), // Día
+          );
+          setState(() {
+            _citaDateTime = dt;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 🔥 LÓGICA DE TIEMPO: Retorna TRUE si faltan más de 12h (Zona Segura)
+  bool get _zonaSegura12h {
+    if (_citaDateTime == null) return true; // Si aún carga, permitimos por defecto
+    final ahora = DateTime.now();
+    return _citaDateTime!.difference(ahora).inHours >= 12;
+  }
+
+  // 🔥 ALERTA DE BLOQUEO REPROGRAMACIÓN
+  void _mostrarAlertaBloqueoReprogramar() {
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
+            title: const Text("⏳ TIEMPO AGOTADO", style: TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.w900)),
+            content: const Text(
+              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DEBES ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, height: 1.4, fontSize: 14),
+            ),
+            actions: [
+              Center(
+                child: TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                ),
+              )
+            ]
+        )
+    );
+  }
 
   Future<void> _ejecutarCancelacion() async {
     setState(() => _isLoading = true);
@@ -151,6 +215,8 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    // Evaluamos la regla de las 12 horas
+    final esSeguroReprogramar = _zonaSegura12h;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -319,27 +385,33 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
 
                               const SizedBox(height: kBotonReproTopGap),
 
-                              // 5. BOTÓN REPROGRAMAR (VERDE) BLINDADO
+                              // 5. BOTÓN REPROGRAMAR (MODIFICADO CON REGLA 12H)
                               SizedBox(
                                 width: double.infinity,
                                 height: kBotonReproHeight,
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF00E676),
+                                    // 🔥 CAMBIO DE COLOR: Verde si es seguro, Gris si <12h
+                                    backgroundColor: esSeguroReprogramar ? const Color(0xFF00E676) : const Color(0xFF616161),
                                     foregroundColor: Colors.black,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                                     elevation: 8,
-                                    shadowColor: const Color(0xFF00E676).withOpacity(0.4),
+                                    shadowColor: (esSeguroReprogramar ? const Color(0xFF00E676) : Colors.black).withOpacity(0.4),
                                   ),
                                   onPressed: () {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)));
+                                    if (esSeguroReprogramar) {
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)));
+                                    } else {
+                                      _mostrarAlertaBloqueoReprogramar(); // Muestra burbuja si está bloqueado
+                                    }
                                   },
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
                                     child: Padding(
                                       padding: const EdgeInsets.symmetric(horizontal: 16),
                                       child: Text(
-                                        "REPROGRAMAR CITA",
+                                        // 🔥 CAMBIO DE TEXTO
+                                        esSeguroReprogramar ? "REPROGRAMAR CITA" : "ACCIÓN BLOQUEADA (MENOS DE 12H)",
                                         style: TextStyle(fontSize: kBotonReproFontSize, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                                       ),
                                     ),
@@ -358,7 +430,7 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
 
                               const SizedBox(height: kBotonRojoTopGap),
 
-                              // 6. BOTÓN PENALIDAD (ROJO) BLINDADO
+                              // 6. BOTÓN PENALIDAD (ROJO) - INTACTO
                               if (_isLoading)
                                 const CircularProgressIndicator(color: Color(0xFFFF5252))
                               else
