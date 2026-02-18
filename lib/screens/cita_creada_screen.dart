@@ -172,7 +172,7 @@ class CitaCreadaScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 const Text(
-                                  "NO PUEDES CANCELAR UNA CITA 12 HORAS ANTES DE LA HORA ACORDADA, DEBES REPROGRAMARLA O SERÁS PENALIZADO",
+                                  "CANCELAR ESTA CITA TE GENERARÁ UNA PENALIDAD DE -20 PUNTOS Y UN BLOQUEO TEMPORAL DE TU CUENTA.RECUERDA: LA OPCIÓN DE REPROGRAMAR SOLO ESTÁ DISPONIBLE HASTA 12 HORAS ANTES DE LA CITA. SI YA PASÓ ESE TIEMPO, CANCELAR ES TU ÚNICA OPCIÓN SI NO PUEDES ASISTIR.",
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                       color: Color(0xFFF80719),

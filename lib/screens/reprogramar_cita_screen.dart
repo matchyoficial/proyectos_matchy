@@ -1,10 +1,14 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
 // ✅ PANTALLA REPROGRAMAR BLINDADA (ESTRATEGIA ADAPTATIVA)
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables protegidos.
-// 🔥 UI: Bloques informativos (Yellow/Red) intactos para evitar que se encojan.
+// 🔥 UI: Bloques informativos (Yellow/Red) intactos.
+// 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
+// 🔔 NOTIFICACIÓN: Personalizada con Nombre de Lugar y Remitente.
+// 💄 UI: Botón Back Chevron ubicado en la esquina superior izquierda (fuera de la foto).
 
-import 'dart:ui';
+import 'dart:ui'; // 🔥 Para el efecto de desenfoque
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart'; // 🔥 Para los rodillos modernos
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -73,6 +77,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
   }
 
   Future<void> _seleccionarFechaHora(int index) async {
+    // 1. SELECCIÓN DE FECHA (CALENDARIO MATERIAL OSCURO)
     final now = DateTime.now();
     final pickerTheme = ThemeData.dark().copyWith(
       colorScheme: const ColorScheme.dark(
@@ -95,10 +100,102 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     if (pickedDate == null) return;
 
     if (!mounted) return;
-    final TimeOfDay? pickedTime = await showTimePicker(
+
+    // 2. SELECCIÓN DE HORA (NUEVO RELOJ CENTRAL RODILLO)
+    TimeOfDay? pickedTime;
+
+    // Variables para el selector
+    int selHora = 7;
+    int selMin = 0;
+    int selAmPm = 1; // 0: AM, 1: PM (Default 7:00 PM)
+
+    await showDialog(
       context: context,
-      initialTime: const TimeOfDay(hour: 20, minute: 0),
-      builder: (context, child) => Theme(data: pickerTheme, child: child!),
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              height: 320,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E2C),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white10),
+                  boxShadow: const [BoxShadow(color: Colors.black87, blurRadius: 20, offset: Offset(0, 10))]
+              ),
+              child: Column(
+                children: [
+                  const Text("SELECCIONA LA HORA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5)),
+                  const SizedBox(height: 10),
+                  const Divider(color: Colors.white10),
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Horas
+                        Expanded(
+                          child: CupertinoPicker(
+                            scrollController: FixedExtentScrollController(initialItem: 6),
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selHora = index + 1,
+                            children: List.generate(12, (i) => Center(child: Text("${i + 1}", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)))),
+                          ),
+                        ),
+                        const Text(":", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 25, fontWeight: FontWeight.bold)),
+                        // Minutos
+                        Expanded(
+                          child: CupertinoPicker(
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selMin = index,
+                            children: List.generate(60, (i) => Center(child: Text(i.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)))),
+                          ),
+                        ),
+                        // AM/PM
+                        Expanded(
+                          child: CupertinoPicker(
+                            scrollController: FixedExtentScrollController(initialItem: 1),
+                            itemExtent: 45,
+                            onSelectedItemChanged: (index) => selAmPm = index,
+                            children: const [
+                              Center(child: Text("AM", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900))),
+                              Center(child: Text("PM", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900))),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Colors.white10),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 14))),
+                      Container(width: 1, height: 20, color: Colors.white10),
+                      TextButton(
+                        onPressed: () {
+                          // Lógica de conversión a 24h para guardar
+                          int finalHour = selHora;
+                          if (selAmPm == 1 && finalHour != 12) finalHour += 12;
+                          if (selAmPm == 0 && finalHour == 12) finalHour = 0;
+
+                          pickedTime = TimeOfDay(hour: finalHour, minute: selMin);
+                          Navigator.pop(context);
+                        },
+                        child: const Text("ESTABLECER", style: TextStyle(color: Color(0xFFBEB3FF), fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1.0)),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
 
     if (pickedTime == null) return;
@@ -106,7 +203,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
     setState(() {
       _opciones[index] = DateTime(
         pickedDate.year, pickedDate.month, pickedDate.day,
-        pickedTime.hour, pickedTime.minute,
+        pickedTime!.hour, pickedTime!.minute,
       );
     });
   }
@@ -163,6 +260,12 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
       final String candidatoUid = (_citaData?['candidatoUid'] ?? _citaData?['matchyUid'] ?? '').toString();
       final String peerUid = (myUid == ownerUid) ? candidatoUid : ownerUid;
 
+      // 🔥 DATOS PARA NOTIFICACIÓN PERSONALIZADA
+      final String ownerName = (_citaData?['ownerNombre'] ?? 'Owner').toString();
+      final String matchyName = (_citaData?['matchyNombre'] ?? (_citaData?['candidatoNombre'] ?? 'Matchy')).toString();
+      final String myName = (myUid == ownerUid) ? ownerName : matchyName;
+      final String placeName = (_citaData?['lugarNombre'] ?? 'CITA').toString();
+
       final List<Timestamp> optionsTimestamps = _opciones
           .map((dt) => Timestamp.fromDate(dt!))
           .toList();
@@ -182,8 +285,9 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
         batch.set(notifRef, {
           'type': 'repro_request',
           'citaId': widget.citaId,
-          'title': 'SOLICITUD DE CAMBIO',
-          'body': 'Tu Matchy propone nuevos horarios para la cita.',
+          // 🔔 TÍTULO Y CUERPO PERSONALIZADOS
+          'title': 'REPROGRAMACIÓN: ${placeName.toUpperCase()} 🕒',
+          'body': '$myName propone 3 nuevos horarios. Toca aquí para elegir el que más te sirva.',
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
           'fromUid': myUid,
@@ -279,17 +383,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                               ),
                             ),
                           ),
-                          Positioned(
-                            top: 15, left: 15,
-                            child: InkWell(
-                              onTap: () => Navigator.pop(context),
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
-                                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-                              ),
-                            ),
-                          ),
+                          // ❌ ANTES ESTABA AQUÍ EL BOTÓN DE ATRÁS, SE HA MOVIDO AL STACK PRINCIPAL.
                           Positioned(
                             bottom: kUserPhotoMargin,
                             right: kUserPhotoMargin,
@@ -462,6 +556,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
             ),
           ),
 
+          // 🛡️ FADEOUT INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -474,6 +569,25 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                     stops: const [0.0, 1.0],
                   ),
                 ),
+              ),
+            ),
+          ),
+
+          // 🛡️ BOTÓN BACK FLOTANTE (ARRIBA IZQUIERDA)
+          Positioned(
+            top: 45, // Ajuste para SafeArea
+            left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+                ),
+                child: const Icon(Icons.chevron_left, color: Colors.white, size: 26),
               ),
             ),
           ),

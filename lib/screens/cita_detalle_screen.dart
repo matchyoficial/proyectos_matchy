@@ -1,6 +1,7 @@
 // 📂 lib/screens/cita_detalle_screen.dart
 // ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
 // 🔥 FIX: Captura de lugarId para pasar a la plantilla de información del sitio.
+// 🔒 FIX: Botón "Reprogramar" se bloquea si faltan menos de 12h + Burbuja de Alerta.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -27,6 +28,8 @@ const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadi
 const List<Color> kBtnConfirmGradient   = [Color(0xFF00C853), Color(0xFF007E33)];
 const List<Color> kBtnReproGradient     = [Color(0xFF4FC3F7), Color(0xFF0288D1)];
 const List<Color> kBtnCancelGradient    = [Color(0xFFFF4B4B), Color(0xFFB71C1C)];
+// 🔥 Gradiente Gris para botón bloqueado
+const List<Color> kBtnBlockedGradient   = [Color(0xFF616161), Color(0xFF424242)];
 
 class CitaDetalleScreen extends StatefulWidget {
   final String citaId;
@@ -105,6 +108,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   @override void dispose() { _codigoMatchyController.dispose(); _citaSubscription?.cancel(); super.dispose(); }
 
+  // 🔥 LÓGICA DE TIEMPO: Retorna TRUE si faltan más de 12h (Zona Segura). FALSE si faltan menos.
   bool get _esCancelable { if (widget.citaDateTime == null) return true; final ahora = DateTime.now(); return widget.citaDateTime!.difference(ahora).inHours >= 12; }
 
   String _getFechaAmigable() {
@@ -167,6 +171,31 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   void _gestionarCancelacion() { Navigator.push(context, MaterialPageRoute(builder: (_) => CancelarCitaScreen(citaId: widget.citaId, otherUserId: widget.matchyUid))); }
 
+  // 🔥 ALERTA DE BLOQUEO REPROGRAMACIÓN (Burbuja Nueva)
+  void _mostrarAlertaBloqueoReprogramar() {
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
+            title: const Text("⏳ TIEMPO AGOTADO", style: TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.w900)),
+            content: const Text(
+              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DEBES ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, height: 1.4, fontSize: 14),
+            ),
+            actions: [
+              Center(
+                child: TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                ),
+              )
+            ]
+        )
+    );
+  }
+
   Widget _buildPanelStyleCard({required Widget image, required String title, required String subtitle, String? extraTitle, String? footerText, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -208,8 +237,19 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             const SizedBox(height: 25),
             Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFF1A1A1A).withOpacity(0.95), borderRadius: BorderRadius.circular(kCapsulaRadius), border: Border.all(color: Colors.white10)), child: Column(children: [_buildDisplayCode(widget.miCodigoCita), const SizedBox(height: 15), _buildInputCode(), const SizedBox(height: 20), _PremiumButton(text: _procesandoValidacion ? "VALIDANDO..." : "CONFIRMA TU CITA", gradient: kBtnConfirmGradient, onTap: _validarYConfirmar), const SizedBox(height: 12), const Text("POR TU SEGURIDAD SOLO DALE A TU MATCHY TU CÓDIGO EN EL LUGAR DE LA CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold))])),
             const SizedBox(height: 20),
-            _PremiumButton(text: "REPROGRAMAR CITA", gradient: kBtnReproGradient, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)))),
+
+            // 🔥 BOTÓN REPROGRAMAR MODIFICADO (12H RULE)
+            _PremiumButton(
+                text: _esCancelable ? "REPROGRAMAR CITA" : "ACCIÓN BLOQUEADA (MENOS DE 12H)",
+                gradient: _esCancelable ? kBtnReproGradient : kBtnBlockedGradient,
+                onTap: _esCancelable
+                    ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)))
+                    : _mostrarAlertaBloqueoReprogramar // Muestra la alerta si está bloqueado
+            ),
+
             const SizedBox(height: 15),
+
+            // 🔥 BOTÓN CANCELAR ORIGINAL (INTACTO)
             Opacity(opacity: _esCancelable ? 1.0 : 0.5, child: _PremiumButton(text: "CANCELAR CITA", gradient: kBtnCancelGradient, onTap: _esCancelable ? _gestionarCancelacion : () {})),
             if (!_esCancelable) const Padding(padding: EdgeInsets.only(top: 12.0), child: Text("Faltan menos de 12 horas. Solo puedes reprogramar.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 19))),
           ])))),

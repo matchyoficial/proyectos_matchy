@@ -1,7 +1,7 @@
 // 📂 lib/screens/cancelar_cita_screen.dart
-// ✅ PANTALLA DE CANCELACIÓN BLINDADA (LÓGICA DE BLOQUEO ACTIVA)
+// ✅ PANTALLA DE CANCELACIÓN BLINDADA (LÓGICA DE BLOQUEO + NOTIFICACIÓN ALERTA)
 // 🔥 LOGIC: -20 Puntos, Strike +1, Bloqueo (x5 días), Racha 0.
-// 🔥 UI: Diseño original preservado. Texto corregido a -20.
+// 🔥 NOTIF: Envía alerta roja al otro usuario con fecha y lugar.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -66,24 +66,31 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
 
     final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
     final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
+    final notifRef = FirebaseFirestore.instance.collection('users').doc(widget.otherUserId).collection('notifications').doc();
 
     try {
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final userSnapshot = await transaction.get(userRef);
+        final citaSnapshot = await transaction.get(citaRef); // 🔥 Leemos la cita para los datos del texto
 
-        // 1. Datos Actuales
+        // 1. Datos Actuales del Usuario
         int currentScore = (userSnapshot.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
         int currentStrikes = (userSnapshot.data()?['strikes'] as num?)?.toInt() ?? 0;
+        String myName = (userSnapshot.data()?['nombre'] ?? 'Usuario').toString();
 
-        // 2. Cálculo de Penalización (-20 Puntos)
+        // 2. Datos de la Cita (Para la notificación)
+        String lugarNombre = (citaSnapshot.data()?['lugarNombre'] ?? 'la cita').toString();
+        String fechaCita = (citaSnapshot.data()?['fecha'] ?? '').toString();
+
+        // 3. Cálculo de Penalización (-20 Puntos)
         int newScore = (currentScore - 20).clamp(0, 100);
 
-        // 3. Cálculo de Bloqueo (Strikes y Días)
+        // 4. Cálculo de Bloqueo (Strikes y Días)
         int newStrikes = currentStrikes + 1;
         int diasCastigo = newStrikes * 5;
         DateTime fechaDesbloqueo = DateTime.now().add(Duration(days: diasCastigo));
 
-        // 4. Actualización Atómica
+        // 5. Actualización Atómica - USUARIO (Castigo)
         transaction.update(userRef, {
           'confiabilidad': newScore,
           'strikes': newStrikes,
@@ -92,11 +99,23 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
           'bloqueadoHasta': Timestamp.fromDate(fechaDesbloqueo),
         });
 
+        // 6. Actualización Atómica - CITA (Cancelación)
         transaction.update(citaRef, {
           'status': 'cancelled',
           'canceladoPor': user.uid,
           'canceladoAt': FieldValue.serverTimestamp(),
           'resultado': 'cancelled_penalty',
+        });
+
+        // 7. Actualización Atómica - NOTIFICACIÓN (Alerta Roja)
+        transaction.set(notifRef, {
+          'type': 'cancellation_alert', // 🔴 TIPO ESPECIAL PARA ROJO
+          'title': '🚫 CITA CANCELADA',
+          'body': 'Lo sentimos, $myName ha cancelado la cita del $fechaCita en $lugarNombre. Se han aplicado las sanciones correspondientes a $myName.',
+          'citaId': widget.citaId,
+          'fromUid': user.uid,
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
         });
       });
 

@@ -5,6 +5,7 @@
 // 🔥 UI: Cápsula adaptable, Letrero de "Aún no hay postulados" incluido.
 // 🔥 LOGIC: 100% Intacta.
 // 🎫 STATUS: Destino oficial de Notificaciones Golden Ticket.
+// 🧹 FIX: Limpieza automática de notificaciones al hacer Matchy.
 
 import 'dart:async';
 import 'dart:ui';
@@ -213,6 +214,21 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
         tx.set(db.collection('users').doc(user.uid).collection('my_matchys').doc(c.uid), {'nombre': cFull.nombre, 'edad': cFull.edad, 'fotoUrl': cFull.foto, 'matchId': mId, 'lastInteraction': FieldValue.serverTimestamp()}, SetOptions(merge: true));
         tx.set(db.collection('users').doc(c.uid).collection('my_matchys').doc(user.uid), {'nombre': _s(myData['nombre']), 'edad': myData['edad'] ?? 0, 'fotoUrl': _s(myData['profilePhotoUrl']), 'matchId': mId, 'lastInteraction': FieldValue.serverTimestamp()}, SetOptions(merge: true));
       });
+
+      // 🔥 FIX: LIMPIEZA AUTOMÁTICA DE NOTIFICACIONES (Golden Tickets)
+      // Buscamos si hay notificaciones pendientes sobre esta cita y las borramos
+      try {
+        final notifsSnap = await db.collection(kUsersCollection).doc(user.uid)
+            .collection('notifications')
+            .where('citaId', isEqualTo: cita.docId)
+            .get();
+
+        for (final doc in notifsSnap.docs) {
+          await doc.reference.delete();
+        }
+      } catch (_) {
+        // Fallo silencioso en limpieza, no afecta el flujo principal
+      }
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => MatchScreen(
@@ -544,7 +560,7 @@ class _ButtonFinalDelete extends StatelessWidget {
 class _PopupInfoItem extends StatelessWidget {
   final IconData icon; final String label; final String value;
   const _PopupInfoItem({required this.icon, required this.label, required this.value});
-  @override build(BuildContext context) {
+  @override Widget build(BuildContext context) {
     return Column(children: [Icon(icon, color: Colors.white54, size: 20), const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)), Text(value.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))]);
   }
 }

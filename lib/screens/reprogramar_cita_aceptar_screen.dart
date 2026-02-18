@@ -2,6 +2,7 @@
 // ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN BLINDADA (ESTRATEGIA ADAPTATIVA)
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables elásticos.
 // 🔥 UI: FotoPerfilUsuario y lógica de WriteBatch intactas.
+// 💄 UI: Botón Back Chevron (Arriba-Izquierda) y Fadeout Inferior.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -71,12 +72,14 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
     }
   }
 
+  // Helper para formatear fecha manual (evita problemas de locale)
   String _formatearFechaEspanol(DateTime date) {
     const dias = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
     const meses = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
     final diaSemana = dias[date.weekday - 1];
     final mes = meses[date.month - 1];
     final diaNum = date.day;
+    // Ejemplo: MIÉRCOLES 14 FEB
     return "$diaSemana $diaNum $mes";
   }
 
@@ -96,6 +99,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
       final batch = db.batch();
 
       final DateTime nuevaFecha = _opcionesRecibidas[_seleccionIndex!];
+      // Formato para guardar en Firestore (strings simples)
       final String fechaStr = DateFormat('dd/MM/yyyy').format(nuevaFecha);
       final String horaStr = DateFormat('hh:mm a').format(nuevaFecha);
 
@@ -104,12 +108,13 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
       final String myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       batch.update(citaRef, {
-        'status': 'matched',
+        'status': 'matched', // Vuelve a estado normal
         'fecha': fechaStr,
         'hora': horaStr,
         'repro_accepted_at': FieldValue.serverTimestamp(),
       });
 
+      // Notificar al solicitante
       if (requesterUid.isNotEmpty && requesterUid != myUid) {
         final notifRef = db.collection('users').doc(requesterUid).collection('notifications').doc();
         batch.set(notifRef, {
@@ -127,6 +132,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
       if (!mounted) return;
 
+      // Popup de éxito
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -140,6 +146,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
               child: TextButton(
                 onPressed: () {
                   Navigator.pop(ctx);
+                  // Volver al Panel y limpiar stack
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const PanelScreen()), (r) => false);
                 },
                 child: const Text("EXCELENTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -168,175 +175,207 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
     final String reproByUid = (_citaData!['repro_by_uid'] ?? '').toString();
 
     return Scaffold(
-      body: MatchyPageLayout(
-        backgroundAsset: 'assets/images/fondo.jpg',
-        logoAsset: 'assets/images/logomatchyplano.png',
-        topSpacing: 35,
-        logoHeight: 45,
-        spaceLogoToScroll: 20,
-        scrollContent: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 0),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
-                height: kCardHeight,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(kCardBorderRadius),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(kCardBorderRadius),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      lugarFoto.isNotEmpty
-                          ? Image.network(lugarFoto, fit: BoxFit.cover)
-                          : Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-                            stops: const [0.5, 1.0],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        top: 15, left: 15,
-                        child: InkWell(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
-                            child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
-                          ),
-                        ),
-                      ),
-
-                      Positioned(
-                        bottom: kUserPhotoMargin,
-                        right: kUserPhotoMargin,
-                        child: Container(
-                          width: kUserPhotoSize,
-                          height: kUserPhotoSize,
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(kUserPhotoRadius),
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
-                            child: FotoPerfilUsuario(
-                              uid: reproByUid,
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
+      body: Stack(
+        children: [
+          MatchyPageLayout(
+            backgroundAsset: 'assets/images/fondo.jpg',
+            logoAsset: 'assets/images/logomatchyplano.png',
+            topSpacing: 35,
+            logoHeight: 45,
+            spaceLogoToScroll: 20,
+            scrollContent: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
+                    height: kCardHeight,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(kCardBorderRadius),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(kCardBorderRadius),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // FOTO LUGAR
+                          lugarFoto.isNotEmpty
+                              ? Image.network(lugarFoto, fit: BoxFit.cover)
+                              : Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
+                          // GRADIENTE OSCURO
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                                colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                                stops: const [0.5, 1.0],
+                              ),
                             ),
                           ),
+
+                          // FOTO PERFIL (SOLICITANTE)
+                          Positioned(
+                            bottom: kUserPhotoMargin,
+                            right: kUserPhotoMargin,
+                            child: Container(
+                              width: kUserPhotoSize,
+                              height: kUserPhotoSize,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(kUserPhotoRadius),
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
+                                child: FotoPerfilUsuario(
+                                  uid: reproByUid,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 25),
+
+                  // BLINDAJE: Título estandarizado a 20pt
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: const Text(
+                        "SOLICITUD DE CAMBIO",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))]),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // 🛡️ CÁPSULA INFO BLINDADA
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: kGlassColor, borderRadius: BorderRadius.circular(20)),
+                    child: Column(
+                      children: [
+                        _buildInfoRow(Icons.person, "SOLICITADO POR: ${matchyNombre.toUpperCase()}"),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.history_rounded, "ANTERIOR: $fechaVieja - $horaVieja".toUpperCase(), isAccent: false, isStrike: true),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: kCardMarginH),
+                    child: Text(
+                      "TU MATCHY PROPONE ESTOS HORARIOS.\nELIGE EL QUE MEJOR TE QUEDE:",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Poppins', height: 1.4),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  if (_opcionesRecibidas.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text("NO SE ENCONTRARON OPCIONES VÁLIDAS", style: TextStyle(color: Colors.red)),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
+                      child: Column(
+                        children: List.generate(_opcionesRecibidas.length, (index) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _buildOptionCard(index, _opcionesRecibidas[index]),
+                          );
+                        }),
+                      ),
+                    ),
+
+                  const SizedBox(height: 20),
+
+                  // 🛡️ BOTÓN CONFIRMAR BLINDADO
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _seleccionIndex != null ? kSelectionColor : Colors.grey.shade800,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                          elevation: 8,
+                        ),
+                        onPressed: (_saving || _seleccionIndex == null) ? null : _confirmarHorario,
+                        child: _saving
+                            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            "CONFIRMAR NUEVO HORARIO",
+                            style: TextStyle(color: _seleccionIndex != null ? Colors.white : Colors.white38, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins'),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 25),
-
-              // BLINDAJE: Título estandarizado a 20pt
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: const Text(
-                    "SOLICITUD DE CAMBIO",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))]),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // 🛡️ CÁPSULA INFO BLINDADA
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: kGlassColor, borderRadius: BorderRadius.circular(20)),
-                child: Column(
-                  children: [
-                    _buildInfoRow(Icons.person, "SOLICITADO POR: ${matchyNombre.toUpperCase()}"),
-                    const SizedBox(height: 10),
-                    _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
-                    const SizedBox(height: 10),
-                    _buildInfoRow(Icons.history_rounded, "ANTERIOR: $fechaVieja - $horaVieja".toUpperCase(), isAccent: false, isStrike: true),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: kCardMarginH),
-                child: Text(
-                  "TU MATCHY PROPONE ESTOS HORARIOS.\nELIGE EL QUE MEJOR TE QUEDE:",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Poppins', height: 1.4),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              if (_opcionesRecibidas.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Text("NO SE ENCONTRARON OPCIONES VÁLIDAS", style: TextStyle(color: Colors.red)),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
-                  child: Column(
-                    children: List.generate(_opcionesRecibidas.length, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildOptionCard(index, _opcionesRecibidas[index]),
-                      );
-                    }),
-                  ),
-                ),
-
-              const SizedBox(height: 20),
-
-              // 🛡️ BOTÓN CONFIRMAR BLINDADO
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: kCardMarginH),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _seleccionIndex != null ? kSelectionColor : Colors.grey.shade800,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 8,
-                    ),
-                    onPressed: (_saving || _seleccionIndex == null) ? null : _confirmarHorario,
-                    child: _saving
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        "CONFIRMAR NUEVO HORARIO",
-                        style: TextStyle(color: _seleccionIndex != null ? Colors.white : Colors.white38, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins'),
-                      ),
                     ),
                   ),
-                ),
-              ),
 
-              const SizedBox(height: 50),
-            ],
+                  const SizedBox(height: 120), // Espacio extra para scroll
+                ],
+              ),
+            ),
           ),
-        ),
+
+          // 🛡️ FADEOUT INFERIOR
+          Positioned(
+            bottom: 0, left: 0, right: 0, height: 90,
+            child: IgnorePointer(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.95)],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 🛡️ BOTÓN BACK FLOTANTE (ARRIBA IZQUIERDA)
+          Positioned(
+            top: 45, // Ajuste para SafeArea
+            left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24),
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2))],
+                ),
+                child: const Icon(Icons.chevron_left, color: Colors.white, size: 26),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
