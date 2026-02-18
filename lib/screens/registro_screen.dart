@@ -169,7 +169,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
       body: Stack(
         children: [
           // 1. Fondo
-          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+          Positioned.fill(child: Image.asset('assets/images/fondo2.jpg', fit: BoxFit.cover)),
 
           // 2. Contenido Elástico
           SafeArea(
