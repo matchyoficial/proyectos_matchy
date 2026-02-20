@@ -1,5 +1,7 @@
 // 📂 lib/screens/nueva_cita_solicitud_screen.dart
 // ✅ PANTALLA DE SOLICITUD DE CITA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// 🔥 FIX: Notificaciones de campana enriquecidas con Nombre y Lugar.
+// 🔥 FIX: Burbuja Flotante "Matchy Style" en reemplazo del SnackBar nativo.
 // 🔥 BLINDAJE: Textos protegidos con FittedBox SIN ALTERAR tamaños de fuente originales.
 // 🔥 UI: FotoPerfilUsuario con Alignment.topCenter y Fade Out inferior respetados.
 
@@ -45,7 +47,70 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
   static const TextStyle kHoraStyle = TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold);
   // ===========================================================================
 
-  Future<void> _aceptarCita(String ownerUid) async {
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
+  Future<void> _aceptarCita(String ownerUid, String lugarNombre, String myName) async {
     setState(() => _procesando = true);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
@@ -58,8 +123,8 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
       if (ownerUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('users').doc(ownerUid).collection('notifications').add({
           'type': 'cita_aceptada',
-          'title': '¡Cita Aceptada!',
-          'body': 'Tu matchy aceptó la invitación. ¡Prepara tu salida!',
+          'title': '¡CITA ACEPTADA: $lugarNombre!',
+          'body': '$myName aceptó tu invitación. ¡Prepara tu salida!',
           'citaId': widget.citaId,
           'senderUid': myUid,
           'createdAt': FieldValue.serverTimestamp(),
@@ -68,12 +133,19 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("¡Cita confirmada!"), backgroundColor: Colors.green));
+
+      // 🔔 Burbuja Premium de Éxito
+      _mostrarBurbuja("¡Éxito! Cita Aceptada.", const Color(0xFF00C853), Icons.check_circle_rounded);
+
+      // ⏳ Retraso sutil para que el usuario alcance a ver la burbuja antes de salir
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (!mounted) return;
       Navigator.pop(context);
 
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
@@ -134,6 +206,9 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
 
                       final ownerNombre = (data['ownerNombre'] ?? 'Tu Matchy').toString().toUpperCase();
                       final ownerUid = (data['ownerUid'] ?? '').toString();
+
+                      // 👤 Capturamos el nombre de quien acepta (El Matchy / Candidato)
+                      final myName = (data['matchyNombre'] ?? data['candidatoNombre'] ?? 'Tu Matchy').toString();
 
                       return Container(
                         padding: const EdgeInsets.all(24),
@@ -245,7 +320,7 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                               gradient: kBtnAceptarGradient,
                               icon: Icons.check_circle_rounded,
                               isLoading: _procesando,
-                              onTap: _procesando ? null : () => _aceptarCita(ownerUid),
+                              onTap: _procesando ? null : () => _aceptarCita(ownerUid, lugarNombre, myName),
                             ),
 
                             const SizedBox(height: 15),
