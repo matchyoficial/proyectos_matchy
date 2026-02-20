@@ -519,6 +519,15 @@ class _PanelContent extends StatelessWidget {
         TermometroConfiabilidad(
           puntaje: puntaje,
           fechaDesbloqueo: _fechaParaTermometro,
+          // 🔥 Gatillo de desbloqueo automático
+          onTiempoExpirado: () async {
+            final user = FirebaseAuth.instance.currentUser;
+            if (user == null) return;
+            await FirebaseFirestore.instance.collection(kUsersCollection).doc(user.uid).update({
+              'userStatus': '', // Quitamos el 'blocked'
+              'bloqueadoHasta': null, // Limpiamos la fecha
+            });
+          },
         ),
 
         const SizedBox(height: 10),

@@ -6,12 +6,15 @@ class TermometroConfiabilidad extends StatefulWidget {
   final int puntaje;
   final DateTime? fechaDesbloqueo;
   final bool mostrarReloj;
+  // 🔥 Nuevo: Callback para avisar que el tiempo terminó
+  final VoidCallback? onTiempoExpirado;
 
   const TermometroConfiabilidad({
     super.key,
     this.puntaje = 100,
     this.fechaDesbloqueo,
     this.mostrarReloj = true,
+    this.onTiempoExpirado,
   });
 
   @override
@@ -33,6 +36,7 @@ class _TermometroConfiabilidadState extends State<TermometroConfiabilidad> {
   @override
   void initState() {
     super.initState();
+    _estaRestringido = widget.fechaDesbloqueo != null && widget.fechaDesbloqueo!.isAfter(DateTime.now());
     _calcularTiempo();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) _calcularTiempo();
@@ -46,20 +50,32 @@ class _TermometroConfiabilidadState extends State<TermometroConfiabilidad> {
     if (widget.fechaDesbloqueo == null) { _resetReloj(); return; }
     final now = DateTime.now();
     final difference = widget.fechaDesbloqueo!.difference(now);
-    if (difference.isNegative) { _resetReloj(); }
+    if (difference.isNegative) {
+      // 🔥 Si estaba restringido y el tiempo pasó, disparamos el desbloqueo
+      if (_estaRestringido) {
+        _resetReloj();
+        if (widget.onTiempoExpirado != null) widget.onTiempoExpirado!();
+      } else {
+        _resetReloj();
+      }
+    }
     else {
-      setState(() {
-        _estaRestringido = true;
-        _d = difference.inDays.toString().padLeft(2, '0');
-        _h = (difference.inHours % 24).toString().padLeft(2, '0');
-        _m = (difference.inMinutes % 60).toString().padLeft(2, '0');
-      });
+      if (mounted) {
+        setState(() {
+          _estaRestringido = true;
+          _d = difference.inDays.toString().padLeft(2, '0');
+          _h = (difference.inHours % 24).toString().padLeft(2, '0');
+          _m = (difference.inMinutes % 60).toString().padLeft(2, '0');
+        });
+      }
     }
   }
 
   void _resetReloj() {
     if (_estaRestringido || _d != "00") {
-      setState(() { _estaRestringido = false; _d = "00"; _h = "00"; _m = "00"; });
+      if (mounted) {
+        setState(() { _estaRestringido = false; _d = "00"; _h = "00"; _m = "00"; });
+      }
     }
   }
 
