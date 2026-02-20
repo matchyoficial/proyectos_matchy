@@ -1,6 +1,7 @@
 // 📂 lib/screens/cita_creada_screen.dart
 // ✅ CITA CREADA BLINDADA (DISEÑO PREMIUM RESPETADO)
-// 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
+// 🔥 BLINDAJE: Textos protegidos con FittedBox y Justificación Profesional.
+// 🔥 REORDEN: Botón de borrado al final con nota aclaratoria de penalidad.
 // 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
 
 import 'package:flutter/material.dart';
@@ -118,7 +119,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 25),
 
-                          // BLINDAJE: Título elástico
                           FittedBox(
                             fit: BoxFit.scaleDown,
                             child: const Text(
@@ -136,7 +136,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 20),
 
-                          // 🛡️ INFO CONTAINER BLINDADO
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(24),
@@ -172,17 +171,17 @@ class CitaCreadaScreen extends StatelessWidget {
                             child: Column(
                               children: [
                                 const Text(
-                                  "CANCELAR ESTA CITA TE GENERARÁ UNA PENALIDAD DE -20 PUNTOS Y UN BLOQUEO TEMPORAL DE TU CUENTA.RECUERDA: LA OPCIÓN DE REPROGRAMAR SOLO ESTÁ DISPONIBLE HASTA 12 HORAS ANTES DE LA CITA. SI YA PASÓ ESE TIEMPO, CANCELAR ES TU ÚNICA OPCIÓN SI NO PUEDES ASISTIR.",
-                                  textAlign: TextAlign.center,
+                                  "CANCELAR ESTA CITA TE GENERARÁ UNA PENALIDAD DE -20 PUNTOS Y UN BLOQUEO TEMPORAL DE TU CUENTA. RECUERDA: LA OPCIÓN DE REPROGRAMAR SOLO ESTÁ DISPONIBLE HASTA 12 HORAS ANTES DE LA CITA. SI YA PASÓ ESE TIEMPO, CANCELAR ES TU ÚNICA OPCIÓN SI NO PUEDES ASISTIR.",
+                                  textAlign: TextAlign.justify,
                                   style: TextStyle(
                                       color: Color(0xFFF80719),
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
-                                      height: 1.4
+                                      height: 1.4,
+                                      letterSpacing: -0.1 // Ajuste para evitar deformación en justificación
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                // BLINDAJE: Texto advertencia elástico
                                 FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: const Text(
@@ -201,7 +200,6 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 30),
 
-                          // BLINDAJE: Texto código
                           const FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text("CÓDIGO DE LA CITA:", style: TextStyle(color: Colors.white70, fontSize: 20, letterSpacing: 1))
@@ -231,6 +229,19 @@ class CitaCreadaScreen extends StatelessWidget {
                           const SizedBox(height: 40),
 
                           _PremiumButton(
+                            text: "REGRESAR AL PANEL",
+                            gradientColors: kButtonGradientBack,
+                            onTap: () {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(builder: (_) => const PanelScreen()),
+                                    (r) => false,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          _PremiumButton(
                             text: "BORRAR TU CITA",
                             gradientColors: kButtonGradientDelete,
                             onTap: () async {
@@ -244,17 +255,19 @@ class CitaCreadaScreen extends StatelessWidget {
                             },
                           ),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 10),
 
-                          _PremiumButton(
-                            text: "REGRESAR AL PANEL",
-                            gradientColors: kButtonGradientBack,
-                            onTap: () {
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(builder: (_) => const PanelScreen()),
-                                    (r) => false,
-                              );
-                            },
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              "Borrar una cita publicada antes de ser aceptada no genera ninguna penalidad en tu puntaje.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
 
                           const SizedBox(height: 100),
