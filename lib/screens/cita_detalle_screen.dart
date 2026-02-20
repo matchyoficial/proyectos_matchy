@@ -1,5 +1,6 @@
 // 📂 lib/screens/cita_detalle_screen.dart
 // ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
+// 🔥 FIX: Burbujas Flotantes "Matchy Style" reemplazan SnackBars y Alertas de error.
 // 🔥 FIX: Captura de lugarId para pasar a la plantilla de información del sitio.
 // 🔒 FIX CORRECTO: Reprogramar se bloquea <12h. Cancelar SIEMPRE ACTIVO.
 
@@ -108,6 +109,69 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   @override void dispose() { _codigoMatchyController.dispose(); _citaSubscription?.cancel(); super.dispose(); }
 
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 3), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
   // 🔥 LÓGICA DE TIEMPO: Retorna TRUE si es posible reprogramar (faltan > 12h)
   bool get _puedeReprogramar {
     if (widget.citaDateTime == null) return true;
@@ -153,7 +217,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   Future<void> _validarYConfirmar() async {
     if (_procesandoValidacion || _navegandoExito) return; final codigoIngresado = _codigoMatchyController.text.trim().toUpperCase(), codigoCorrecto = widget.codigoDelOtro.trim().toUpperCase();
-    if (codigoIngresado.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠️ Por favor ingresa el código de tu Matchy"), backgroundColor: Colors.orange)); return; }
+    if (codigoIngresado.isEmpty) { _mostrarBurbuja("Por favor ingresa un código válido.", Colors.orangeAccent, Icons.warning_amber_rounded); return; }
     if (codigoIngresado == codigoCorrecto) {
       setState(() => _procesandoValidacion = true);
       try {
@@ -169,8 +233,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         if (isFinished) { final resultadoGamificacion = await _distribuirPuntosDeRedencion(); _procesarExito(ganaronPuntos: resultadoGamificacion['gano'] ?? false, citasFaltantes: resultadoGamificacion['faltan'] ?? 0); } else {
           setState(() => _procesandoValidacion = false); if (!mounted) return; showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)), title: const Icon(Icons.check_circle_outline, color: Color(0xFF00C853), size: 48), content: Column(mainAxisSize: MainAxisSize.min, children: [const Text("¡TU CÓDIGO ES CORRECTO!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 20), Text("DILE A ${otherName.toUpperCase()} QUE PONGA SU CÓDIGO PARA COMPLETAR LA CITA.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4)), const SizedBox(height: 20), const LinearProgressIndicator(color: Color(0xFFBEB3FF), backgroundColor: Colors.white10), const SizedBox(height: 10), const Text("Esperando confirmación del otro...", style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic))]), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white)))]));
         }
-      } catch (e) { if (mounted) { setState(() => _procesandoValidacion = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); } }
-    } else { showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), title: const Text("CÓDIGO INCORRECTO", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)), content: const Text("El código ingresado no coincide con el de tu cita. Verifícalo e intenta de nuevo.", style: TextStyle(color: Colors.white70)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("INTENTAR DE NUEVO", style: TextStyle(color: Colors.white)))])); }
+      } catch (e) { if (mounted) { setState(() => _procesandoValidacion = false); _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded); } }
+    } else { _mostrarBurbuja("Código incorrecto. Verifica e intenta de nuevo.", const Color(0xFFFF5252), Icons.cancel_outlined); }
   }
 
   void _gestionarCancelacion() { Navigator.push(context, MaterialPageRoute(builder: (_) => CancelarCitaScreen(citaId: widget.citaId, otherUserId: widget.matchyUid))); }
