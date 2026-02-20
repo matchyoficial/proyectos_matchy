@@ -287,7 +287,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
           'citaId': widget.citaId,
           // 🔔 TÍTULO Y CUERPO PERSONALIZADOS
           'title': 'REPROGRAMACIÓN: ${placeName.toUpperCase()} 🕒',
-          'body': '$myName propone 3 nuevos horarios. Toca aquí para elegir el que más te sirva.',
+          'body': '$myName propone 3 nuevos horarios. Ve y elige el que más te sirva.',
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
           'fromUid': myUid,

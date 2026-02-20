@@ -1,7 +1,8 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
 // ✅ REPORTE DE INASISTENCIA (BLINDADO & ANCLAJE DE RED)
-// 🔥 FIX: Sincronizado a 3 MINUTOS (Modo Pruebas) para coincidir con el Juez.
-// 🔥 FIX: Anclaje de Red (Future.delayed) activo.
+// 🔥 FIX: Burbujas Flotantes "Matchy Style" centradas con iconos y animación.
+// 🔥 FIX: Sincronizado a 3 MINUTOS (Modo Pruebas) ultra-demarcado.
+// 🔥 NOTIFICACIÓN: La campana ahora recibe el nombre del Lugar y del Matchy.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -45,6 +46,74 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     super.dispose();
   }
 
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE (REEMPLAZA SNACKBARS)
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center, // Centradas en la pantalla como solicitaste
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 3), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
+  void _mostrarError(String msg) {
+    if (!mounted) return;
+    _mostrarBurbuja(msg, const Color(0xFFFF5252), Icons.error_outline_rounded);
+  }
+
   DateTime _parsearFechaManual(String fStr, String hStr) {
     try {
       final parts = fStr.trim().split(RegExp(r'[/ -]'));
@@ -70,9 +139,12 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       final h = (data['hora'] ?? '').toString();
       if (f.isEmpty || h.isEmpty) return;
 
-      // 🔥 TIEMPO DE PRUEBAS: 3 MINUTOS EXACTOS
-      // Esto debe coincidir con la lógica de CitasScreen para evitar castigos prematuros.
+      // =========================================================================
+      // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
+      // PARA PRUEBAS REALES, CAMBIA "minutes: 3" POR "hours: 2"
+      // =========================================================================
       _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 3));
+      // =========================================================================
 
       _startTimer();
     } catch (e) { debugPrint("Error: $e"); }
@@ -229,7 +301,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
 
       if (mounted) {
         if (esCierre) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Acuerdo cerrado. Procesando..."), backgroundColor: Colors.blue));
+          _mostrarBurbuja("Acuerdo cerrado mutuo. Procesando...", const Color(0xFF448AFF), Icons.handshake_rounded);
           HomeShell.go(context, index: 1);
         } else {
           _mostrarDialogoMatchy(
@@ -259,11 +331,16 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         final citaSnap = await tx.get(citaRef);
         final data = citaSnap.data()!;
 
-        // 📝 Registro de Notificación (PANEL COMPATIBLE)
+        // Extraer datos para enriquecer la notificación
+        final bool isOwner = data['ownerUid'] == user.uid;
+        final String peerName = isOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
+        final String lugarNombre = data['lugarNombre'] ?? 'Lugar';
+
+        // 📝 Registro de Notificación Mejorado (PANEL COMPATIBLE)
         final notiRef = userRef.collection('notifications').doc();
         tx.set(notiRef, {
-          'title': 'Sanción por Cancelación',
-          'body': "Cancelaste unilateralmente la cita con ${data['ownerUid'] == user.uid ? data['matchyNombre'] : data['ownerNombre']}.",
+          'title': 'Sanción: ${lugarNombre.toUpperCase()}',
+          'body': "Cancelaste unilateralmente la cita con $peerName en $lugarNombre.",
           'createdAt': FieldValue.serverTimestamp(),
           'type': 'danger',
           'read': false,
@@ -289,7 +366,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
           'status': 'finished',
           'resultado': 'absent_confessed',
           'culpableUid': user.uid,
-          data['ownerUid'] == user.uid ? 'ownerCastigado' : 'matchyCastigado': true
+          isOwner ? 'ownerCastigado' : 'matchyCastigado': true
         });
       });
 
@@ -299,11 +376,6 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       if (mounted) HomeShell.go(context, index: 1);
     } catch (e) { if (mounted) _mostrarError("$e"); }
     finally { if (mounted) setState(() => _isLoading = false); }
-  }
-
-  void _mostrarError(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 
   @override

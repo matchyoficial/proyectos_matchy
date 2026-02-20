@@ -3,6 +3,7 @@
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables elásticos.
 // 🔥 UI: FotoPerfilUsuario y lógica de WriteBatch intactas.
 // 💄 UI: Botón Back Chevron (Arriba-Izquierda) y Fadeout Inferior.
+// 🔔 NOTIFICACIÓN: Actualizada con Nombre de Lugar y Usuario (Formato Campana).
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -116,12 +117,20 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
       // Notificar al solicitante
       if (requesterUid.isNotEmpty && requesterUid != myUid) {
+        // 🔥 Lógica inyectada para capturar nombres y lugar
+        final String ownerUid = (_citaData?['ownerUid'] ?? '').toString();
+        final String ownerName = (_citaData?['ownerNombre'] ?? 'Usuario').toString();
+        final String matchyName = (_citaData?['matchyNombre'] ?? _citaData?['candidatoNombre'] ?? 'Usuario').toString();
+        final String myName = (myUid == ownerUid) ? ownerName : matchyName;
+        final String placeName = (_citaData?['lugarNombre'] ?? 'CITA').toString();
+
         final notifRef = db.collection('users').doc(requesterUid).collection('notifications').doc();
         batch.set(notifRef, {
           'type': 'repro_accepted',
           'citaId': widget.citaId,
-          'title': '¡NUEVA FECHA CONFIRMADA!',
-          'body': 'Tu Matchy ha aceptado el horario: $fechaStr a las $horaStr.',
+          // 🔔 NOTIFICACIÓN BLINDADA CON LUGAR Y NOMBRE
+          'title': 'CAMBIO ACEPTADO: ${placeName.toUpperCase()} 📅',
+          'body': '$myName confirmó el nuevo horario para el $fechaStr a las $horaStr.',
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
           'fromUid': myUid,

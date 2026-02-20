@@ -2,6 +2,7 @@
 // ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 3 MINUTOS)
 // 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
+// 🔥 TEXTOS CAMPANA: Actualizados con Nombre y Lugar.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -113,8 +114,13 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       fechaReal = DateTime(y, m, d, hh, mm);
     } catch (_) {}
 
-    // 🔥 JUEZ: 3 MINUTOS
+    // =========================================================================
+    // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
+    // PARA PRUEBAS REALES, CAMBIA "minutes: 3" POR "hours: 2"
+    // =========================================================================
     final deadline = fechaReal.add(const Duration(minutes: 3));
+    // =========================================================================
+
     final diferencia = ahora.difference(fechaReal);
     // Urgente si ya pasó la hora o estamos en los 3 minutos de gracia
     final urgente = diferencia.inMinutes > 0 && (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending');
@@ -213,13 +219,29 @@ class CitasScreen extends ConsumerWidget {
       if (cita.amIPunished) continue;
 
       if (cita.status == 'mutual_agreement_finish') {
-        _sentenciaFinal(cita, user, -10, 'Acuerdo de Cancelación', 'Se restaron -10 pts por acuerdo mutuo.', 'info', 'mutual_agreement');
+        _sentenciaFinal(
+            cita,
+            user,
+            -10,
+            'Acuerdo: ${cita.lugarNombre}',
+            'Cita cancelada por acuerdo mutuo con ${cita.nombreMostrar}. Se te restarán -10 puntos.',
+            'info',
+            'mutual_agreement'
+        );
       }
       else if (cita.deadline != null && now.isAfter(cita.deadline!)) {
         if (cita.amISafeGPS) {
           _marcarRecibo(cita);
         } else {
-          _sentenciaFinal(cita, user, -20, 'Sanción Inasistencia', 'Se restaron -20 pts por no asistir.', 'danger', 'timeout_punished');
+          _sentenciaFinal(
+              cita,
+              user,
+              -20,
+              'Sanción: ${cita.lugarNombre}',
+              'Inasistencia a tu cita con ${cita.nombreMostrar}. Se te restarán -20 puntos.',
+              'danger',
+              'timeout_punished'
+          );
         }
       }
     }
