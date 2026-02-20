@@ -3,16 +3,19 @@
 // 🔥 FIX: Agregados asteriscos (*) visuales a Género y Preferencia.
 // 🔥 LOGIC: El botón GUARDAR bloquea y muestra error si faltan estos datos.
 // 🔥 DATA: Estandarización de valores ('Otro', 'NoDecir') para futuro filtro.
+// 📸 FIX: Implementado Recortador Premium Custom 100% Flutter.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:photo_view/photo_view.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
+
+// 🔥 Importamos la nueva pantalla Custom
+import 'package:proyectos_matchy/screens/custom_cropper_screen.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -155,13 +158,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
   bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
 
-  // ✅ NUEVAS VALIDACIONES OBLIGATORIAS
   bool _generoOk() => _genero.trim().isNotEmpty;
   bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty;
 
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
-  // ✅ VALIDACIÓN MAESTRA
   bool _formularioValido(ProfileFormState s) {
     return _nombreOk(s) && _edadOk(s) && _paisOk(s) && _ciudadOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
   }
@@ -259,11 +260,25 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     );
   }
 
+  // 🔥 FIX CRÍTICO: Llama a la NUEVA pantalla de recorte 100% Flutter.
   Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
     try {
       final XFile? file = await _picker.pickImage(source: source, imageQuality: 85);
-      if (file != null) ctrl.addFoto(file.path);
-    } catch (e) { debugPrint("Error: $e"); }
+      if (file != null) {
+        // Redirige a nuestro Recortador Premium
+        final croppedPath = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CustomCropperScreen(imagePath: file.path),
+          ),
+        );
+
+        // Si el usuario le dio a ACEPTAR y devolvió una ruta, la guardamos
+        if (croppedPath != null && croppedPath is String) {
+          ctrl.addFoto(croppedPath);
+        }
+      }
+    } catch (e) { debugPrint("Error al seleccionar foto: $e"); }
   }
 
   // 🛡️ UI FOTOS BLINDADA
@@ -292,7 +307,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                   Icon(Icons.touch_app_rounded, color: Color(0xFFBEB3FF), size: 16),
                   SizedBox(width: 8),
                   Text(
-                      "Arrastra para reordenar. Pellizca la principal para ajustar.",
+                      "Arrastra para reordenar tus fotos.",
                       style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)
                   ),
                 ],
@@ -304,18 +319,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. FOTO PRINCIPAL (Fix de Pellizco)
+              // 1. FOTO PRINCIPAL
               Expanded(
                 flex: 1,
                 child: AspectRatio(
                   aspectRatio: 1.0,
-                  child: Stack(
-                    children: [
-                      _buildDraggablePhotoSlot(index: 0, displayFotos: displayFotos, ctrl: ctrl, isProfile: true),
-                      if (displayFotos.isNotEmpty)
-                        Positioned(bottom: 8, right: 8, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.zoom_out_map, color: Colors.white, size: 14))),
-                    ],
-                  ),
+                  child: _buildDraggablePhotoSlot(index: 0, displayFotos: displayFotos, ctrl: ctrl, isProfile: true),
                 ),
               ),
               const SizedBox(width: 10),
@@ -413,7 +422,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     children: [
-                      // 🛡️ TÍTULO BLINDADO CORREGIDO
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         child: const Text(
@@ -436,18 +444,15 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 20),
                       _buildPaisCiudadSection(paisSeleccionado: paisSafe, ciudadSeleccionada: ciudadSafe, paises: paises, ciudades: ciudades, showPaisError: _mostrarErrores && !_paisOk(state), showCiudadError: _mostrarErrores && !_ciudadOk(state), onPaisChanged: (v) => ctrl.setPais(v), onCiudadChanged: (v) => ctrl.setCiudad(v)),
                       const SizedBox(height: 25),
-                      // ✅ TÍTULO GÉNERO CON * (OBLIGATORIO)
                       Align(alignment: Alignment.centerLeft, child: Text('GÉNERO *', style: TextStyle(color: (_mostrarErrores && !_generoOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _GeneroSelector(value: _genero, showError: _mostrarErrores && !_generoOk(), onChanged: _saving ? null : (v) => _setGenero(ctrl, v)),
                       const SizedBox(height: 25),
-                      // ✅ TÍTULO PREFERENCIA CON * (OBLIGATORIO)
                       Align(alignment: Alignment.centerLeft, child: Text('PREFERENCIA DE CITAS *', style: TextStyle(color: (_mostrarErrores && !_preferenciaOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _PreferenciaCitasSelector(value: _preferenciaCitas, onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v)),
 
                       const SizedBox(height: 30),
-                      // 🛡️ TÍTULO GALERÍA BLINDADO
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         child: FittedBox(
@@ -470,7 +475,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 24),
                       Text('SOBRE MÍ', style: TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 10),
-                      // 🛡️ ALINEACIÓN ORIGINAL PRESERVADA
                       Column(
                         children: sobreMiOpciones.map((grupo) {
                           return Padding(
@@ -491,14 +495,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 40),
                       GestureDetector(
                         onTap: _saving ? null : () async {
-                          // ✅ VALIDACIÓN CENTRALIZADA
                           if (_formularioValido(ref.read(profileFormProvider))) {
                             setState(() => _saving = true);
                             try {
                               await _syncProfileToFirestore(ref.read(profileFormProvider));
                               await ctrl.saveDraft(); await ctrl.publishProfile(); await ctrl.setOnboardingCompleted(true);
                               if (!mounted) return;
-                              // 🚀 REDIRECCIÓN CORRECTA: A HomeShell
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
                             } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
                             finally { if (mounted) setState(() => _saving = false); }
@@ -561,7 +563,6 @@ class _GeneroSelector extends StatelessWidget {
   final String value; final ValueChanged<String>? onChanged; final bool showError;
   const _GeneroSelector({required this.value, required this.onChanged, required this.showError});
   @override Widget build(BuildContext context) {
-    // ✅ VALORES ESTANDARIZADOS PARA FILTRO FUTURO
     final opciones = [{'label': 'Hombre', 'value': 'Hombre'}, {'label': 'Mujer', 'value': 'Mujer'}, {'label': 'Otro', 'value': 'Otro'}, {'label': 'No decir', 'value': 'NoDecir'}];
     return Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.center, children: opciones.map((op) {
       final bool sel = op['value'] == value;
@@ -653,15 +654,7 @@ class _FotoThumb extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Container(
               width: size, height: size, color: Colors.black,
-              child: isInteractive
-                  ? PhotoView(
-                imageProvider: provider,
-                initialScale: PhotoViewComputedScale.covered,
-                minScale: PhotoViewComputedScale.covered,
-                maxScale: PhotoViewComputedScale.covered * 3.0,
-                backgroundDecoration: const BoxDecoration(color: Colors.black),
-              )
-                  : Image(image: provider, fit: BoxFit.cover),
+              child: Image(image: provider, fit: BoxFit.cover),
             ),
           ),
           Positioned(top: 5, right: 5, child: GestureDetector(onTap: onRemove, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)))),

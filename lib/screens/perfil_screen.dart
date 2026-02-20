@@ -3,6 +3,7 @@
 // 🔥 FIX: Se aplica 'ref.invalidate' para borrar la memoria RAM al cerrar sesión.
 // 🔥 FIX: Se usa 'disconnect' en Google para forzar la elección de cuenta.
 // 🔥 UI: Diseño Premium y lógica intacta.
+// 📸 FIX: Visualización de hasta 5 fotos dinámicas agregada.
 
 import 'dart:io';
 
@@ -269,6 +270,13 @@ class _PerfilContent extends StatelessWidget {
         if (intereses.isNotEmpty) _CardChips(titulo: 'Intereses y Hobbies', items: intereses, textTheme: textTheme),
 
         _CardTexto(titulo: 'Un detalle que me enamora', texto: state.detalle.isEmpty ? 'Aún no has agregado este detalle.' : state.detalle, textTheme: textTheme),
+
+        // 📸 FOTOS ADICIONALES (4 Y 5)
+        if (state.photoUrls.length >= 4 || state.fotosCargadas.length >= 4)
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 4) ? state.photoUrls[3] : state.fotosCargadas[3], height: 400),
+
+        if (state.photoUrls.length >= 5 || state.fotosCargadas.length >= 5)
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 5) ? state.photoUrls[4] : state.fotosCargadas[4], height: 400),
 
         const SizedBox(height: 20),
         Padding(

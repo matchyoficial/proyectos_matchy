@@ -4,6 +4,7 @@
 // ✅ UI: Botón Atrás (Chevron) arriba a la izquierda.
 // ✅ UI: Estilo de chips y sombras replicado de "Datos".
 // 🔥 BLINDAJE: Títulos a 20pt, Profesión y Ciudad adaptativos.
+// 📸 FIX: Añadida lógica para pintar hasta la 5ta foto si existe.
 // -----------------------------------------------------------
 
 import 'dart:io';
@@ -354,6 +355,10 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                       if (intereses.isNotEmpty) _cardChips('Intereses y Hobbies', intereses),
                       if (galeriaRaw.length >= 4) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[3])),
                       _cardTexto('Un detalle que me enamora', detalle.isEmpty ? '—' : detalle),
+
+                      // 📸 FIX: 5TA FOTO AÑADIDA AQUÍ
+                      if (galeriaRaw.length >= 5) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[4])),
+
                       const SizedBox(height: 40),
                     ],
                   ),
