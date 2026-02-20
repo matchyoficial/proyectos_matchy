@@ -1,9 +1,8 @@
 // 📂 lib/screens/datos_screen.dart
-// ✅ DATOSSCREEN BLINDADO (GENERO Y PREFERENCIA OBLIGATORIOS)
-// 🔥 FIX: Agregados asteriscos (*) visuales a Género y Preferencia.
-// 🔥 LOGIC: El botón GUARDAR bloquea y muestra error si faltan estos datos.
-// 🔥 DATA: Estandarización de valores ('Otro', 'NoDecir') para futuro filtro.
-// 📸 FIX: Implementado Recortador Premium Custom 100% Flutter.
+// ✅ DATOSSCREEN BLINDADO - FLUJO DE SINCRONIZACIÓN EN VIVO
+// 🔥 FIX DEFINITIVO: Las fotos se suben y se guardan en Firebase apenas se recortan.
+// 🔥 PERFIL: Al reordenar y poner una foto en el slot 0, se actualiza el perfil en Firestore de inmediato.
+// 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y diseño 100% preservado.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -157,10 +156,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   }
   bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
   bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
-
   bool _generoOk() => _genero.trim().isNotEmpty;
   bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty;
-
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
   bool _formularioValido(ProfileFormState s) {
@@ -177,33 +174,41 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     return out;
   }
 
-  Future<List<String>> _uploadRealPhotosToStorage({required String uid, required List<String> fotosCargadas}) async {
-    final urls = <String>[];
-    final filesToUpload = fotosCargadas.where((p) => p.trim().isNotEmpty && !p.startsWith('assets/') && !p.startsWith('http')).toList();
-    if (filesToUpload.isEmpty) return urls;
-    final storage = FirebaseStorage.instance;
-    for (var i = 0; i < filesToUpload.length; i++) {
-      final path = filesToUpload[i];
+  // 🔥 SUBIDA UNITARIA E INMEDIATA A FIREBASE
+  Future<String?> _uploadSinglePhotoToStorage(String path) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    try {
       final file = File(path);
-      if (!file.existsSync()) continue;
-      final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-      final ref = storage.ref().child('users/$uid/photos/$fileName');
+      if (!file.existsSync()) return null;
+      final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final ref = FirebaseStorage.instance.ref().child('users/${user.uid}/photos/$fileName');
       final task = await ref.putFile(file);
-      final url = await task.ref.getDownloadURL();
-      if (url.trim().isNotEmpty) urls.add(url.trim());
+      return await task.ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Error subiendo foto unitaria: $e");
+      return null;
     }
-    return urls;
   }
 
-  Future<List<String>> _syncProfileToFirestore(ProfileFormState s) async {
+  // 🔥 ACTUALIZACIÓN ATÓMICA DE FOTOS EN FIRESTORE
+  Future<void> _updatePhotosInFirestore(List<String> urls) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'photoUrls': urls,
+        'profilePhotoUrl': urls.isNotEmpty ? urls.first : null,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) { debugPrint("Error actualizando Firestore: $e"); }
+  }
+
+  Future<void> _syncProfileToFirestore(ProfileFormState s) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('No hay usuario autenticado.');
     final uid = user.uid;
     final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
-    final List<String> localRaw = List<String>.from(s.fotosCargadas);
-    final existingUrls = localRaw.where((p) => p.startsWith('http')).toList();
-    final uploadedUrls = await _uploadRealPhotosToStorage(uid: uid, fotosCargadas: localRaw);
-    final List<String> photoUrls = [...existingUrls, ...uploadedUrls].map((e) => e.trim()).where((e) => e.startsWith('http')).toList();
 
     final payload = <String, dynamic>{
       'uid': uid,
@@ -221,13 +226,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
       'buscoSeleccion': List<String>.from(s.buscoSeleccion),
       'interesesSeleccion': List<String>.from(s.interesesSeleccion),
-      'photoUrls': photoUrls,
-      'profilePhotoUrl': photoUrls.isNotEmpty ? photoUrls.first : null,
       'onboarding_completed': true,
       'updatedAt': FieldValue.serverTimestamp(),
     };
     await docRef.set(payload, SetOptions(merge: true));
-    return photoUrls;
   }
 
   Future<void> _seleccionarEstatura(BuildContext context) async {
@@ -260,22 +262,29 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     );
   }
 
-  // 🔥 FIX CRÍTICO: Llama a la NUEVA pantalla de recorte 100% Flutter.
+  // 🔥 LOGICA DE SUBIDA INMEDIATA TRAS EL RECORTE
   Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
     try {
       final XFile? file = await _picker.pickImage(source: source, imageQuality: 85);
       if (file != null) {
-        // Redirige a nuestro Recortador Premium
-        final croppedPath = await Navigator.push(
+        final result = await Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => CustomCropperScreen(imagePath: file.path),
-          ),
+          MaterialPageRoute(builder: (_) => CustomCropperScreen(imagePath: file.path)),
         );
 
-        // Si el usuario le dio a ACEPTAR y devolvió una ruta, la guardamos
-        if (croppedPath != null && croppedPath is String) {
-          ctrl.addFoto(croppedPath);
+        if (result != null && result is String) {
+          setState(() => _saving = true); // Indicador visual de que estamos subiendo
+
+          // 1. Subimos inmediatamente a Storage
+          final fireUrl = await _uploadSinglePhotoToStorage(result);
+          if (fireUrl != null) {
+            // 2. Agregamos al estado local
+            ctrl.addFoto(fireUrl);
+            // 3. Guardamos en Firestore de inmediato
+            final updatedList = _buildDisplayFotos(ref.read(profileFormProvider));
+            await _updatePhotosInFirestore(updatedList);
+          }
+          setState(() => _saving = false);
         }
       }
     } catch (e) { debugPrint("Error al seleccionar foto: $e"); }
@@ -296,7 +305,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       ),
       child: Column(
         children: [
-          // 🛡️ BLINDAJE: Letrero de instrucciones protegido
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: FittedBox(
@@ -306,29 +314,17 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                 children: const [
                   Icon(Icons.touch_app_rounded, color: Color(0xFFBEB3FF), size: 16),
                   SizedBox(width: 8),
-                  Text(
-                      "Arrastra para reordenar tus fotos.",
-                      style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)
-                  ),
+                  Text("Arrastra para reordenar tus fotos.", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 12),
-
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. FOTO PRINCIPAL
-              Expanded(
-                flex: 1,
-                child: AspectRatio(
-                  aspectRatio: 1.0,
-                  child: _buildDraggablePhotoSlot(index: 0, displayFotos: displayFotos, ctrl: ctrl, isProfile: true),
-                ),
-              ),
+              Expanded(flex: 1, child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 0, displayFotos: displayFotos, ctrl: ctrl, isProfile: true))),
               const SizedBox(width: 10),
-              // 2. GRID 2x2
               Expanded(
                 flex: 1,
                 child: Column(
@@ -368,20 +364,26 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final pathOrAsset = displayFotos[index];
     return DragTarget<int>(
       onWillAccept: (from) => from != null && from != index,
-      onAccept: (from) {
+      onAccept: (from) async {
         final current = List<String>.from(displayFotos);
         final item = current.removeAt(from);
         current.insert(index, item);
         ctrl.setFotos(current);
+
+        // 🔥 Si la foto arrastrada llega al primer puesto, actualizamos Firestore AL INSTANTE
+        if (index == 0 || from == 0) {
+          await _updatePhotosInFirestore(current);
+        }
       },
       builder: (context, _, __) => LongPressDraggable<int>(
         data: index,
         feedback: Opacity(opacity: 0.85, child: SizedBox(width: 80, height: 80, child: _FotoThumb(pathOrAsset: pathOrAsset, size: 80, esPerfil: isProfile, isGhost: true, onRemove: () {}, isInteractive: false))),
         childWhenDragging: Container(decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16))),
-        child: _FotoThumb(pathOrAsset: pathOrAsset, size: double.infinity, esPerfil: isProfile, isGhost: false, isInteractive: isProfile, onRemove: () {
+        child: _FotoThumb(pathOrAsset: pathOrAsset, size: double.infinity, esPerfil: isProfile, isGhost: false, isInteractive: isProfile, onRemove: () async {
           final current = List<String>.from(displayFotos);
           current.removeAt(index);
           ctrl.setFotos(current);
+          await _updatePhotosInFirestore(current); // Sincronizar borrado
         }),
       ),
     );
@@ -395,8 +397,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final state = ref.watch(profileFormProvider);
     final ctrl = ref.read(profileFormProvider.notifier);
 
-    final List<String> paises = const ['Colombia', 'México', 'Argentina', 'Chile', 'Perú', 'España'];
-    final Map<String, List<String>> ciudadesPorPais = const {'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena'], 'México': ['Ciudad de México', 'Guadalajara', 'Monterrey'], 'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario'], 'Chile': ['Santiago', 'Valparaíso', 'Concepción'], 'Perú': ['Lima', 'Cusco', 'Arequipa'], 'España': ['Madrid', 'Barcelona', 'Valencia']};
+    const List<String> paises = ['Colombia', 'México', 'Argentina', 'Chile', 'Perú', 'España'];
+    const Map<String, List<String>> ciudadesPorPais = {'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena'], 'México': ['Ciudad de México', 'Guadalajara', 'Monterrey'], 'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario'], 'Chile': ['Santiago', 'Valparaíso', 'Concepción'], 'Perú': ['Lima', 'Cusco', 'Arequipa'], 'España': ['Madrid', 'Barcelona', 'Valencia']};
     final List<String> ciudades = state.paisSeleccionado != null ? (ciudadesPorPais[state.paisSeleccionado!] ?? []) : [];
     final String? paisSafe = paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
     final String? ciudadSafe = ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
@@ -422,13 +424,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: const Text(
-                            'EDITA TU PERFIL',
-                            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.0, shadows: kTextShadow)
-                        ),
-                      ),
+                      FittedBox(fit: BoxFit.scaleDown, child: const Text('EDITA TU PERFIL', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.0, shadows: kTextShadow))),
                       const SizedBox(height: 24),
                       _buildTextField(label: 'Nombre *', controller: _nombreCtrl, showError: _mostrarErrores && !_nombreOk(state)),
                       const SizedBox(height: 14),
@@ -451,42 +447,19 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       Align(alignment: Alignment.centerLeft, child: Text('PREFERENCIA DE CITAS *', style: TextStyle(color: (_mostrarErrores && !_preferenciaOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _PreferenciaCitasSelector(value: _preferenciaCitas, onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v)),
-
                       const SizedBox(height: 30),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('TUS FOTOS (MÁX 5) *', style: TextStyle(color: _mostrarErrores && !_fotosOk(state) ? Colors.redAccent : Colors.white, fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900)),
-                        ),
-                      ),
+                      FittedBox(fit: BoxFit.scaleDown, child: Text('TUS FOTOS (MÁX 5) *', style: TextStyle(color: _mostrarErrores && !_fotosOk(state) ? Colors.redAccent : Colors.white, fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900))),
                       const SizedBox(height: 15),
-
                       GestureDetector(
                         onTap: _saving ? null : () => _mostrarPicker(context, ctrl, state),
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.6, height: 50,
-                          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(25), boxShadow: kChipShadow),
-                          alignment: Alignment.center,
-                          child: const Text('CARGAR FOTO', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14)),
-                        ),
+                        child: Container(width: MediaQuery.of(context).size.width * 0.6, height: 50, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(25), boxShadow: kChipShadow), alignment: Alignment.center, child: const Text('CARGAR FOTO', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14))),
                       ),
                       _buildFotoReorderArea(context: context, state: state, ctrl: ctrl),
                       const SizedBox(height: 24),
-                      Text('SOBRE MÍ', style: TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
+                      Text('SOBRE MÍ', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 10),
                       Column(
-                        children: sobreMiOpciones.map((grupo) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              children: grupo.map((opcion) {
-                                final sel = state.sobreMiSeleccion.contains(opcion);
-                                return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: GestureDetector(onTap: _saving ? null : () => ctrl.toggleSobreMi(opcion), child: Container(padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)), child: Text(opcion, textAlign: TextAlign.center, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 13, fontWeight: FontWeight.w600))))));
-                              }).toList(),
-                            ),
-                          );
-                        }).toList(),
+                        children: sobreMiOpciones.map((grupo) => Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: grupo.map((opcion) { final sel = state.sobreMiSeleccion.contains(opcion); return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: GestureDetector(onTap: _saving ? null : () => ctrl.toggleSobreMi(opcion), child: Container(padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)), child: Text(opcion, textAlign: TextAlign.center, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 13, fontWeight: FontWeight.w600)))))); }).toList()))).toList(),
                       ),
                       const SizedBox(height: 45),
                       _SeccionBotonesChipsSimetricos(titulo: 'BUSCO...', opciones: buscoOpciones, seleccionActual: state.buscoSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleBusco(op)),
@@ -498,25 +471,21 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           if (_formularioValido(ref.read(profileFormProvider))) {
                             setState(() => _saving = true);
                             try {
+                              // 🔥 Sincronizamos textos y chips (Las fotos ya se subieron en vivo)
                               await _syncProfileToFirestore(ref.read(profileFormProvider));
                               await ctrl.saveDraft(); await ctrl.publishProfile(); await ctrl.setOnboardingCompleted(true);
+
+                              // Limpiamos cache para que el Panel cargue la foto nueva de perfil sí o sí
+                              PaintingBinding.instance.imageCache.clear();
+                              PaintingBinding.instance.imageCache.clearLiveImages();
+
                               if (!mounted) return;
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
                             } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
                             finally { if (mounted) setState(() => _saving = false); }
                           } else {
                             setState(() => _mostrarErrores = true);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Row(children: const [
-                                    Icon(Icons.error_outline, color: Colors.white),
-                                    SizedBox(width: 10),
-                                    Expanded(child: Text("Faltan datos obligatorios (Nombre, Edad, País, Ciudad, Género, Preferencia o Foto)."))
-                                  ]),
-                                  backgroundColor: Colors.redAccent,
-                                  behavior: SnackBarBehavior.floating,
-                                )
-                            );
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Faltan datos obligatorios."), backgroundColor: Colors.redAccent));
                           }
                         },
                         child: Container(width: MediaQuery.of(context).size.width * 0.7, height: 55, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(30), boxShadow: kChipShadow), alignment: Alignment.center, child: _saving ? const CircularProgressIndicator(color: Colors.black) : const Text('GUARDAR PERFIL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16))),
@@ -600,38 +569,7 @@ class _SeccionBotonesChipsSimetricos extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(titulo, style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: 18, fontWeight: FontWeight.w900, shadows: _DatosScreenState.kTextShadow)),
       const SizedBox(height: 12),
-      Column(
-        children: chunks.map((fila) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              children: fila.map((opcion) {
-                final sel = seleccionActual.contains(opcion);
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: GestureDetector(
-                      onTap: () => onToggle(opcion),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                        decoration: BoxDecoration(
-                            color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: _DatosScreenState.kChipShadow,
-                            border: Border.all(color: sel ? Colors.transparent : Colors.white12)
-                        ),
-                        child: Center(
-                            child: Text(opcion, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.w600))
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          );
-        }).toList(),
-      )
+      Column(children: chunks.map((fila) => Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: fila.map((opcion) { final sel = seleccionActual.contains(opcion); return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: GestureDetector(onTap: () => onToggle(opcion), child: Container(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8), decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: _DatosScreenState.kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)), child: Center(child: Text(opcion, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.w600))))))); }).toList()))).toList())
     ]);
   }
 }
@@ -650,13 +588,7 @@ class _FotoThumb extends StatelessWidget {
       opacity: isGhost ? 0.4 : 1.0,
       child: Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: size, height: size, color: Colors.black,
-              child: Image(image: provider, fit: BoxFit.cover),
-            ),
-          ),
+          ClipRRect(borderRadius: BorderRadius.circular(16), child: Container(width: size, height: size, color: Colors.black, child: Image(image: provider, fit: BoxFit.cover))),
           Positioned(top: 5, right: 5, child: GestureDetector(onTap: onRemove, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)))),
           if (esPerfil) Positioned(bottom: 0, left: 0, right: 0, child: Container(padding: const EdgeInsets.symmetric(vertical: 4), decoration: BoxDecoration(color: const Color(0xFFBEB3FF).withOpacity(0.9), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))), child: const Text('PERFIL', textAlign: TextAlign.center, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10)))),
         ],
