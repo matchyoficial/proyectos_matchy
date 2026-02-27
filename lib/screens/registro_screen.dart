@@ -239,7 +239,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            "Al continuar aceptas nuestros Términos y Condiciones",
+                            "Al continuar aceptas nuestros Términos y Condiciones, Matchy es una App para mayores de 18 años",
                             textAlign: TextAlign.center,
                             style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11, shadows: kTextShadow),
                           ),

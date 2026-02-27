@@ -1,5 +1,5 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 3 MINUTOS)
+// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 30 MINUTOS)
 // 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
 // 🔥 TEXTOS CAMPANA: Actualizados con Nombre y Lugar.
@@ -116,13 +116,13 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
 
     // =========================================================================
     // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
-    // PARA PRUEBAS REALES, CAMBIA "minutes: 3" POR "hours: 2"
+    // TIEMPO PRUDENCIAL DE ESPERA CONFIGURADO A: 30 MINUTOS
     // =========================================================================
-    final deadline = fechaReal.add(const Duration(minutes: 3));
+    final deadline = fechaReal.add(const Duration(minutes: 30));
     // =========================================================================
 
     final diferencia = ahora.difference(fechaReal);
-    // Urgente si ya pasó la hora o estamos en los 3 minutos de gracia
+    // Urgente si ya pasó la hora o estamos en los 30 minutos de gracia
     final urgente = diferencia.inMinutes > 0 && (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending');
 
     return CitaItem(

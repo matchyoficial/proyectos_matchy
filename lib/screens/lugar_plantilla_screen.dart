@@ -224,18 +224,33 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
   Widget _buildProGallery(List<String> fotos) {
     return Column(
       children: [
-        Container(
-          height: 250,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))]),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: PageView.builder(
-              controller: _pageCtrl,
-              itemCount: fotos.length,
-              onPageChanged: (i) => setState(() => _currentPage = i),
-              itemBuilder: (_, i) => GestureDetector(onTap: () => _mostrarFotoZoom(fotos[i]), child: Image.network(fotos[i], fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54)))),
+        Stack(
+          children: [
+            Container(
+              height: 250,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))]),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: PageView.builder(
+                  controller: _pageCtrl,
+                  itemCount: fotos.length,
+                  onPageChanged: (i) => setState(() => _currentPage = i),
+                  itemBuilder: (_, i) => GestureDetector(onTap: () => _mostrarFotoZoom(fotos[i]), child: Image.network(fotos[i], fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54)))),
+                ),
+              ),
             ),
-          ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
+                  child: const Icon(Icons.zoom_in, color: Colors.white, size: 22),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         if (fotos.length > 1) Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(fotos.length, (index) => AnimatedContainer(duration: const Duration(milliseconds: 300), margin: const EdgeInsets.symmetric(horizontal: 4), height: 6, width: index == _currentPage ? 24 : 6, decoration: BoxDecoration(color: index == _currentPage ? const Color(0xFFBEB3FF) : Colors.white24, borderRadius: BorderRadius.circular(3))))),

@@ -140,6 +140,7 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
           final url = _fotosCarrusel[i]; return GestureDetector(onTap: () => _openFullscreen(context, url), child: Image.network(url, fit: BoxFit.cover, loadingBuilder: (_, child, progress) => progress == null ? child : Container(color: Colors.white10, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))), errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))));
         }),
         Positioned(bottom: 0, left: 0, right: 0, height: 60, child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.6)])))),
+        Positioned(top: 12, right: 12, child: IgnorePointer(child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle), child: const Icon(Icons.zoom_in, color: Colors.white, size: 22)))),
       ]))),
       const SizedBox(height: 12),
       if (_fotosCarrusel.length > 1) Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(_fotosCarrusel.length, (index) => AnimatedContainer(duration: const Duration(milliseconds: 300), margin: const EdgeInsets.symmetric(horizontal: 4), height: 6, width: index == _currentPage ? 24 : 6, decoration: BoxDecoration(color: index == _currentPage ? const Color(0xFFBEB3FF) : Colors.white24, borderRadius: BorderRadius.circular(3))))),

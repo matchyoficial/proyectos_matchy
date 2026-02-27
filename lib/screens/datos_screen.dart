@@ -2,7 +2,7 @@
 // ✅ DATOSSCREEN BLINDADO - FLUJO DE SINCRONIZACIÓN EN VIVO
 // 🔥 FIX DEFINITIVO: Las fotos se suben y se guardan en Firebase apenas se recortan.
 // 🔥 PERFIL: Al reordenar y poner una foto en el slot 0, se actualiza el perfil en Firestore de inmediato.
-// 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y diseño 100% preservado.
+// 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y burbujas de notificación.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -105,6 +105,69 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _biografiaCtrl.addListener(() => ref.read(profileFormProvider.notifier).setBiografia(_biografiaCtrl.text));
     _detalleCtrl.addListener(() => ref.read(profileFormProvider.notifier).setDetalle(_detalleCtrl.text));
     _estaturaCtrl.addListener(() => ref.read(profileFormProvider.notifier).setEstatura(_estaturaCtrl.text));
+  }
+
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 3), () {
+      if (entry.mounted) entry.remove();
+    });
   }
 
   Future<void> _hydrateFromFirestore(ProfileFormController ctrl) async {
@@ -428,8 +491,19 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 24),
                       _buildTextField(label: 'Nombre *', controller: _nombreCtrl, showError: _mostrarErrores && !_nombreOk(state)),
                       const SizedBox(height: 14),
-                      _buildTextField(label: 'Edad * (18-99)', controller: _edadCtrl, keyboardType: TextInputType.number, showError: _mostrarErrores && !_edadOk(state)),
+
+                      // 🔥 CAMPO EDAD Y TEXTO DE ADVERTENCIA OBLIGATORIA
+                      _buildTextField(label: 'Edad *', controller: _edadCtrl, keyboardType: TextInputType.number, showError: _mostrarErrores && !_edadOk(state)),
+                      const SizedBox(height: 6),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                            'Debes ser mayor de edad (18 años o más) para usar Matchy.',
+                            style: TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic)
+                        ),
+                      ),
                       const SizedBox(height: 14),
+
                       _buildTextField(label: 'Profesión', controller: _profesionCtrl),
                       const SizedBox(height: 14),
                       _buildTextField(label: 'Biografía', controller: _biografiaCtrl, maxLines: 4),
@@ -466,6 +540,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 45),
                       _SeccionBotonesChipsSimetricos(titulo: 'INTERESES Y HOBBIES', opciones: interesesOpciones, seleccionActual: state.interesesSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleInteres(op)),
                       const SizedBox(height: 40),
+
+                      // 🔥 BOTON GUARDAR PERFIL (CON LÓGICA DE BURBUJAS DE ERROR)
                       GestureDetector(
                         onTap: _saving ? null : () async {
                           if (_formularioValido(ref.read(profileFormProvider))) {
@@ -481,11 +557,22 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
                               if (!mounted) return;
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
-                            } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'))); }
+                            } catch (e) {
+                              if (mounted) _mostrarBurbuja('Error al guardar: $e', const Color(0xFFFF5252), Icons.error_outline_rounded);
+                            }
                             finally { if (mounted) setState(() => _saving = false); }
                           } else {
                             setState(() => _mostrarErrores = true);
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Faltan datos obligatorios."), backgroundColor: Colors.redAccent));
+
+                            // Validar específicamente si es por culpa de la edad para mostrar un mensaje exacto
+                            final edadStr = ref.read(profileFormProvider).edad.trim();
+                            final edadInt = int.tryParse(edadStr);
+
+                            if (edadStr.isNotEmpty && edadInt != null && edadInt < 18) {
+                              _mostrarBurbuja("Acceso denegado: Debes tener al menos 18 años para usar Matchy.", const Color(0xFFFF5252), Icons.block_flipped);
+                            } else {
+                              _mostrarBurbuja("Faltan datos obligatorios. Por favor revisa los campos en rojo.", const Color(0xFFFF5252), Icons.error_outline_rounded);
+                            }
                           }
                         },
                         child: Container(width: MediaQuery.of(context).size.width * 0.7, height: 55, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(30), boxShadow: kChipShadow), alignment: Alignment.center, child: _saving ? const CircularProgressIndicator(color: Colors.black) : const Text('GUARDAR PERFIL', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16))),
