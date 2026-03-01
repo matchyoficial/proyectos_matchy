@@ -330,7 +330,31 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) { return Container(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))), child: Column(children: [Icon(icon, color: Colors.white, size: 28), const SizedBox(height: 8), FittedBox(fit: BoxFit.scaleDown, child: Text(text.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)))])); }
   Widget _buildDisplayCode(String code) { return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: const Color(0xFF6B4EE6), borderRadius: BorderRadius.circular(15)), child: Column(children: [const Text("MI CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 15, letterSpacing: 1.5)), FittedBox(fit: BoxFit.scaleDown, child: Text(code.isEmpty ? "---" : code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kCodeFontSize, letterSpacing: 2.0)))])); }
-  Widget _buildInputCode() { return Container(decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)), child: TextField(controller: _codigoMatchyController, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0), textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(hintText: "PON EL CÓDIGO DE TU MATCHY", hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0), border: InputBorder.none, contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 12)))); }
+
+  // 🔥 BLINDAJE APLICADO: FittedBox asegura que el hint siempre sea visible sin cortarse
+  Widget _buildInputCode() {
+    return Container(
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: SizedBox(
+            width: 380, // Ancho base para permitir que el texto respire antes de escalar
+            child: TextField(
+                controller: _codigoMatchyController,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0),
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                    hintText: "PON EL CÓDIGO DE TU MATCHY",
+                    hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 12)
+                )
+            ),
+          ),
+        )
+    );
+  }
 }
 
 class _PremiumButton extends StatelessWidget {

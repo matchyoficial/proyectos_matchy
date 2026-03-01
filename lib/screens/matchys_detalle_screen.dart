@@ -169,6 +169,123 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
+  // 🔹 NUEVA FUNCIÓN: Lógica para purgar la relación en Firebase
+  Future<void> _eliminarConexionTotal() async {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (myUid == null) return;
+    final matchyUid = widget.matchyData.uid;
+
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)),
+      );
+
+      final batch = FirebaseFirestore.instance.batch();
+      final citasRef = FirebaseFirestore.instance.collection('citas');
+
+      // 1. Eliminar Citas donde yo soy el owner y él/ella el matchy
+      final snapshot1 = await citasRef.where('ownerUid', isEqualTo: myUid).where('matchyUid', isEqualTo: matchyUid).get();
+      for (var doc in snapshot1.docs) { batch.delete(doc.reference); }
+
+      // 2. Eliminar Citas donde él/ella es el owner y yo el matchy
+      final snapshot2 = await citasRef.where('ownerUid', isEqualTo: matchyUid).where('matchyUid', isEqualTo: myUid).get();
+      for (var doc in snapshot2.docs) { batch.delete(doc.reference); }
+
+      // 3. Eliminar la relación de Matchy apuntando a la colección real my_matchys
+      final myMatchyRef = FirebaseFirestore.instance.collection('users').doc(myUid).collection('my_matchys').doc(matchyUid);
+      final suMatchyRef = FirebaseFirestore.instance.collection('users').doc(matchyUid).collection('my_matchys').doc(myUid);
+
+      batch.delete(myMatchyRef);
+      batch.delete(suMatchyRef);
+
+      await batch.commit();
+
+      if (mounted) {
+        Navigator.pop(context);
+        Navigator.pop(context);
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      debugPrint("Error eliminando conexion: $e");
+    }
+  }
+
+  // 🔹 NUEVA FUNCIÓN: Muestra la advertencia antes de eliminar
+  void _mostrarAlertaEliminarMatchy() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2),
+            boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.15), blurRadius: 20, spreadRadius: 2)],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 60),
+              const SizedBox(height: 16),
+              const Text(
+                "¿ELIMINAR MATCHY?",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Poppins'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "Se eliminará la conexión actual y el historial de citas. No habrá bloqueos, por lo que podrán volver a conectar en el futuro si coinciden.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text("NO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        _eliminarConexionTotal();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)]),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text("SÍ, ELIMINAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override void dispose() { _controller.dispose(); super.dispose(); }
 
   // ===========================================================================
@@ -387,6 +504,31 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                           )
                       )
                   ),
+
+                  const SizedBox(height: 20),
+
+                  // 5. BOTÓN ELIMINAR MATCHY (NUEVO)
+                  GestureDetector(
+                    onTap: _mostrarAlertaEliminarMatchy,
+                    child: Container(
+                      width: double.infinity,
+                      height: 55,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)]),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
+                      ),
+                      alignment: Alignment.center,
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          "ELIMINAR MATCHY",
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5),
+                        ),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 120),
                 ],
               ),
