@@ -1,7 +1,7 @@
 // 📂 lib/screens/cita_detalle_screen.dart
 // ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
 // 🔥 FIX: Burbujas Flotantes "Matchy Style" reemplazan SnackBars y Alertas de error.
-// 🔥 FIX: Captura de lugarId para pasar a la plantilla de información del sitio.
+// 🔥 GPS: Implementado sistema de validación de 200m con Master Switch.
 // 🔒 FIX CORRECTO: Reprogramar se bloquea <12h. Cancelar SIEMPRE ACTIVO.
 
 import 'dart:async';
@@ -16,6 +16,7 @@ import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
+import 'package:geolocator/geolocator.dart'; // 🔥 IMPORTANTE: Necesitas este paquete
 
 const double kCardTitleSize      = 20.0;
 const double kCardSubtitleSize   = 18.0;
@@ -29,7 +30,6 @@ const List<BoxShadow> kButtonShadow = [BoxShadow(color: Colors.black54, blurRadi
 const List<Color> kBtnConfirmGradient   = [Color(0xFF00C853), Color(0xFF007E33)];
 const List<Color> kBtnReproGradient     = [Color(0xFF4FC3F7), Color(0xFF0288D1)];
 const List<Color> kBtnCancelGradient    = [Color(0xFFFF4B4B), Color(0xFFB71C1C)];
-// 🔥 Gradiente Gris para botón Reprogramar bloqueado
 const List<Color> kBtnBlockedGradient   = [Color(0xFF616161), Color(0xFF424242)];
 
 class CitaDetalleScreen extends StatefulWidget {
@@ -77,6 +77,13 @@ class CitaDetalleScreen extends StatefulWidget {
 }
 
 class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
+  // ===========================================================================
+  // 🔥 CONFIGURACIÓN DE GPS (INTERRUPTOR MAESTRO)
+  // ===========================================================================
+  static const bool kUsarValidacionGPS = false; // 👈 CAMBIAR A TRUE EN PRODUCCIÓN
+  static const int kRadioToleranciaMetros = 200;
+  // ===========================================================================
+
   final TextEditingController _codigoMatchyController = TextEditingController();
   bool _procesandoValidacion = false;
   bool _navegandoExito = false;
@@ -109,12 +116,10 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
   @override void dispose() { _codigoMatchyController.dispose(); _citaSubscription?.cancel(); super.dispose(); }
 
-  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
   void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
     if (!mounted) return;
     final overlayState = Overlay.of(context);
     late OverlayEntry entry;
-
     entry = OverlayEntry(
       builder: (context) => SafeArea(
         child: Align(
@@ -165,14 +170,10 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         ),
       ),
     );
-
     overlayState.insert(entry);
-    Future.delayed(const Duration(seconds: 3), () {
-      if (entry.mounted) entry.remove();
-    });
+    Future.delayed(const Duration(seconds: 3), () { if (entry.mounted) entry.remove(); });
   }
 
-  // 🔥 LÓGICA DE TIEMPO: Retorna TRUE si es posible reprogramar (faltan > 12h)
   bool get _puedeReprogramar {
     if (widget.citaDateTime == null) return true;
     final ahora = DateTime.now();
@@ -215,31 +216,82 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     if (!mounted) return; Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => ConfirmarCitaScreen(ownerNombre: myName, ownerFoto: myPhoto, matchyNombre: widget.matchyNombre, matchyFoto: widget.matchyFoto, ganaronPuntos: ganaronPuntos, citasFaltantes: citasFaltantes)));
   }
 
+  // 🔥 LÓGICA DE VALIDACIÓN BLINDADA (CÓDIGO + GPS OPCIONAL)
   Future<void> _validarYConfirmar() async {
-    if (_procesandoValidacion || _navegandoExito) return; final codigoIngresado = _codigoMatchyController.text.trim().toUpperCase(), codigoCorrecto = widget.codigoDelOtro.trim().toUpperCase();
-    if (codigoIngresado.isEmpty) { _mostrarBurbuja("Por favor ingresa un código válido.", Colors.orangeAccent, Icons.warning_amber_rounded); return; }
-    if (codigoIngresado == codigoCorrecto) {
+    if (_procesandoValidacion || _navegandoExito) return;
+    final codigoIngresado = _codigoMatchyController.text.trim().toUpperCase();
+    final codigoCorrecto = widget.codigoDelOtro.trim().toUpperCase();
+
+    if (codigoIngresado.isEmpty) {
+      _mostrarBurbuja("Por favor ingresa un código válido.", Colors.orangeAccent, Icons.warning_amber_rounded);
+      return;
+    }
+
+    if (codigoIngresado != codigoCorrecto) {
+      _mostrarBurbuja("Código incorrecto. Verifica e intenta de nuevo.", const Color(0xFFFF5252), Icons.cancel_outlined);
+      return;
+    }
+
+    // 📍 COMIENZA VALIDACIÓN GPS (SI EL SWITCH ESTÁ ACTIVO)
+    if (kUsarValidacionGPS) {
       setState(() => _procesandoValidacion = true);
       try {
-        final result = await FirebaseFirestore.instance.runTransaction((transaction) async {
-          DocumentSnapshot snapshot = await transaction.get(FirebaseFirestore.instance.collection('citas').doc(widget.citaId));
-          if (!snapshot.exists) throw Exception("Error: Cita no encontrada"); final data = snapshot.data() as Map<String, dynamic>;
-          String miCampo = widget.isOwner ? 'ownerConfirmado' : 'matchyConfirmado', otroCampo = widget.isOwner ? 'matchyConfirmado' : 'ownerConfirmado', nombreOtro = widget.isOwner ? (data['matchyNombre'] ?? 'tu matchy') : (data['ownerNombre'] ?? 'tu matchy');
-          bool elOtroYaConfirmo = data[otroCampo] == true; Map<String, dynamic> updates = { miCampo: true, 'updatedAt': FieldValue.serverTimestamp() };
-          if (elOtroYaConfirmo) { updates['status'] = 'finished'; updates['citaExitosa'] = true; updates['finalizedAt'] = FieldValue.serverTimestamp(); }
-          transaction.update(snapshot.reference, updates); return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
-        });
-        final resultMap = result as Map<String, dynamic>; bool isFinished = resultMap['finished'] as bool; String otherName = resultMap['otherName'] as String;
-        if (isFinished) { final resultadoGamificacion = await _distribuirPuntosDeRedencion(); _procesarExito(ganaronPuntos: resultadoGamificacion['gano'] ?? false, citasFaltantes: resultadoGamificacion['faltan'] ?? 0); } else {
-          setState(() => _procesandoValidacion = false); if (!mounted) return; showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)), title: const Icon(Icons.check_circle_outline, color: Color(0xFF00C853), size: 48), content: Column(mainAxisSize: MainAxisSize.min, children: [const Text("¡TU CÓDIGO ES CORRECTO!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 20), Text("DILE A ${otherName.toUpperCase()} QUE PONGA SU CÓDIGO PARA COMPLETAR LA CITA.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4)), const SizedBox(height: 20), const LinearProgressIndicator(color: Color(0xFFBEB3FF), backgroundColor: Colors.white10), const SizedBox(height: 10), const Text("Esperando confirmación del otro...", style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic))]), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white)))]));
+        final citaDoc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
+        if (!citaDoc.exists) throw "Error: Cita no encontrada";
+
+        final cData = citaDoc.data()!;
+        final double latMeta = (cData['latitude'] as num?)?.toDouble() ?? 0.0;
+        final double lngMeta = (cData['longitude'] as num?)?.toDouble() ?? 0.0;
+
+        if (latMeta == 0.0 || lngMeta == 0.0) throw "El lugar no tiene coordenadas registradas.";
+
+        LocationPermission p = await Geolocator.checkPermission();
+        if (p == LocationPermission.denied) {
+          p = await Geolocator.requestPermission();
+          if (p == LocationPermission.denied) throw "Permiso de ubicación denegado.";
         }
-      } catch (e) { if (mounted) { setState(() => _procesandoValidacion = false); _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded); } }
-    } else { _mostrarBurbuja("Código incorrecto. Verifica e intenta de nuevo.", const Color(0xFFFF5252), Icons.cancel_outlined); }
+
+        Position posActual = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        double distancia = Geolocator.distanceBetween(posActual.latitude, posActual.longitude, latMeta, lngMeta);
+
+        if (distancia > kRadioToleranciaMetros) {
+          throw "Aún no estás en el lugar. Estás a ${distancia.toInt()}m. Acércate más.";
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _procesandoValidacion = false);
+          _mostrarBurbuja(e.toString(), const Color(0xFFFF5252), Icons.location_off_rounded);
+        }
+        return;
+      }
+    }
+
+    // 🚀 SI PASÓ EL GPS (O ESTÁ APAGADO) Y EL CÓDIGO ES OK, PROCEDEMOS A FIREBASE
+    setState(() => _procesandoValidacion = true);
+    try {
+      final result = await FirebaseFirestore.instance.runTransaction((transaction) async {
+        DocumentSnapshot snapshot = await transaction.get(FirebaseFirestore.instance.collection('citas').doc(widget.citaId));
+        if (!snapshot.exists) throw Exception("Error: Cita no encontrada");
+        final data = snapshot.data() as Map<String, dynamic>;
+        String miCampo = widget.isOwner ? 'ownerConfirmado' : 'matchyConfirmado', otroCampo = widget.isOwner ? 'matchyConfirmado' : 'ownerConfirmado', nombreOtro = widget.isOwner ? (data['matchyNombre'] ?? 'tu matchy') : (data['ownerNombre'] ?? 'tu matchy');
+        bool elOtroYaConfirmo = data[otroCampo] == true; Map<String, dynamic> updates = { miCampo: true, 'updatedAt': FieldValue.serverTimestamp() };
+        if (elOtroYaConfirmo) { updates['status'] = 'finished'; updates['citaExitosa'] = true; updates['finalizedAt'] = FieldValue.serverTimestamp(); }
+        transaction.update(snapshot.reference, updates); return {'finished': elOtroYaConfirmo, 'otherName': nombreOtro};
+      });
+      final resultMap = result as Map<String, dynamic>; bool isFinished = resultMap['finished'] as bool; String otherName = resultMap['otherName'] as String;
+      if (isFinished) {
+        final resultadoGamificacion = await _distribuirPuntosDeRedencion();
+        _procesarExito(ganaronPuntos: resultadoGamificacion['gano'] ?? false, citasFaltantes: resultadoGamificacion['faltan'] ?? 0);
+      } else {
+        setState(() => _procesandoValidacion = false);
+        if (!mounted) return;
+        showDialog(context: context, barrierDismissible: false, builder: (ctx) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)), title: const Icon(Icons.check_circle_outline, color: Color(0xFF00C853), size: 48), content: Column(mainAxisSize: MainAxisSize.min, children: [const Text("¡TU CÓDIGO ES CORRECTO!", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 20), Text("DILE A ${otherName.toUpperCase()} QUE PONGA SU CÓDIGO PARA COMPLETAR LA CITA.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4)), const SizedBox(height: 20), const LinearProgressIndicator(color: Color(0xFFBEB3FF), backgroundColor: Colors.white10), const SizedBox(height: 10), const Text("Esperando confirmación del otro...", style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic))]), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white)))]));
+      }
+    } catch (e) { if (mounted) { setState(() => _procesandoValidacion = false); _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded); } }
   }
 
   void _gestionarCancelacion() { Navigator.push(context, MaterialPageRoute(builder: (_) => CancelarCitaScreen(citaId: widget.citaId, otherUserId: widget.matchyUid))); }
 
-  // 🔥 ALERTA DE BLOQUEO REPROGRAMACIÓN
   void _mostrarAlertaBloqueoReprogramar() {
     showDialog(
         context: context,
@@ -252,14 +304,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, height: 1.4, fontSize: 14),
             ),
-            actions: [
-              Center(
-                child: TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-                ),
-              )
-            ]
+            actions: [Center(child: TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("ENTENDIDO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))))]
         )
     );
   }
@@ -291,7 +336,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
           scrollContent: SizedBox(width: double.infinity, child: SingleChildScrollView(physics: const BouncingScrollPhysics(), padding: const EdgeInsets.only(bottom: 120), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _buildPanelStyleCard(
               onTap: () {
-                // 🔥 FIX: USAMOS EL lugarId PARA CARGAR LA INFO REAL
                 final lugarTemp = LugarData(id: widget.lugarId, nombre: _displayNombre, direccion: _displayDireccion, fotoPortada: widget.lugarFotoPortada, fotos: [widget.lugarFotoPortada], bio: '', sitioWeb: '', sedes: [], orden: 0);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugarTemp)));
               },
@@ -305,8 +349,6 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             const SizedBox(height: 25),
             Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFF1A1A1A).withOpacity(0.95), borderRadius: BorderRadius.circular(kCapsulaRadius), border: Border.all(color: Colors.white10)), child: Column(children: [_buildDisplayCode(widget.miCodigoCita), const SizedBox(height: 15), _buildInputCode(), const SizedBox(height: 20), _PremiumButton(text: _procesandoValidacion ? "VALIDANDO..." : "CONFIRMA TU CITA", gradient: kBtnConfirmGradient, onTap: _validarYConfirmar), const SizedBox(height: 12), const Text("POR TU SEGURIDAD SOLO DALE A TU MATCHY TU CÓDIGO EN EL LUGAR DE LA CITA", textAlign: TextAlign.center, style: TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold))])),
             const SizedBox(height: 20),
-
-            // 🔥 BOTÓN REPROGRAMAR MODIFICADO
             _PremiumButton(
                 text: _puedeReprogramar ? "REPROGRAMAR CITA" : "ACCIÓN BLOQUEADA (MENOS DE 12H)",
                 gradient: _puedeReprogramar ? kBtnReproGradient : kBtnBlockedGradient,
@@ -314,12 +356,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                     ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)))
                     : _mostrarAlertaBloqueoReprogramar
             ),
-
             const SizedBox(height: 15),
-
-            // ✅ BOTÓN CANCELAR ORIGINAL (INTACTO)
             _PremiumButton(text: "CANCELAR CITA", gradient: kBtnCancelGradient, onTap: _gestionarCancelacion),
-
           ])))),
         ),
         Positioned(bottom: 0, left: 0, right: 0, height: 90, child: IgnorePointer(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.0, 1.0]))))),
@@ -331,14 +369,13 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) { return Container(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))), child: Column(children: [Icon(icon, color: Colors.white, size: 28), const SizedBox(height: 8), FittedBox(fit: BoxFit.scaleDown, child: Text(text.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)))])); }
   Widget _buildDisplayCode(String code) { return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: const Color(0xFF6B4EE6), borderRadius: BorderRadius.circular(15)), child: Column(children: [const Text("MI CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 15, letterSpacing: 1.5)), FittedBox(fit: BoxFit.scaleDown, child: Text(code.isEmpty ? "---" : code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kCodeFontSize, letterSpacing: 2.0)))])); }
 
-  // 🔥 BLINDAJE APLICADO: FittedBox asegura que el hint siempre sea visible sin cortarse
   Widget _buildInputCode() {
     return Container(
         decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)),
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: SizedBox(
-            width: 380, // Ancho base para permitir que el texto respire antes de escalar
+            width: 380,
             child: TextField(
                 controller: _codigoMatchyController,
                 textAlign: TextAlign.center,
