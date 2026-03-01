@@ -1,9 +1,10 @@
 // 📂 lib/screens/creacita_screen.dart
-// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL + INICIALIZACIÓN DE CAMPOS)
-// 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
+// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL + GENERADOR ALFANUMÉRICO 8D)
+// 🔥 FIX: Nuevo generador de códigos aleatorios de 8 dígitos (Letras y Números).
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 
-import 'dart:ui'; // 🔥 Para el efecto de desenfoque
+import 'dart:ui';
+import 'dart:math'; // 🔥 Necesario para la aleatoriedad pura
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -78,7 +79,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     }
   }
 
-  // 🔥 NUEVO SELECTOR EMERGENTE CENTRAL (12H RODILLO)
   Future<void> _seleccionarHora() async {
     int selHora = 7;
     int selMin = 0;
@@ -89,7 +89,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       barrierDismissible: true,
       builder: (BuildContext context) {
         return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5), // Fondo desenfocado
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: Dialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -111,7 +111,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Horas
                         Expanded(
                           child: CupertinoPicker(
                             scrollController: FixedExtentScrollController(initialItem: 6),
@@ -121,7 +120,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                           ),
                         ),
                         const Text(":", style: TextStyle(color: Color(0xFFBEB3FF), fontSize: 25, fontWeight: FontWeight.bold)),
-                        // Minutos
                         Expanded(
                           child: CupertinoPicker(
                             itemExtent: 45,
@@ -129,7 +127,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                             children: List.generate(60, (i) => Center(child: Text(i.toString().padLeft(2, '0'), style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)))),
                           ),
                         ),
-                        // AM/PM
                         Expanded(
                           child: CupertinoPicker(
                             scrollController: FixedExtentScrollController(initialItem: 1),
@@ -156,7 +153,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                           int finalHour = selHora;
                           if (selAmPm == 1 && finalHour != 12) finalHour += 12;
                           if (selAmPm == 0 && finalHour == 12) finalHour = 0;
-
                           setState(() {
                             _pickedTime = TimeOfDay(hour: finalHour, minute: selMin);
                             final amPmStr = selAmPm == 0 ? 'AM' : 'PM';
@@ -177,10 +173,13 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     );
   }
 
-  String _generarCodigoUnico(String uid, String tipo) {
-    final seed = '${DateTime.now().millisecondsSinceEpoch}-$uid-$tipo';
-    final h = seed.codeUnits.fold<int>(0, (p, c) => (p + c) % 999999);
-    return 'SCG${h.toString().padLeft(6, '0')}';
+  // 🔥 NUEVO MOTOR: Generador Alfanumérico de 8 Dígitos Aleatorios
+  String _generarCodigoRandom8D() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Omitimos 'I', 'O', '1', '0' para evitar confusiones
+    final rnd = Random();
+    return String.fromCharCodes(Iterable.generate(
+      8, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+    ));
   }
 
   String _pickFotoLugar(LugarData lugar) {
@@ -221,7 +220,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       sedeIdUsada = _sedeSeleccionada!.id;
       sedeNombreUsado = _sedeSeleccionada!.nombre;
       sedeDireccionUsada = _sedeSeleccionada!.direccion;
-
       if (sedesMap.containsKey(sedeIdUsada)) {
         final sData = Map<String, dynamic>.from(sedesMap[sedeIdUsada]);
         finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
@@ -229,8 +227,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       }
     } else {
       if (sedesMap.isNotEmpty) {
-        var sData = sedesMap['sede_1'];
-        if (sData == null) sData = sedesMap.values.first;
+        var sData = sedesMap['sede_1'] ?? sedesMap.values.first;
         if (sData is Map) {
           finalLat = (sData['latitude'] ?? sData['latitud'] ?? 0.0).toDouble();
           finalLng = (sData['longitude'] ?? sData['longitud'] ?? 0.0).toDouble();
@@ -245,12 +242,14 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       }
     }
 
-    final codigoOwner = _generarCodigoUnico(user.uid, 'OWNER');
-    final codigoMatchy = _generarCodigoUnico(user.uid, 'MATCHY');
-    final lugar = widget.lugar;
+    // 🔥 APLICACIÓN: Generación de códigos únicos y diferentes
+    final codigoOwner = _generarCodigoRandom8D();
+    String codigoMatchy = _generarCodigoRandom8D();
+    while (codigoMatchy == codigoOwner) {
+      codigoMatchy = _generarCodigoRandom8D(); // Doble seguro
+    }
 
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
-
     await docRef.set({
       'ownerUid': user.uid,
       'ownerNombre': ownerNombre,
@@ -266,11 +265,11 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       'status': 'online',
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'lugarNombre': lugar.nombre,
-      'lugarId': lugar.id,
-      'lugarDireccion': lugar.direccion,
-      'lugarFotoPortada': lugar.fotoPortada,
-      'lugarFotos': lugar.fotos.take(8).toList(),
+      'lugarNombre': widget.lugar.nombre,
+      'lugarId': widget.lugar.id,
+      'lugarDireccion': widget.lugar.direccion,
+      'lugarFotoPortada': widget.lugar.fotoPortada,
+      'lugarFotos': widget.lugar.fotos.take(8).toList(),
       'sedeId': sedeIdUsada,
       'sedeNombre': sedeNombreUsado,
       'sedeDireccion': sedeDireccionUsada,
@@ -308,10 +307,9 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lugar = widget.lugar;
     final width = MediaQuery.of(context).size.width;
     final itemWidth = (width - 40 - 24) / 3;
-    final fotoUrl = _pickFotoLugar(lugar);
+    final fotoUrl = _pickFotoLugar(widget.lugar);
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -356,12 +354,12 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                           children: [
                             FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text(lugar.nombre.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: kSizeNombreLugar, fontWeight: FontWeight.w900, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 5, offset: Offset(0, 2))])),
+                              child: Text(widget.lugar.nombre.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: kSizeNombreLugar, fontWeight: FontWeight.w900, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 5, offset: Offset(0, 2))])),
                             ),
                             const SizedBox(height: 6),
                             FittedBox(
                               fit: BoxFit.scaleDown,
-                              child: Text(_sedeSeleccionada != null ? _sedeSeleccionada!.direccion : lugar.direccion, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: kSizeDireccion, fontWeight: FontWeight.w500, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
+                              child: Text(_sedeSeleccionada != null ? _sedeSeleccionada!.direccion : widget.lugar.direccion, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: kSizeDireccion, fontWeight: FontWeight.w500, height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)])),
                             ),
                           ],
                         ),
@@ -371,7 +369,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                       const SizedBox(height: 12),
                       _BotonPremium(text: _hora.isEmpty ? "SELECCIONAR HORA" : "HORA: $_hora", icon: Icons.access_time, width: width * 0.85, fontSize: kSizeTextoBoton, height: kAlturaBoton, onTap: _creating ? null : _seleccionarHora),
                       const SizedBox(height: 12),
-                      if (lugar.sedes.length >= 2)
+                      if (widget.lugar.sedes.length >= 2)
                         _BotonPremium(
                           text: _sedeSeleccionada == null ? 'SELECCIONAR SEDE' : _sedeSeleccionada!.nombre.toUpperCase(),
                           icon: Icons.store,
@@ -397,9 +395,9 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                                       Expanded(
                                         child: ListView.builder(
                                           shrinkWrap: true,
-                                          itemCount: lugar.sedes.length,
+                                          itemCount: widget.lugar.sedes.length,
                                           itemBuilder: (ctx, i) {
-                                            final s = lugar.sedes[i];
+                                            final s = widget.lugar.sedes[i];
                                             return InkWell(
                                               onTap: () => Navigator.pop(context, s),
                                               child: Container(
