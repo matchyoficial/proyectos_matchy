@@ -4,6 +4,9 @@
 // 🔥 FIX 2: Intención/Preferencia blindadas con Expanded+FittedBox (Se ajustan, NO se cortan).
 // 🔥 UI: Márgenes y estilos sincronizados con Android/iOS.
 // 🔥 ADD: Icono 'Ver Perfil' agregado a las esquinas de las fotos.
+// 🛠️ FIX 3: Nombre largo con FittedBox y límite derecho (Shrinker).
+// 🛠️ FIX 4: Separación blindada entre Fecha y Hora con Expanded y SizedBox.
+// 🛠️ FIX 5: Pantalla de carga (Spinner) centrada y con texto descriptivo.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -320,12 +323,14 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: _citasPublicasStream(),
           builder: (context, citasSnap) {
-            if (!citasSnap.hasData) return const Center(child: CircularProgressIndicator());
+            // 🔥 FIX 3: PANTALLA DE CARGA CENTRADA Y CON TEXTO
+            if (!citasSnap.hasData) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: const [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text("Se están buscando citas nuevas para ti...", style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Poppins', fontWeight: FontWeight.bold))]));
             final docs = citasSnap.data!.docs;
             return FutureBuilder<List<_CitaCardModel>>(
               future: _mapDocsToDeck(docs: docs, uid: uid).then((raw) => _applyFilters(raw: raw, uid: uid, generoUser: generoUser, prefGlobal: prefGlobal)),
               builder: (context, filtered) {
-                if (filtered.connectionState == ConnectionState.waiting && _deck.isEmpty) return const Center(child: CircularProgressIndicator());
+                // 🔥 FIX 3.1: PANTALLA DE CARGA CENTRADA (Mientras procesa filtros)
+                if (filtered.connectionState == ConnectionState.waiting && _deck.isEmpty) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: const [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text("Se están buscando citas nuevas para ti...", style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Poppins', fontWeight: FontWeight.bold))]));
                 final newDeck = filtered.data ?? [];
                 final needReset = _deck.length != newDeck.length || (_deck.isNotEmpty && newDeck.isNotEmpty && _deck.first.citaId != newDeck.first.citaId);
                 if (needReset) { WidgetsBinding.instance.addPostFrameCallback((_) { if (!mounted) return; setState(() { _deck = newDeck; _topIndex = 0; _dx = 0.0; }); }); } else { _deck = newDeck; if (_topIndex > _deck.length) _topIndex = _deck.length; }
@@ -393,7 +398,8 @@ class _SwipeBundleSolid extends StatelessWidget {
 
                   // SOMBRAS PARA TEXTOS
                   if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
-                  if (isProfile) Positioned(left: 20, bottom: 16, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))]))),
+                  // 🔥 FIX 1: SHRINKER PARA EL NOMBRE LARGO
+                  if (isProfile) Positioned(left: 20, right: 20, bottom: 16, child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))])))),
                   if (!isProfile) Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
                   if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
                     FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
@@ -441,8 +447,8 @@ class _SwipeBundleSolid extends StatelessWidget {
 
               // 2. CÁPSULA INFO (Fija)
               SizedBox(height: _CitaBuscarScreenState.kInfoHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.95, height: _CitaBuscarScreenState.kInfoHeight, padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                // FILA FECHA/HORA
-                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(model.fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins')), Text(model.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 21, fontFamily: 'Poppins'))]),
+                // 🔥 FIX 2: FILA FECHA/HORA SEPARADA Y BLINDADA
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: FittedBox(alignment: Alignment.centerLeft, fit: BoxFit.scaleDown, child: Text(model.fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins')))), const SizedBox(width: 10), Text(model.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 21, fontFamily: 'Poppins'))]),
                 const SizedBox(height: 4),
                 Container(height: 1, color: Colors.white12),
                 const SizedBox(height: 4),
