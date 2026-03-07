@@ -1,8 +1,8 @@
 // 📂 lib/screens/custom_cropper_screen.dart
 // ✅ VERSIÓN FINAL BLINDADA - MATCHY PREMIUM
 // 🛠️ FIX: Las líneas guía desaparecen al guardar (Foto limpia).
-// 🛠️ FIX: Textos protegidos contra deformación por escala del sistema.
 // 🛠️ FIX: Zoom y Movimiento 100% funcionales.
+// 🛠️ FIX TOTAL: Foto cargada con escala 1.05 y CENTRADA matemáticamente para eliminar líneas blancas en los 4 bordes.
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -20,29 +20,28 @@ class CustomCropperScreen extends StatefulWidget {
 
 class _CustomCropperScreenState extends State<CustomCropperScreen> {
   final GlobalKey _boundaryKey = GlobalKey();
-  double _scale = 1.0;
-  double _baseScale = 1.0;
-  Offset _offset = Offset.zero;
-  Offset _baseOffset = Offset.zero;
-  bool _isSaving = false;
-  bool _showGrid = true; // 🔥 Interruptor para las líneas guía
 
-  // 💾 LÓGICA DE GUARDADO: Captura la foto sin las líneas
+  double _scale = 1.05; // Sangrado ideal
+  Offset _offset = Offset.zero;
+  double _baseScale = 1.0;
+  Offset _baseOffset = Offset.zero;
+
+  bool _isSaving = false;
+  bool _showGrid = true;
+  bool _initialized = false; // 🔥 Control para centrado inicial
+
+  // 💾 LÓGICA DE GUARDADO
   Future<void> _saveImage() async {
     if (_isSaving) return;
-
     setState(() {
       _isSaving = true;
-      _showGrid = false; // 1. Apagamos las líneas
+      _showGrid = false;
     });
 
     try {
-      // 2. Esperamos un frame para que Flutter oculte las líneas antes de la foto
       await Future.delayed(const Duration(milliseconds: 50));
-
       RenderRepaintBoundary? boundary =
       _boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-
       if (boundary == null) return;
 
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
@@ -56,7 +55,7 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
       if (mounted) Navigator.pop(context, file.path);
     } catch (e) {
       debugPrint("Error al guardar: $e");
-      setState(() => _showGrid = true); // Restaurar líneas si falla
+      setState(() => _showGrid = true);
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -64,7 +63,19 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🛡️ Blindaje de texto: Ignoramos la configuración de fuente del celular
+    // 🛡️ CENTRADO AUTOMÁTICO EN EL PRIMER FRAME
+    if (!_initialized) {
+      final double width = MediaQuery.of(context).size.width * 0.85;
+      final double height = width * 1.25;
+      // Calculamos el desfase para centrar el zoom de 1.05
+      // Se resta la mitad del excedente en X y Y
+      _offset = Offset(
+        -(width * (_scale - 1)) / 2,
+        -(height * (_scale - 1)) / 2,
+      );
+      _initialized = true;
+    }
+
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
       child: Scaffold(
@@ -82,7 +93,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
         ),
         body: Column(
           children: [
-            // ☁️ NUBE DE INSTRUCCIONES BLINDADA
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Container(
@@ -109,7 +119,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
               ),
             ),
 
-            // 📸 ÁREA DE RECORTE (CAPTURA ESTO SIN LÍNEAS)
             Expanded(
               child: Center(
                 child: RepaintBoundary(
@@ -129,7 +138,7 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
                       },
                       onScaleUpdate: (details) {
                         setState(() {
-                          _scale = (_baseScale * details.scale).clamp(0.5, 5.0);
+                          _scale = (_baseScale * details.scale).clamp(1.01, 5.0);
                           _offset = details.focalPoint - _baseOffset;
                         });
                       },
@@ -146,7 +155,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
                               height: double.infinity,
                             ),
                           ),
-                          // 🔥 Las líneas solo se dibujan si _showGrid es true
                           if (_showGrid)
                             IgnorePointer(
                               child: CustomPaint(
@@ -162,7 +170,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
               ),
             ),
 
-            // 🎛️ PANEL INFERIOR: REGLA Y BOTONES
             Container(
               padding: const EdgeInsets.fromLTRB(25, 20, 25, 40),
               decoration: const BoxDecoration(
@@ -172,7 +179,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
               child: SafeArea(
                 child: Column(
                   children: [
-                    // 📏 REGLA DE ZOOM
                     Container(
                       height: 80,
                       padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -192,8 +198,8 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
                               thumbShape: RoundSliderThumbShape(enabledThumbRadius: 8),
                             ),
                             child: Slider(
-                              value: _scale.clamp(0.5, 5.0),
-                              min: 0.5,
+                              value: _scale.clamp(1.01, 5.0),
+                              min: 1.01,
                               max: 5.0,
                               onChanged: (v) => setState(() => _scale = v),
                             ),
@@ -207,7 +213,6 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
                     ),
                     const SizedBox(height: 25),
 
-                    // 🔘 BOTONES
                     Row(
                       children: [
                         Expanded(

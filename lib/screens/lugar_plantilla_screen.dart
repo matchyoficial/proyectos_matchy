@@ -2,6 +2,7 @@
 // ✅ LUGAR PLANTILLA BLINDADA (UNIFICADA CON VERSIÓN SIN BOTÓN)
 // 🔥 FIX: Tamaños unificados (Nombre 30 / Dirección 18).
 // 🔥 ADD: Texto informativo de sedes múltiples debajo del botón.
+// 🛠️ FIX OVERFLOW FOTO: Carrusel ajustado a proporción 16:9 (AspectRatio) para fotos 1920x1080 sin recortes.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -226,16 +227,26 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
       children: [
         Stack(
           children: [
-            Container(
-              height: 250,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))]),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: PageView.builder(
-                  controller: _pageCtrl,
-                  itemCount: fotos.length,
-                  onPageChanged: (i) => setState(() => _currentPage = i),
-                  itemBuilder: (_, i) => GestureDetector(onTap: () => _mostrarFotoZoom(fotos[i]), child: Image.network(fotos[i], fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54)))),
+            // 🔥 FIX: AspectRatio 16:9 garantiza que la foto 1920x1080 encaje perfecta sin cortarse
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))]),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: PageView.builder(
+                    controller: _pageCtrl,
+                    itemCount: fotos.length,
+                    onPageChanged: (i) => setState(() => _currentPage = i),
+                    itemBuilder: (_, i) => GestureDetector(
+                        onTap: () => _mostrarFotoZoom(fotos[i]),
+                        child: Image.network(
+                            fotos[i],
+                            fit: BoxFit.cover, // Ahora cover no recortará nada porque el contenedor es exactamente de la misma proporción de la foto.
+                            errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))
+                        )
+                    ),
+                  ),
                 ),
               ),
             ),
