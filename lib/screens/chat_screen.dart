@@ -3,6 +3,7 @@
 // 🔥 FIX: Se elimina el envío de 'Yo' a Firebase usando el nombre real del perfil.
 // 🔥 FIX: Lógica de respaldo para nombres en hilos ya existentes.
 // 🔥 UI: Diseño Pro 100% original mantenido.
+// 🛠️ FIX OVERFLOW: Texto de último mensaje con corte de puntos suspensivos (...) tipo WhatsApp.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -285,19 +286,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                             ),
                                           ),
                                           const SizedBox(height: 4),
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerLeft,
-                                            child: Text(
-                                                t.lastText,
-                                                maxLines: 1,
-                                                style: TextStyle(
-                                                    color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
-                                                    fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
-                                                    fontSize: 13,
-                                                    fontFamily: 'Poppins'
-                                                )
-                                            ),
+                                          Text(
+                                              t.lastText,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                  color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
+                                                  fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
+                                                  fontSize: 13,
+                                                  fontFamily: 'Poppins'
+                                              )
                                           ),
                                         ],
                                       ),

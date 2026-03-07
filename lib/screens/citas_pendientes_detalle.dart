@@ -6,6 +6,7 @@
 // 🔥 LOGIC: 100% Intacta.
 // 🎫 STATUS: Destino oficial de Notificaciones Golden Ticket.
 // 🧹 FIX: Limpieza automática de notificaciones al hacer Matchy.
+// 🛠️ FIX FECHA: Cálculo dinámico del día de la semana para evitar "Jueves" fijo.
 
 import 'dart:async';
 import 'dart:ui';
@@ -395,7 +396,7 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
     );
   }
 
-  String _fechaLarga(String f) { try { var p = f.split('/'); const ms = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']; return "Jueves ${p[0]} de ${ms[int.parse(p[1])-1]} ${p[2]}"; } catch(_) { return f; } }
+  String _fechaLarga(String f) { try { var p = f.split('/'); const ms = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']; const ds = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']; DateTime dt = DateTime(int.parse(p[2]), int.parse(p[1]), int.parse(p[0])); return "${ds[dt.weekday-1]} ${p[0]} de ${ms[int.parse(p[1])-1]} ${p[2]}"; } catch(_) { return f; } }
 }
 
 // ============================================================
