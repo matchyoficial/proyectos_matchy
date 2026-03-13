@@ -1,12 +1,11 @@
 // 📂 lib/screens/cita_buscar.dart
-// ✅ CITA BUSCAR — VERSIÓN FINAL GARANTIZADA
-// 🔥 FIX 1: Título del lugar compactado (height: 0.9) para eliminar "aire" vertical.
-// 🔥 FIX 2: Intención/Preferencia blindadas con Expanded+FittedBox (Se ajustan, NO se cortan).
-// 🔥 UI: Márgenes y estilos sincronizados con Android/iOS.
-// 🔥 ADD: Icono 'Ver Perfil' agregado a las esquinas de las fotos.
-// 🛠️ FIX 3: Nombre largo con FittedBox y límite derecho (Shrinker).
-// 🛠️ FIX 4: Separación blindada entre Fecha y Hora con Expanded y SizedBox.
-// 🛠️ FIX 5: Pantalla de carga (Spinner) centrada y con texto descriptivo.
+// ✅ CITA BUSCAR — VERSIÓN FINAL VELOCIDAD LUZ & UX MEJORADA
+// 🔥 FASE 1: "Matchy Speed" - Paginación inteligente en lotes.
+// 🔥 FASE 2: Pre-caché de imágenes silencioso.
+// 🔥 FASE 3: Sellos "ME INTERESA" y "NO ME INTERESA" visibles.
+// 🔥 FASE 4: Micro-copy de asistencia PRO (Flechas + Texto postulante).
+// 🔥 FASE 5: Animación 2-Fases (Tiempos extendidos para lectura clara).
+// 🔥 FASE 6: MatchySpinner anclado matemáticamente al centro.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -36,7 +35,6 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   // ==============================================================================
 
   static const double kCardTopMargin      = 30.0;
-
   static const double kCardWidthFactor    = 0.93;
   static const double kCardHeightFactor   = 0.81;
   static const double kCardBorderRadius   = 24.0;
@@ -80,7 +78,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   static const String kUserGeneroField = 'genero';
   static const String kUserPreferenciaCitasField = 'preferenciaCitas';
 
-  List<_CitaCardModel> _deck = const [];
+  List<_CitaCardModel> _deck = [];
   int _topIndex = 0;
   double _dx = 0.0;
   bool _isAnimating = false;
@@ -88,6 +86,14 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   late final AnimationController _controller;
   Animation<double>? _dxAnim;
   final Map<String, Map<String, dynamic>> _userCache = {};
+
+  // 🔥 VARIABLES MATCHY SPEED
+  DocumentSnapshot? _lastDoc;
+  bool _isLoading = true;
+  bool _hasMore = true;
+  String _uid = '';
+  String _prefGlobal = '';
+  String _generoUser = '';
 
   @override
   void initState() {
@@ -101,6 +107,83 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
           _isAnimating = false;
         }
       });
+
+    _initMatchySpeed();
+  }
+
+  // 🔥 FASE 1: INICIALIZACIÓN SIN STREAMS
+  Future<void> _initMatchySpeed() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    _uid = user.uid;
+
+    try {
+      final snap = await FirebaseFirestore.instance.collection(kUsersCol).doc(_uid).get();
+      final udata = snap.data() ?? {};
+      _prefGlobal = _normPref((udata[kUserPreferenciaCitasField] ?? 'Ambos').toString());
+      _generoUser = _normGenero((udata[kUserGeneroField] ?? 'Prefiero no decirlo').toString());
+    } catch (_) {
+      _prefGlobal = 'Ambos';
+      _generoUser = 'NoDecir';
+    }
+    await _fetchCitasBatch();
+  }
+
+  // 🔥 FASE 1: PAGINACIÓN INTELIGENTE (LOTES DE 10)
+  Future<void> _fetchCitasBatch() async {
+    if (!_hasMore || !mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      Query q = FirebaseFirestore.instance
+          .collection(kCitasCol)
+          .where('status', isEqualTo: publicStatus)
+          .limit(10);
+
+      if (_lastDoc != null) {
+        q = q.startAfterDocument(_lastDoc!);
+      }
+
+      final snap = await q.get();
+
+      if (snap.docs.isEmpty) {
+        if (mounted) setState(() { _hasMore = false; _isLoading = false; });
+        return;
+      }
+
+      _lastDoc = snap.docs.last;
+
+      final rawCards = await _mapDocsToDeck(docs: snap.docs as List<QueryDocumentSnapshot<Map<String, dynamic>>>, uid: _uid);
+      final validCards = await _applyFilters(raw: rawCards, uid: _uid, generoUser: _generoUser, prefGlobal: _prefGlobal);
+
+      if (!mounted) return;
+
+      setState(() {
+        _deck.addAll(validCards);
+        _isLoading = false;
+      });
+
+      // 🔥 FASE 2: PRE-CACHÉ SILENCIOSO
+      _precacheDeckImages(validCards);
+
+      if (validCards.isEmpty && _hasMore) {
+        _fetchCitasBatch();
+      }
+
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _precacheDeckImages(List<_CitaCardModel> newCards) {
+    for (var card in newCards) {
+      if (card.creatorPhoto.startsWith('http')) {
+        precacheImage(NetworkImage(card.creatorPhoto), context).catchError((_) {});
+      }
+      if (card.placePhotos.isNotEmpty && card.placePhotos.first.startsWith('http')) {
+        precacheImage(NetworkImage(card.placePhotos.first), context).catchError((_) {});
+      }
+    }
   }
 
   @override
@@ -134,7 +217,14 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     final target = (right ? 1 : -1) * (diag * offscreenDiagMultiplier + offscreenExtraPx);
     await _animateTo(target, Duration(milliseconds: durationMs));
     if (!mounted) return;
+
     setState(() { _topIndex++; _dx = 0.0; });
+
+    // 🔥 FASE 1: SILENT RELOAD (VIGILANTE DE RECARGA)
+    if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) {
+      _fetchCitasBatch();
+    }
+
     Future(() async {
       try {
         if (right) { await _writeCandidato(model: model, uid: uid); } else { await _writeDescartado(citaId: model.citaId, uid: uid); }
@@ -152,21 +242,24 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     await _flingOut(right: _dx > 0, size: size, model: model, uid: uid, durationMs: flingDurationMs);
   }
 
+  // 🔥 FASE 5: ANIMACIÓN 2-FASES CON TIEMPOS EXTENDIDOS Y MÁS INCLINACIÓN
   Future<void> _onNope(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
-    _dx = -decisionThresholdPx;
-    await _flingOut(right: false, size: size, model: _deck[_topIndex], uid: uid, durationMs: flingDurationMs);
+    _isAnimating = true;
+    // 1. Amague pronunciado para mostrar el sello claramente (300ms)
+    await _animateTo(-decisionThresholdPx - 60, const Duration(milliseconds: 300));
+    // 2. Disparar fuera de la pantalla de forma más natural (450ms)
+    await _flingOut(right: false, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
 
   Future<void> _onLike(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
-    _dx = decisionThresholdPx;
-    await _flingOut(right: true, size: size, model: _deck[_topIndex], uid: uid, durationMs: flingDurationMs);
+    _isAnimating = true;
+    // 1. Amague pronunciado para mostrar el sello claramente (300ms)
+    await _animateTo(decisionThresholdPx + 60, const Duration(milliseconds: 300));
+    // 2. Disparar fuera de la pantalla de forma más natural (450ms)
+    await _flingOut(right: true, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
-
-  // --- STREAMS Y LOGICA (Sin cambios) ---
-  Stream<DocumentSnapshot<Map<String, dynamic>>> _userDocStream(String uid) => FirebaseFirestore.instance.collection(kUsersCol).doc(uid).snapshots();
-  Stream<QuerySnapshot<Map<String, dynamic>>> _citasPublicasStream() => FirebaseFirestore.instance.collection(kCitasCol).where('status', isEqualTo: publicStatus).limit(50).snapshots();
 
   Future<void> _writeDescartado({required String citaId, required String uid}) async {
     await FirebaseFirestore.instance.collection(kCitasCol).doc(citaId).collection(kSubDescartes).doc(uid).set({'uid': uid, 'createdAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
@@ -180,12 +273,10 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       nombre = _pickNombreFromUserDoc(d); edad = _pickEdadFromUserDoc(d); foto = _pickFotoFromUserDoc(d);
     } catch (_) {}
 
-    // 1. Registro de candidato original
     await FirebaseFirestore.instance.collection(kCitasCol).doc(model.citaId).collection(kSubCandidatos).doc(uid).set({
       'uid': uid, 'createdAt': FieldValue.serverTimestamp(), 'nombre': nombre, 'edad': edad, 'foto': foto, 'citaId': model.citaId, 'ownerUid': model.ownerUid,
     }, SetOptions(merge: true));
 
-    // 🔥 NOTIFICACIÓN GOLDEN TICKET AL DUEÑO
     if (model.ownerUid.isNotEmpty && model.ownerUid != 'unknown') {
       await FirebaseFirestore.instance
           .collection(kUsersCol)
@@ -305,7 +396,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
           MatchyPageLayout(
             backgroundAsset: backgroundAsset, logoAsset: logoAsset, topSpacing: topSpacing,
             logoHeight: logoHeight, logoOffsetY: logoOffsetY, spaceLogoToScroll: spaceLogoToScroll,
-            scrollContent: _buildBody(user.uid, blockW, safeHeight),
+            scrollContent: _buildBody(blockW, safeHeight),
           ),
           Positioned(top: 10, left: 16, child: SafeArea(child: Material(color: Colors.black.withOpacity(0.25), shape: const CircleBorder(), child: InkWell(customBorder: const CircleBorder(), onTap: _backToPanel, child: const SizedBox(width: 42, height: 42, child: Icon(Icons.arrow_back, color: Colors.white)))))),
         ],
@@ -313,58 +404,92 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildBody(String uid, double blockW, double safeHeight) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: _userDocStream(uid),
-      builder: (context, userSnap) {
-        final udata = userSnap.data?.data() ?? {};
-        final prefGlobal = _normPref((udata[kUserPreferenciaCitasField] ?? 'Ambos').toString());
-        final generoUser = _normGenero((udata[kUserGeneroField] ?? 'Prefiero no decirlo').toString());
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: _citasPublicasStream(),
-          builder: (context, citasSnap) {
-            // 🔥 FIX 3: PANTALLA DE CARGA CENTRADA Y CON TEXTO
-            if (!citasSnap.hasData) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: const [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text("Se están buscando citas nuevas para ti...", style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Poppins', fontWeight: FontWeight.bold))]));
-            final docs = citasSnap.data!.docs;
-            return FutureBuilder<List<_CitaCardModel>>(
-              future: _mapDocsToDeck(docs: docs, uid: uid).then((raw) => _applyFilters(raw: raw, uid: uid, generoUser: generoUser, prefGlobal: prefGlobal)),
-              builder: (context, filtered) {
-                // 🔥 FIX 3.1: PANTALLA DE CARGA CENTRADA (Mientras procesa filtros)
-                if (filtered.connectionState == ConnectionState.waiting && _deck.isEmpty) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: const [CircularProgressIndicator(color: Colors.white), SizedBox(height: 16), Text("Se están buscando citas nuevas para ti...", style: TextStyle(color: Colors.white70, fontSize: 15, fontFamily: 'Poppins', fontWeight: FontWeight.bold))]));
-                final newDeck = filtered.data ?? [];
-                final needReset = _deck.length != newDeck.length || (_deck.isNotEmpty && newDeck.isNotEmpty && _deck.first.citaId != newDeck.first.citaId);
-                if (needReset) { WidgetsBinding.instance.addPostFrameCallback((_) { if (!mounted) return; setState(() { _deck = newDeck; _topIndex = 0; _dx = 0.0; }); }); } else { _deck = newDeck; if (_topIndex > _deck.length) _topIndex = _deck.length; }
-                final noMore = _deck.isEmpty || _topIndex >= _deck.length;
-                return Center(
-                  child: Padding(
-                    // 🔥 SE APLICA EL MARGEN SUPERIOR PARA BAJAR LA CARTA
-                    padding: const EdgeInsets.only(top: kCardTopMargin),
-                    child: SizedBox(
-                      width: blockW, height: safeHeight,
-                      child: Stack(
-                        children: [
-                          if (!noMore && _topIndex + 1 < _deck.length)
-                            Positioned.fill(child: _SwipeBundleSolid(model: _deck[_topIndex + 1], likeOpacity: 0.0, nopeOpacity: 0.0, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex + 1].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex + 1]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () {}, onNopeTap: () {})),
-                          if (!noMore)
-                            Positioned.fill(child: GestureDetector(onPanUpdate: _onPanUpdate, onPanEnd: (d) => _onPanEnd(d, MediaQuery.sizeOf(context), uid), child: Transform.translate(offset: Offset(_dx, 0), child: Transform.rotate(angle: _rotationDeg * (math.pi / 180), child: _SwipeBundleSolid(model: _deck[_topIndex], likeOpacity: _likeOpacityValue, nopeOpacity: _nopeOpacityValue, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () => _onLike(MediaQuery.sizeOf(context), uid), onNopeTap: () => _onNope(MediaQuery.sizeOf(context), uid)))))),
-                          if (noMore)
-                            Positioned.fill(child: Center(child: Container(width: blockW * 0.92, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: Colors.black.withOpacity(0.38), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white24, width: 1)), child: const Text('No hay citas disponibles ahora.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700))))),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
+  Widget _buildBody(double blockW, double safeHeight) {
+    final noMore = _deck.isEmpty || _topIndex >= _deck.length;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: kCardTopMargin),
+        child: SizedBox(
+          width: blockW, height: safeHeight, // 🔥 Esta caja define la altura EXACTA de la zona central
+          child: Stack(
+            children: [
+
+              // 🔥 FASE 6: SPINNER MATEMÁTICAMENTE CENTRADO EN LA CAJA
+              if (_isLoading && _deck.isEmpty)
+                const Positioned.fill(child: _MatchySpinner()),
+
+              // CARTAS Y LÓGICA DE SWIPE
+              if (!_isLoading || _deck.isNotEmpty) ...[
+                if (!noMore && _topIndex + 1 < _deck.length)
+                  Positioned.fill(child: _SwipeBundleSolid(model: _deck[_topIndex + 1], likeOpacity: 0.0, nopeOpacity: 0.0, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex + 1].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex + 1]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () {}, onNopeTap: () {})),
+                if (!noMore)
+                  Positioned.fill(child: GestureDetector(onPanUpdate: _onPanUpdate, onPanEnd: (d) => _onPanEnd(d, MediaQuery.sizeOf(context), _uid), child: Transform.translate(offset: Offset(_dx, 0), child: Transform.rotate(angle: _rotationDeg * (math.pi / 180), child: _SwipeBundleSolid(model: _deck[_topIndex], likeOpacity: _likeOpacityValue, nopeOpacity: _nopeOpacityValue, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () => _onLike(MediaQuery.sizeOf(context), _uid), onNopeTap: () => _onNope(MediaQuery.sizeOf(context), _uid)))))),
+
+                // Mensaje final cuando se acaban las cartas (Solo si no está cargando)
+                if (noMore && !_isLoading)
+                  Positioned.fill(child: Center(child: Container(width: blockW * 0.92, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: Colors.black.withOpacity(0.38), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white24, width: 1)), child: const Text('No hay citas disponibles ahora.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700))))),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
 // =============================================================================
-// 🔥 WIDGET CARTA SÓLIDA (DISTRIBUCIÓN VERTICAL BLINDADA)
+// 🔥 WIDGET NUEVO: MATCHY SPINNER PREMIUM
+// =============================================================================
+class _MatchySpinner extends StatelessWidget {
+  const _MatchySpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 60, height: 60,
+                child: CircularProgressIndicator(
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7E208E)), // Morado Matchy
+                  strokeWidth: 6,
+                  backgroundColor: Colors.white.withOpacity(0.1),
+                ),
+              ),
+              const SizedBox(
+                width: 40, height: 40,
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  strokeWidth: 2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            "Buscando citas nuevas para ti...",
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 15,
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 🔥 WIDGET CARTA SÓLIDA
 // =============================================================================
 class _SwipeBundleSolid extends StatelessWidget {
   final _CitaCardModel model; final double likeOpacity; final double nopeOpacity; final double width; final double totalHeight;
@@ -381,7 +506,6 @@ class _SwipeBundleSolid extends StatelessWidget {
     else if (_isNet(src)) { imgWidget = Image.network(src, fit: BoxFit.cover, alignment: Alignment.topCenter, loadingBuilder: (_, c, p) => p == null ? c : Container(color: Colors.black26, alignment: Alignment.center, child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))), errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)); }
     else { imgWidget = Image.asset(_isAsset(src) ? src : 'assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover)); }
 
-    // 🔥 STACK CON EL ICONO EN LA ESQUINA SUPERIOR DERECHA
     return GestureDetector(
         onTap: onTap,
         child: Container(
@@ -395,10 +519,7 @@ class _SwipeBundleSolid extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   imgWidget,
-
-                  // SOMBRAS PARA TEXTOS
                   if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
-                  // 🔥 FIX 1: SHRINKER PARA EL NOMBRE LARGO
                   if (isProfile) Positioned(left: 20, right: 20, bottom: 16, child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))])))),
                   if (!isProfile) Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
                   if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
@@ -406,22 +527,13 @@ class _SwipeBundleSolid extends StatelessWidget {
                     const SizedBox(height: 2),
                     FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeAddress, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins')))
                   ])),
-
-                  // 🔥 ICONO DE "VER PERFIL" (person_search) en la esquina superior derecha
                   Positioned(
                       top: 10,
                       right: 10,
                       child: Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.4),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.person_search,
-                          color: Colors.white,
-                          size: 24,
-                        ),
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+                        child: const Icon(Icons.person_search, color: Colors.white, size: 24),
                       )
                   ),
                 ]
@@ -438,80 +550,120 @@ class _SwipeBundleSolid extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Stack(
         children: [
-          // 🔥 COLUMNA PRINCIPAL
           Column(
             children: [
-              // 1. FOTO PERFIL (Flexible)
               Expanded(flex: 72, child: _buildPhoto(model.creatorPhoto, onCreatorPhotoTap, isProfile: true)),
               const SizedBox(height: _CitaBuscarScreenState.kGapSmall),
-
-              // 2. CÁPSULA INFO (Fija)
               SizedBox(height: _CitaBuscarScreenState.kInfoHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.95, height: _CitaBuscarScreenState.kInfoHeight, padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white.withOpacity(0.10), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                // 🔥 FIX 2: FILA FECHA/HORA SEPARADA Y BLINDADA
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Expanded(child: FittedBox(alignment: Alignment.centerLeft, fit: BoxFit.scaleDown, child: Text(model.fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins')))), const SizedBox(width: 10), Text(model.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 21, fontFamily: 'Poppins'))]),
                 const SizedBox(height: 4),
                 Container(height: 1, color: Colors.white12),
                 const SizedBox(height: 4),
-                // 🔥 FIX 2: INTENCIÓN Y PREFERENCIA BLINDADAS (Expanded + FittedBox)
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                  // INTENCIÓN
                   Expanded(
                     child: Row(
                       children: [
                         const Text("Intención: ", style: TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')),
-                        Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(model.intencion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                          ),
-                        ),
+                        Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(model.intencion, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')))),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // PREFERENCIA
                   Expanded(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         const Text("Preferencia: ", style: TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins')),
-                        Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(model.preferencia, style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
-                          ),
-                        ),
+                        Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(model.preferencia, style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 15, fontWeight: FontWeight.bold, fontFamily: 'Poppins')))),
                       ],
                     ),
                   ),
                 ])
               ]))))),
               const SizedBox(height: _CitaBuscarScreenState.kGapSmall),
-
-              // 3. FOTO SITIO (Flexible)
               Expanded(flex: 30, child: _buildPhoto((model.placePhotos.isNotEmpty ? model.placePhotos.first : ''), onPlacePhotoTap, isProfile: false)),
               const SizedBox(height: _CitaBuscarScreenState.kGapSmall),
-
-              // 4. BARRA DE PUNTUALIDAD (Fija, Cápsula Negra)
               SizedBox(height: _CitaBuscarScreenState.kBarHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.90, height: _CitaBuscarScreenState.kBarHeight, padding: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white12)), child: _MiniTermometro(puntaje: model.puntualidad)))),
               const SizedBox(height: _CitaBuscarScreenState.kGapTiny),
 
-              // 5. BOTONES (Fijos, Cápsula Negra)
-              SizedBox(height: _CitaBuscarScreenState.kButtonsHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.90, height: _CitaBuscarScreenState.kButtonsHeight, decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white12)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [_CircleActionBtn(icon: Icons.close, color: Colors.white54, size: 28, onTap: onNopeTap), Container(width: 1, height: 20, color: Colors.white12), _CircleActionBtn(icon: Icons.favorite, color: const Color(0xFF7E208E), size: 28, onTap: onLikeTap)])))),
+              // 🔥 FASE 4: MICRO-COPY PRO CON FLECHAS Y TEXTO DE POSTULACIÓN
+              SizedBox(
+                  height: _CitaBuscarScreenState.kButtonsHeight,
+                  child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Container(
+                          width: width * 0.90,
+                          height: _CitaBuscarScreenState.kButtonsHeight,
+                          decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white12)),
+                          child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _CircleActionBtn(icon: Icons.close, color: Colors.white54, size: 28, onTap: onNopeTap),
+                                Expanded(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(Icons.arrow_back_rounded, color: Color(0xFFFF6E63), size: 14),
+                                          SizedBox(width: 4),
+                                          Text("NO", style: TextStyle(color: Color(0xFFFF6E63), fontSize: 13, fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                          Text("   -   ¿QUIERES POSTULARTE A ESTA CITA?   -   ", style: TextStyle(color: Colors.white54, fontSize: 10, fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
+                                          Text("SÍ", style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
+                                          SizedBox(width: 4),
+                                          Icon(Icons.arrow_forward_rounded, color: Color(0xFF00E676), size: 14),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                _CircleActionBtn(icon: Icons.favorite, color: const Color(0xFF7E208E), size: 28, onTap: onLikeTap)
+                              ]
+                          )
+                      )
+                  )
+              ),
               const SizedBox(height: 12),
             ],
           ),
-          // Badges
-          IgnorePointer(child: Opacity(opacity: 0.0, child: Stack(children: [Positioned(left: 20, top: 60, child: Opacity(opacity: likeOpacity, child: Transform.rotate(angle: -30 * (math.pi / 180), child: const _ChoiceBadge(text: 'LIKE', borderColor: Color(0xFF63FF68), textColor: Color(0xFF63FF68))))), Positioned(right: 20, top: 60, child: Opacity(opacity: nopeOpacity, child: Transform.rotate(angle: 30 * (math.pi / 180), child: const _ChoiceBadge(text: 'NOPE', borderColor: Color(0xFFFF6E63), textColor: Color(0xFFFF6E63)))))]))),
+
+          // 🔥 FASE 3: BADGES LIBERADOS Y VISIBLES DURANTE ANIMACIÓN
+          IgnorePointer(
+              child: Stack(
+                  children: [
+                    Positioned(
+                        left: 20,
+                        top: 60,
+                        child: Opacity(
+                            opacity: likeOpacity,
+                            child: Transform.rotate(
+                                angle: -20 * (math.pi / 180),
+                                child: const _ChoiceBadge(text: 'ME INTERESA', borderColor: Color(0xFF63FF68), textColor: Color(0xFF63FF68))
+                            )
+                        )
+                    ),
+                    Positioned(
+                        right: 20,
+                        top: 60,
+                        child: Opacity(
+                            opacity: nopeOpacity,
+                            child: Transform.rotate(
+                                angle: 20 * (math.pi / 180),
+                                child: const _ChoiceBadge(text: 'NO ME\nINTERESA', borderColor: Color(0xFFFF6E63), textColor: Color(0xFFFF6E63))
+                            )
+                        )
+                    )
+                  ]
+              )
+          ),
         ],
       ),
     );
   }
 }
 
-// 🔥 WIDGET NATIVO: MINI TERMÓMETRO (SIN OVERFLOW)
 class _MiniTermometro extends StatelessWidget {
   final int puntaje;
   const _MiniTermometro({required this.puntaje});
@@ -534,5 +686,25 @@ class _MiniTermometro extends StatelessWidget {
 }
 
 class _CircleActionBtn extends StatelessWidget { final IconData icon; final Color color; final VoidCallback onTap; final double size; const _CircleActionBtn({required this.icon, required this.color, required this.onTap, required this.size}); @override Widget build(BuildContext context) { return GestureDetector(onTap: onTap, child: Container(width: 70, alignment: Alignment.center, color: Colors.transparent, child: Icon(icon, color: color, size: size))); } }
-class _ChoiceBadge extends StatelessWidget { final String text; final Color borderColor; final Color textColor; const _ChoiceBadge({required this.text, required this.borderColor, required this.textColor}); @override Widget build(BuildContext context) { return Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(border: Border.all(color: borderColor, width: 4), borderRadius: BorderRadius.circular(8)), child: Text(text, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: textColor, shadows: [Shadow(blurRadius: 10, color: Colors.black.withOpacity(0.30))]))); } }
+
+class _ChoiceBadge extends StatelessWidget {
+  final String text;
+  final Color borderColor;
+  final Color textColor;
+  const _ChoiceBadge({required this.text, required this.borderColor, required this.textColor});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(border: Border.all(color: borderColor, width: 4), borderRadius: BorderRadius.circular(8)),
+        child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textColor, shadows: [Shadow(blurRadius: 10, color: Colors.black.withOpacity(0.30))])
+        )
+    );
+  }
+}
+
 class _CitaCardModel { final String citaId; final String ownerUid; final String creatorName; final int creatorAge; final String creatorPhoto; final List<String> placePhotos; final String placeName; final String placeAddress; final String fecha; final String hora; final String intencion; final String preferencia; final int puntualidad; const _CitaCardModel({required this.citaId, required this.ownerUid, required this.creatorName, required this.creatorAge, required this.creatorPhoto, required this.placePhotos, required this.placeName, required this.placeAddress, required this.fecha, required this.hora, required this.intencion, required this.preferencia, this.puntualidad = 100}); }
