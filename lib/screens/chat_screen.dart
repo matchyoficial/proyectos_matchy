@@ -1,19 +1,20 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS DEFINITIVA (FIX "YO" + DISEÑO INTACTO)
+// ✅ LISTA DE CHATS DEFINITIVA (VERSIÓN SMART CACHE)
+// 🔥 CACHÉ: CachedNetworkImage con ValueKey inyectado para carga instantánea.
 // 🔥 FIX: Se elimina el envío de 'Yo' a Firebase usando el nombre real del perfil.
-// 🔥 FIX: Lógica de respaldo para nombres en hilos ya existentes.
-// 🔥 UI: Diseño Pro 100% original mantenido.
-// 🛠️ FIX OVERFLOW: Texto de último mensaje con corte de puntos suspensivos (...) tipo WhatsApp.
+// 🔥 UI: Diseño Pro 100% original con degradados Matchy.
+// 🛠️ FIX OVERFLOW: Texto de último mensaje con puntos suspensivos (...) tipo WhatsApp.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Agregado para el perfil
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // ✅ Motor de caché
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
-import 'package:proyectos_matchy/state/profile_form_provider.dart'; // ✅ Agregado para el nombre
+import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
 class ChatThreadUI {
   final String id;
@@ -35,7 +36,7 @@ class ChatThreadUI {
   });
 }
 
-class ChatScreen extends ConsumerStatefulWidget { // ✅ Cambiado a Consumer
+class ChatScreen extends ConsumerStatefulWidget {
   final bool showBottomNav;
   const ChatScreen({super.key, this.showBottomNav = true});
 
@@ -109,7 +110,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final meta = tData['meta'];
         if (meta is Map && meta.containsKey(otherUid)) {
           final String metaNombre = (meta[otherUid]['nombre'] ?? '').toString();
-          // 🔥 Si el nombre en el hilo es "Yo", usamos el nombre del Match como respaldo
           nombreFinal = (metaNombre.isEmpty || metaNombre == 'Yo') ? nombreMatch : metaNombre;
           foto = meta[otherUid]['foto'] ?? foto;
         }
@@ -148,7 +148,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    // 🔥 Capturamos el perfil para obtener el nombre real
     final profile = ref.watch(profileFormProvider);
     final String miNombreReal = profile.nombre.isNotEmpty ? profile.nombre : 'Yo';
 
@@ -226,7 +225,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 String threadId = t.id;
                                 if (threadId.isEmpty) {
                                   try {
-                                    // 🔥 USAMOS MI NOMBRE REAL EN LUGAR DE 'YO'
                                     threadId = await ChatActions.upsertThread(
                                         peerUid: t.otherUid,
                                         peerNombre: t.nombre,
@@ -267,7 +265,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         borderRadius: BorderRadius.circular(kAvatarRadius),
                                         child: SizedBox(
                                             width: kAvatarSize, height: kAvatarSize,
-                                            child: FotoPerfilUsuario(uid: t.otherUid, fit: BoxFit.cover, alignment: Alignment.topCenter)
+                                            // 🔥 BLINDAJE SMART CACHE INYECTADO AQUÍ
+                                            child: CachedNetworkImage(
+                                              key: ValueKey(t.otherUid + t.foto),
+                                              imageUrl: t.foto,
+                                              fit: BoxFit.cover,
+                                              alignment: Alignment.topCenter,
+                                              placeholder: (context, url) => Container(color: Colors.white.withOpacity(0.05)),
+                                              errorWidget: (context, url, error) => FotoPerfilUsuario(
+                                                  uid: t.otherUid,
+                                                  fit: BoxFit.cover,
+                                                  alignment: Alignment.topCenter
+                                              ),
+                                            )
                                         )
                                     ),
                                     const SizedBox(width: 15),

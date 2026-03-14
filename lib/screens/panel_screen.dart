@@ -1,9 +1,9 @@
 // 📂 lib/screens/panel_screen.dart
 // ✅ PANEL CENTRAL BLINDADO (SMART LOADING ACTIVADO)
-// 🔥 FIX: Implementada "Carga Inteligente". Muestra datos inmediatos si existen, spinner solo si está vacío.
+// 🔥 FIX NAVEGACIÓN: parentContext inyectado. Adiós a los errores de "unmounted context".
+// 🔥 FIX BUCLE: Lógica Invertida Estricta. Solo abre solicitudes en status 'pending'.
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
 // 🔥 UI: Diseño original intacto.
-// 🔥 INTEGRACIÓN: Diseño Golden Ticket y navegación a CitasPendientesDetalle.
 // 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador (Con ValueKey anti-fotos pegadas).
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
 
@@ -34,7 +34,7 @@ import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 // =============================================================================
-// 🔔 LÓGICA DE NOTIFICACIONES
+// 🔔 LÓGICA DE NOTIFICACIONES (BLINDADA)
 // =============================================================================
 
 final unreadNotificationsProvider = StreamProvider<int>((ref) {
@@ -57,7 +57,7 @@ final notificationsListProvider = StreamProvider<List<DocumentSnapshot>>((ref) {
       .doc(user.uid)
       .collection('notifications')
       .orderBy('createdAt', descending: true)
-      .limit(30) // Aumentamos a 30 para ver un poco más del historial
+      .limit(30)
       .snapshots()
       .map((snapshot) => snapshot.docs);
 });
@@ -75,7 +75,6 @@ class NotificationLogic {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('notifications').doc(notificationId).delete();
   }
 
-  // 🔥 NUEVO: Función para archivar en lugar de borrar
   static Future<void> archiveNotification(String notificationId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -84,60 +83,57 @@ class NotificationLogic {
         'read': true,
         'isArchived': true
       });
-    } catch (_) {} // Ignorar si no existe
+    } catch (_) {}
   }
 
-  // 🔥 CHECK INTELIGENTE: Verifica estado de la cita antes de navegar
-  static Future<void> handleTap(BuildContext context, String docId, String type, String? citaId) async {
-    // 1. Archivar notificación para que pase al "Historial Pasivo"
+  // 🔥 EL FIX MAESTRO: Usamos parentContext para navegar seguros
+  static Future<void> handleTap(BuildContext parentContext, BuildContext sheetContext, String docId, String type, String? citaId) async {
+    // 1. Archivar notificación en segundo plano
     archiveNotification(docId);
-    Navigator.pop(context); // Cerrar sheet
+
+    // 2. Cerrar la campanita inmediatamente usando su propio contexto
+    Navigator.pop(sheetContext);
 
     if (citaId == null) return;
 
-    // 🔥 CASO GOLDEN TICKET: Navegación directa al detalle
+    // 🔥 CASO GOLDEN TICKET
     if (type == 'golden_ticket') {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => CitasPendientesDetalleScreen(citaId: citaId)));
+      Navigator.push(parentContext, MaterialPageRoute(builder: (_) => CitasPendientesDetalleScreen(citaId: citaId)));
       return;
     }
 
-    // 2. Casos Informativos (Solo ir a la pestaña Citas)
-    if (type == 'cita_aceptada' || type == 'repro_accepted') {
-      HomeShell.go(context, index: 1); // Ir a Mis Citas
+    // 3. Casos Informativos (Ir directo a Mis Citas)
+    if (type == 'cita_aceptada' || type == 'repro_accepted' || type == 'info') {
+      HomeShell.go(parentContext, index: 1);
       return;
     }
 
-    // 3. Casos de Acción (Invitación o Reprogramación)
+    // 4. Casos de Acción (Invitación o Reprogramación)
     if (type == 'invitacion_cita' || type == 'repro_request') {
       try {
-        // ⏳ Check de Estado en Firestore
         final doc = await FirebaseFirestore.instance.collection('citas').doc(citaId).get();
         if (!doc.exists) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Esta cita ya no existe.")));
+          ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Esta cita ya no existe.")));
           return;
         }
 
         final data = doc.data()!;
         final status = data['status'];
 
-        // LÓGICA DE DESVÍO
-        if (status == 'scheduled') {
-          // Ya fue aceptada -> Ir a Mis Citas
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("¡Ya aceptaste esta cita!")));
-          HomeShell.go(context, index: 1);
-        } else if (status == 'cancelled' || status == 'rechazada') {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Esta cita fue cancelada.")));
-        } else {
-          // Sigue pendiente -> Navegar a la pantalla de decisión
+        // 🔥 LÓGICA INVERTIDA ESTRICTA: Solo permitimos 'pending' (Previene el bucle de citas privadas)
+        if (status == 'pending' || status == 'pendiente') {
           if (type == 'invitacion_cita') {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => NuevaCitaSolicitudScreen(citaId: citaId)));
+            Navigator.push(parentContext, MaterialPageRoute(builder: (_) => NuevaCitaSolicitudScreen(citaId: citaId)));
           } else if (type == 'repro_request') {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaAceptarScreen(citaId: citaId)));
+            Navigator.push(parentContext, MaterialPageRoute(builder: (_) => ReprogramarCitaAceptarScreen(citaId: citaId)));
           }
+        } else {
+          // Si es cualquier otra cosa (aceptada, privada_ok, scheduled, cancelled...)
+          ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Ya respondiste a esta solicitud.")));
+          HomeShell.go(parentContext, index: 1); // Forzamos el salto a Mis Citas
         }
       } catch (e) {
-        // Error silencioso, solo ir a citas
-        HomeShell.go(context, index: 1);
+        HomeShell.go(parentContext, index: 1);
       }
     }
   }
@@ -167,7 +163,7 @@ class PanelScreen extends ConsumerStatefulWidget {
 
 class _PanelScreenState extends ConsumerState<PanelScreen> {
   // ===========================================================================
-  // 🛡️ CONSTANTES DE DISEÑO (NO TOCAR)
+  // 🛡️ CONSTANTES DE DISEÑO
   // ===========================================================================
 
   static const Color kCardBackground   = Color(0x4FFFFFFF);
@@ -175,13 +171,10 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   static const Color kSheetBottomColor = Colors.black;
 
   static const List<Color> kNotifGradient = [Color(0xFF4A3B75), Color(0xFF1F1F1F)];
-
-  // 🔥 GRADIENTE GOLDEN TICKET
   static const List<Color> kGoldenGradient = [Color(0xFFFFC107), Color(0xFFFFD54F)];
 
   static const double kNotifRadius = 22.0;
   static const List<BoxShadow> kNotifShadow = [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))];
-
   static const List<BoxShadow> kCardShadow = [BoxShadow(color: Colors.black26, blurRadius: 15, offset: Offset(0, 5))];
 
   static const List<Color> kPremiumButtonGradient = [Color(0xFF7E208E), Color(0xFC4B3F60)];
@@ -191,10 +184,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   static const double kPremiumButtonRadius = 18.0;
   static const BorderSide kPremiumButtonBorder = BorderSide(color: Colors.white24, width: 1.0);
   static const List<BoxShadow> kPremiumButtonShadow = [BoxShadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 4))];
-
-  static const List<Shadow> kTextShadow = [
-    Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))
-  ];
+  static const List<Shadow> kTextShadow = [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))];
 
   bool _bootstrapped = false;
   bool _sentToShell = false;
@@ -264,7 +254,7 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => const _NotificacionesSheet(),
+      builder: (_) => _NotificacionesSheet(parentContext: context), // 🔥 INYECTAMOS PARENT CONTEXT
     );
   }
 
@@ -995,9 +985,12 @@ class _InfoSheet extends StatelessWidget {
   }
 }
 
-// ... _NotificacionesSheet (BLINDADA HISTORIAL PASIVO)
+// ... _NotificacionesSheet (BLINDADA HISTORIAL PASIVO Y NAVEGACIÓN PRO)
 class _NotificacionesSheet extends ConsumerWidget {
-  const _NotificacionesSheet();
+  final BuildContext parentContext; // 🔥 CONTEXTO INYECTADO PARA NAVEGAR
+
+  const _NotificacionesSheet({required this.parentContext});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificacionesAsync = ref.watch(notificationsListProvider);
@@ -1062,7 +1055,7 @@ class _NotificacionesSheet extends ConsumerWidget {
                             title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
                             subtitle: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
                             trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.black45), // Flecha solo si está activa
-                            onTap: isArchived ? null : () => NotificationLogic.handleTap(context, docId, type, citaId), // Bloqueo de tap
+                            onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId), // 🔥 LLAMADA CORREGIDA
                           ),
                         );
                       }
@@ -1093,7 +1086,7 @@ class _NotificacionesSheet extends ConsumerWidget {
                                   title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.white, fontWeight: isArchived ? FontWeight.normal : (leido ? FontWeight.normal : FontWeight.bold), fontSize: 15)),
                                   subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.white70, fontSize: 13))),
                                   trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.white38), // Flecha solo si está activa
-                                  onTap: isArchived ? null : () => NotificationLogic.handleTap(context, docId, type, citaId) // Bloqueo de tap
+                                  onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId) // 🔥 LLAMADA CORREGIDA
                               )
                           )
                       );
@@ -1240,7 +1233,8 @@ class _LugarSearchDelegate extends SearchDelegate {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
+                        child: CachedNetworkImage( // 🔥 CACHÉ BLINDADO
+                          key: ValueKey(lugar.fotoPortada),
                           imageUrl: lugar.fotoPortada,
                           width: 60,
                           height: 60,
