@@ -4,12 +4,16 @@
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
 // 🔥 UI: Diseño original intacto.
 // 🔥 INTEGRACIÓN: Diseño Golden Ticket y navegación a CitasPendientesDetalle.
+// 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador (Con ValueKey anti-fotos pegadas).
+// 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/screens/splash_screen.dart';
 import 'package:proyectos_matchy/screens/datos_screen.dart';
@@ -20,7 +24,7 @@ import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
 import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
-import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart'; // 🔥 Import para Golden Ticket
+import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
@@ -53,7 +57,7 @@ final notificationsListProvider = StreamProvider<List<DocumentSnapshot>>((ref) {
       .doc(user.uid)
       .collection('notifications')
       .orderBy('createdAt', descending: true)
-      .limit(20)
+      .limit(30) // Aumentamos a 30 para ver un poco más del historial
       .snapshots()
       .map((snapshot) => snapshot.docs);
 });
@@ -71,10 +75,22 @@ class NotificationLogic {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('notifications').doc(notificationId).delete();
   }
 
+  // 🔥 NUEVO: Función para archivar en lugar de borrar
+  static Future<void> archiveNotification(String notificationId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('notifications').doc(notificationId).update({
+        'read': true,
+        'isArchived': true
+      });
+    } catch (_) {} // Ignorar si no existe
+  }
+
   // 🔥 CHECK INTELIGENTE: Verifica estado de la cita antes de navegar
   static Future<void> handleTap(BuildContext context, String docId, String type, String? citaId) async {
-    // 1. Borrar notificación visualmente para que no estorbe (AUTODESTRUCCIÓN)
-    deleteNotification(docId);
+    // 1. Archivar notificación para que pase al "Historial Pasivo"
+    archiveNotification(docId);
     Navigator.pop(context); // Cerrar sheet
 
     if (citaId == null) return;
@@ -197,10 +213,30 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   void _redirectToDatos() => Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const DatosScreen()), (route) => false);
   void _redirectToSplash() => Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const SplashScreen()), (route) => false);
 
+  // 🔥 RENDERIZADO DE FOTO BLINDADO CON CACHÉ Y VALUEKEY
   Widget _buildFotoWidget(String? fotoValue) {
     final v = (fotoValue ?? '').trim();
     if (v.isEmpty) return Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter);
-    if (_isUrl(v)) return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover));
+
+    if (_isUrl(v)) {
+      return CachedNetworkImage(
+        key: ValueKey(v),
+        imageUrl: v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        placeholder: (context, url) => Container(
+            color: const Color(0xFF1A1A1A),
+            child: const Center(
+                child: SizedBox(
+                    width: 24, height: 24,
+                    child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)
+                )
+            )
+        ),
+        errorWidget: (context, url, error) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
+      );
+    }
+
     if (_isAsset(v)) return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter);
     return Image.file(File(v), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover));
   }
@@ -327,21 +363,13 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
                   padding: const EdgeInsets.only(bottom: 80),
                   child: Builder(
                     builder: (context) {
-                      // 🔥 SMART LOADING: Estrategia "Datos Primero"
-                      // 1. Si está cargando y NO hay datos en memoria -> Spinner
                       if (userDocAsync.isLoading && !userDocAsync.hasValue) {
                         return const Center(child: CircularProgressIndicator(color: Colors.white));
                       }
-
-                      // 2. Si hay error y no hay datos -> Nada
                       if (userDocAsync.hasError && !userDocAsync.hasValue) {
                         return const SizedBox();
                       }
-
-                      // 3. Si llegamos aquí, usamos los datos (frescos o en caché)
                       final snap = userDocAsync.value;
-
-                      // --- LÓGICA DE RENDERIZADO ORIGINAL ---
                       final data = snap?.data();
                       final completed = (data?['onboarding_completed'] == true);
                       if (snap != null && snap.exists && !completed) {
@@ -519,13 +547,12 @@ class _PanelContent extends StatelessWidget {
         TermometroConfiabilidad(
           puntaje: puntaje,
           fechaDesbloqueo: _fechaParaTermometro,
-          // 🔥 Gatillo de desbloqueo automático
           onTiempoExpirado: () async {
             final user = FirebaseAuth.instance.currentUser;
             if (user == null) return;
             await FirebaseFirestore.instance.collection(kUsersCollection).doc(user.uid).update({
-              'userStatus': '', // Quitamos el 'blocked'
-              'bloqueadoHasta': null, // Limpiamos la fecha
+              'userStatus': '',
+              'bloqueadoHasta': null,
             });
           },
         ),
@@ -801,18 +828,17 @@ class _InfoSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // 🔥 NUEVA TARJETA: GUÍA RÁPIDA DE REPORTE (AÑADIDA AQUÍ)
                   _buildInfoCard(
-                      icon: Icons.assignment, // Icono genérico de reporte/reglas
-                      iconColor: const Color(0xFFB39DDB), // Lila claro
+                      icon: Icons.assignment,
+                      iconColor: const Color(0xFFB39DDB),
                       title: "GUÍA RÁPIDA DE REPORTE",
-                      gradient: [const Color(0xFF673AB7).withOpacity(0.2), Colors.black45], // Degradado morado oscuro
+                      gradient: [const Color(0xFF673AB7).withOpacity(0.2), Colors.black45],
                       borderColor: const Color(0xFFB39DDB),
                       content: [
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Icon(Icons.location_on, color: Color(0xFF00E676), size: 20), // Verde
+                            const Icon(Icons.location_on, color: Color(0xFF00E676), size: 20),
                             const SizedBox(width: 10),
                             Expanded(child: RichText(text: const TextSpan(style: TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.3), children: [
                               TextSpan(text: "VALIDACIÓN POR GPS: ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
@@ -823,7 +849,7 @@ class _InfoSheet extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Icon(Icons.handshake, color: Color(0xFF29B6F6), size: 20), // Azul
+                            const Icon(Icons.handshake, color: Color(0xFF29B6F6), size: 20),
                             const SizedBox(width: 10),
                             Expanded(child: RichText(text: const TextSpan(style: TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.3), children: [
                               TextSpan(text: "ACUERDO MUTUO: ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
@@ -834,7 +860,7 @@ class _InfoSheet extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 0),
                           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Icon(Icons.cancel, color: Color(0xFFFF5252), size: 20), // Rojo
+                            const Icon(Icons.cancel, color: Color(0xFFFF5252), size: 20),
                             const SizedBox(width: 10),
                             Expanded(child: RichText(text: const TextSpan(style: TextStyle(fontFamily: 'Poppins', fontSize: 13, height: 1.3), children: [
                               TextSpan(text: "ASUMO MI FALTA: ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
@@ -969,7 +995,7 @@ class _InfoSheet extends StatelessWidget {
   }
 }
 
-// ... _NotificacionesSheet (BLINDADA)
+// ... _NotificacionesSheet (BLINDADA HISTORIAL PASIVO)
 class _NotificacionesSheet extends ConsumerWidget {
   const _NotificacionesSheet();
   @override
@@ -981,31 +1007,100 @@ class _NotificacionesSheet extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: 15), Container(width: 50, height: 6, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 20), const FittedBox(fit: BoxFit.scaleDown, child: Text("NOTIFICACIONES", style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 1.0))), const SizedBox(height: 15),
-          Expanded(child: notificacionesAsync.when(loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))), error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))), data: (docs) { if (docs.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins'))); return ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 16), itemCount: docs.length, itemBuilder: (context, index) { final data = docs[index].data() as Map<String, dynamic>; final docId = docs[index].id; final leido = data['read'] == true; final titulo = data['title'] ?? 'Notificación'; final cuerpo = data['body'] ?? ''; final type = data['type'] ?? ''; final citaId = data['citaId'];
+          Expanded(child: notificacionesAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))),
+              error: (_, __) => const Center(child: Text("Error cargando notificaciones", style: TextStyle(color: Colors.white54))),
+              data: (docsRaw) {
+                if (docsRaw.isEmpty) return const Center(child: Text("No tienes notificaciones nuevas.", style: TextStyle(color: Colors.white38, fontFamily: 'Poppins')));
 
-          // 🔥 DISEÑO GOLDEN TICKET
-          if (type == 'golden_ticket') {
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: _PanelScreenState.kGoldenGradient),
-                borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
-                boxShadow: _PanelScreenState.kNotifShadow,
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                leading: const CircleAvatar(backgroundColor: Colors.black, child: Icon(Icons.star, color: Color(0xFFFFC107))),
-                title: Text(titulo, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
-                subtitle: Text(cuerpo, style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
-                trailing: const Icon(Icons.chevron_right, color: Colors.black45),
-                onTap: () => NotificationLogic.handleTap(context, docId, type, citaId),
-              ),
-            );
-          }
+                // 🔥 ORDENAMIENTO INTELIGENTE EN MEMORIA
+                final docs = docsRaw.toList();
+                docs.sort((a, b) {
+                  final aData = a.data() as Map<String, dynamic>;
+                  final bData = b.data() as Map<String, dynamic>;
+                  final aArchived = aData['isArchived'] == true;
+                  final bArchived = bData['isArchived'] == true;
 
-          IconData icono = Icons.notifications_rounded; if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded; if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded; return Dismissible(key: Key(docId), direction: DismissDirection.endToStart, background: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)), alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: const Icon(Icons.delete_outline, color: Colors.white)), onDismissed: (_) => NotificationLogic.deleteNotification(docId), child: Container(margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: _PanelScreenState.kNotifGradient), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius), border: leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5), boxShadow: _PanelScreenState.kNotifShadow), child: ListTile(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), leading: CircleAvatar(backgroundColor: leido ? Colors.white10 : const Color(0xFF6B4EE6), child: Icon(icono, color: Colors.white)), title: Text(titulo, style: TextStyle(color: Colors.white, fontWeight: leido ? FontWeight.normal : FontWeight.bold, fontSize: 15)), subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: const TextStyle(color: Colors.white70, fontSize: 13))), trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-              onTap: () => NotificationLogic.handleTap(context, docId, type, citaId) // 🔥 USO DEL MANEJADOR INTELIGENTE
-          ))); }); })),
+                  // Si una está archivada y la otra no, la activa va primero
+                  if (aArchived && !bArchived) return 1;
+                  if (!aArchived && bArchived) return -1;
+                  // Si ambas son iguales (activas o archivadas), mantenemos el orden por fecha
+                  return 0;
+                });
+
+                return ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final data = docs[index].data() as Map<String, dynamic>;
+                      final docId = docs[index].id;
+                      final leido = data['read'] == true;
+                      final isArchived = data['isArchived'] == true; // 🔥 Nuevo estado
+                      final titulo = data['title'] ?? 'Notificación';
+                      final cuerpo = data['body'] ?? '';
+                      final type = data['type'] ?? '';
+                      final citaId = data['citaId'];
+
+                      // Lógica de Iconos
+                      IconData icono = Icons.notifications_rounded;
+                      if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded;
+                      if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded;
+
+                      // 🔥 DISEÑO GOLDEN TICKET
+                      if (type == 'golden_ticket') {
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            // Si está archivada se vuelve gris oscura, si está activa brilla dorado
+                            gradient: LinearGradient(colors: isArchived ? [Colors.white10, Colors.black26] : _PanelScreenState.kGoldenGradient),
+                            borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
+                            boxShadow: isArchived ? [] : _PanelScreenState.kNotifShadow,
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            leading: CircleAvatar(backgroundColor: isArchived ? Colors.black12 : Colors.black, child: Icon(Icons.star, color: isArchived ? Colors.white38 : const Color(0xFFFFC107))),
+                            title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
+                            subtitle: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                            trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.black45), // Flecha solo si está activa
+                            onTap: isArchived ? null : () => NotificationLogic.handleTap(context, docId, type, citaId), // Bloqueo de tap
+                          ),
+                        );
+                      }
+
+                      // 🔥 DISEÑO NOTIFICACIÓN NORMAL
+                      return Dismissible(
+                          key: Key(docId),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)),
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child: const Icon(Icons.delete_outline, color: Colors.white)
+                          ),
+                          onDismissed: (_) => NotificationLogic.deleteNotification(docId), // El swipe sigue borrándola por completo
+                          child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: isArchived ? [Colors.white10, Colors.black26] : _PanelScreenState.kNotifGradient),
+                                  borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
+                                  border: isArchived ? Border.all(color: Colors.white.withOpacity(0.05)) : (leido ? Border.all(color: Colors.white.withOpacity(0.05)) : Border.all(color: const Color(0xFFBEB3FF).withOpacity(0.5), width: 1.5)),
+                                  boxShadow: isArchived ? [] : _PanelScreenState.kNotifShadow
+                              ),
+                              child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  leading: CircleAvatar(backgroundColor: isArchived ? Colors.black12 : (leido ? Colors.white10 : const Color(0xFF6B4EE6)), child: Icon(icono, color: isArchived ? Colors.white38 : Colors.white)),
+                                  title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.white, fontWeight: isArchived ? FontWeight.normal : (leido ? FontWeight.normal : FontWeight.bold), fontSize: 15)),
+                                  subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.white70, fontSize: 13))),
+                                  trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.white38), // Flecha solo si está activa
+                                  onTap: isArchived ? null : () => NotificationLogic.handleTap(context, docId, type, citaId) // Bloqueo de tap
+                              )
+                          )
+                      );
+                    }
+                );
+              }
+          )),
         ],
       ),
     );
@@ -1145,12 +1240,19 @@ class _LugarSearchDelegate extends SearchDelegate {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          lugar.fotoPortada,
+                        child: CachedNetworkImage(
+                          imageUrl: lugar.fotoPortada,
                           width: 60,
                           height: 60,
                           fit: BoxFit.cover,
-                          errorBuilder: (_,__,___) => Container(width: 60, height: 60, color: Colors.grey),
+                          placeholder: (context, url) => Container(
+                            width: 60, height: 60, color: const Color(0xFF1A1A1A),
+                            child: const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2),
+                            ),
+                          ),
+                          errorWidget: (context, url, error) => Container(width: 60, height: 60, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24)),
                         ),
                       ),
                       title: Text(

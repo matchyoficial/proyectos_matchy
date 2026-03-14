@@ -29,6 +29,7 @@ dependencies:
   # 🔥 NUEVO MOTOR DE RECORTE MATCHY PREMIUM (FLUTTER PURO)
   extended_image: ^8.2.0
   image_editor: ^1.6.0
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

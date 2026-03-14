@@ -3,12 +3,14 @@
 // 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
 // 🔥 TEXTOS CAMPANA: Actualizados con Nombre y Lugar.
+// 🚀 NEW: CachedNetworkImage inyectado con BLINDAJE ANTI-BUCLES (Filtro HTTP vs Assets).
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/cita_detalle_screen.dart';
@@ -96,8 +98,13 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
 
     final lNombre = data['lugarNombre'] ?? 'Lugar';
     final lDir = data['lugarDireccion'] ?? '';
-    final lFoto = data['lugarFotoPortada'] ?? '';
     final lId = (data['lugarId'] ?? '').toString();
+
+    // 🔥 FIX LECTURA FOTO ROBUSTA
+    final fotoRoot = (data['lugarFotoPortada'] ?? '').toString().trim();
+    final lugarMap = (data['lugar'] is Map) ? data['lugar'] as Map : {};
+    final fotoMap = (lugarMap['fotoPortada'] ?? '').toString().trim();
+    final lFoto = fotoRoot.isNotEmpty ? fotoRoot : fotoMap;
 
     final fTexto = (data['fecha'] ?? '').toString();
     final hTexto = (data['hora'] ?? '').toString();
@@ -134,7 +141,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       matchyEdad: edadUI,
       lugarNombre: lNombre.toString(),
       lugarDireccion: lDir.toString(),
-      fotoLugar: lFoto.toString(),
+      fotoLugar: lFoto,
       fechaSort: fechaReal,
       fechaTextoOriginal: fTexto,
       horaTexto: hTexto,
@@ -453,6 +460,40 @@ class _CitaCard extends StatelessWidget {
     showDialog(context: context, builder: (_) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), title: Text(titulo, style: const TextStyle(color: Color(0xFFE0D4FF))), content: Text(msg, style: const TextStyle(color: Colors.white70)), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))]));
   }
 
+  // 🔥 LÓGICA DE RENDERIZADO DE FOTO SEGURO
+  Widget _buildFotoLugarSegura(String url) {
+    final String fotoSafe = url.trim();
+
+    // Si la URL es válida de internet, usamos caché
+    if (fotoSafe.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: fotoSafe,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => Container(
+            color: const Color(0xFF1A1A1A),
+            child: const Center(
+                child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)
+                )
+            )
+        ),
+        errorWidget: (context, url, error) => Container(
+            color: Colors.grey[900],
+            child: const Icon(Icons.broken_image, color: Colors.white24, size: 24)
+        ),
+      );
+    }
+
+    // Si la foto es un asset local
+    if (fotoSafe.startsWith('assets/')) {
+      return Image.asset(fotoSafe, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey[900]));
+    }
+
+    // Si está vacío o corrupto
+    return Container(color: Colors.grey[900]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -491,9 +532,16 @@ class _CitaCard extends StatelessWidget {
         height: 105, // 🔥 COMPACTO
         decoration: BoxDecoration(color: const Color(0xFF1A1A1A), borderRadius: BorderRadius.circular(20), boxShadow: [const BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))], border: mostrarOverlay ? Border.all(color: bordeCard, width: 1.5) : null),
         child: Row(children: [
-          // FOTO LUGAR
+
+          // 🔥 LUGAR FOTO RENDERIZADA CON CACHÉ SEGURO
           Expanded(child: Stack(fit: StackFit.expand, children: [
-            ClipRRect(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), child: ColorFiltered(colorFilter: mostrarOverlay ? ColorFilter.mode(bordeCard.withOpacity(0.2), BlendMode.srcATop) : const ColorFilter.mode(Colors.transparent, BlendMode.dst), child: item.fotoLugar.isNotEmpty ? Image.network(item.fotoLugar, fit: BoxFit.cover) : Container(color: Colors.grey[900]))),
+            ClipRRect(
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+                child: ColorFiltered(
+                    colorFilter: mostrarOverlay ? ColorFilter.mode(bordeCard.withOpacity(0.2), BlendMode.srcATop) : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+                    child: _buildFotoLugarSegura(item.fotoLugar)
+                )
+            ),
             Container(decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black12, Colors.black.withOpacity(0.9)], stops: const [0.4, 1.0]))),
 
             // 🔥 TEXTO FIX (Sin espacio muerto)

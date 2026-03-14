@@ -2,6 +2,7 @@
 // ✅ CHAT DETALLE BLINDADO (FOTO INTELIGENTE + NAVEGACIÓN FORZADA A CHAT)
 // 🔥 BLINDAJE: Nombre en cabecera estandarizado a 16pt y protegido con FittedBox.
 // 🔥 LOGIC: El botón atrás y el gesto system SIEMPRE llevan a ChatScreen (Index 4).
+// 🚀 FIX UI: Input de texto estilo WhatsApp (Expansión multilínea y visibilidad total).
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -45,7 +46,7 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
   static const double kAvatarSize = 59.0;
   static const double kHeaderRadius = 24.0;
   static const List<Color> kHeaderGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
-  static const double kTitleSize = 16.0; // Estandarizado a 16pt
+  static const double kTitleSize = 16.0;
 
   // Burbujas
   static final Color kBubbleMe = const Color(0xFF7E79B6).withOpacity(0.9);
@@ -94,7 +95,7 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
   }
 
   void _irAChatSiempre() {
-    HomeShell.go(context, index: 4); // Forzado a lista de chats
+    HomeShell.go(context, index: 4);
   }
 
   @override
@@ -120,7 +121,7 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
                   Image.asset('assets/images/logomatchyplano.png', height: 45),
                   const SizedBox(height: 15),
 
-                  // 3. HEADER CÁPSULA BLINDADA
+                  // HEADER CÁPSULA BLINDADA
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: kHeaderPaddingH),
                     child: Container(
@@ -165,7 +166,6 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
 
                           const SizedBox(width: 15),
 
-                          // BLINDAJE: Nombre y Edad adaptativos
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +178,7 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
                                     maxLines: 1,
                                     style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: kTitleSize, // Ajustado a 16pt
+                                        fontSize: kTitleSize,
                                         fontWeight: FontWeight.w900,
                                         fontFamily: 'Poppins',
                                         letterSpacing: 0.5
@@ -255,9 +255,11 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
                     ),
                   ),
 
+                  // 🔥 ZONA DE INPUT RECONSTRUIDA (ESTILO WHATSAPP MULTILÍNEA)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 5, 16, kInputBottomMargin),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end, // Para que el botón de enviar se quede abajo al expandir
                       children: [
                         Expanded(
                           child: Container(
@@ -271,15 +273,18 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
                             ),
                             child: TextField(
                               controller: _ctrl,
+                              maxLines: null, // 🔥 Permite expansión infinita vertical
+                              minLines: 1,    // 🔥 Empieza con una sola línea
+                              keyboardType: TextInputType.multiline, // 🔥 Cambia el botón de acción por un 'Enter'
+                              textCapitalization: TextCapitalization.sentences, // 🔥 Estética premium
                               style: const TextStyle(color: Colors.white, fontFamily: 'Poppins'),
                               cursorColor: kSendButtonColor,
                               decoration: const InputDecoration(
                                   hintText: "Escribe un mensaje...",
                                   hintStyle: TextStyle(color: Colors.white38),
                                   border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14)
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 12) // Ajustado para multilínea
                               ),
-                              onSubmitted: (_) => _send(),
                             ),
                           ),
                         ),
