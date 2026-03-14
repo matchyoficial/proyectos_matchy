@@ -1,6 +1,7 @@
 // 📂 lib/screens/perfil_usuariox_screen.dart
 // -----------------------------------------------------------
-// PERFIL PÚBLICO DEL USUARIO (DISEÑO PREMIUM + FOTO INTELIGENTE + PUNTUALIDAD)
+// PERFIL PÚBLICO DEL USUARIO (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo y protección de RAM en fotos extra.
 // ✅ UI: Botón Atrás (Chevron) arriba a la izquierda.
 // ✅ UI: Estilo de chips y sombras replicado de "Datos".
 // 🔥 BLINDAJE: Títulos a 20pt, Profesión y Ciudad adaptativos.
@@ -10,6 +11,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 
@@ -82,11 +84,20 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     );
   }
 
+  // 🔥 HELPER DE IMÁGENES BLINDADO CON SMART CACHE
   Widget _buildImage(String? raw) {
     if (raw == null || raw.trim().isEmpty) return _fallback();
     final v = raw.trim();
     if (v.startsWith('http')) {
-      return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => _fallback());
+      return CachedNetworkImage(
+        key: ValueKey(v),
+        imageUrl: v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        memCacheHeight: 1200, // Protege la RAM limitando el tamaño en caché
+        placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+        errorWidget: (_, __, ___) => _fallback(),
+      );
     }
     if (v.startsWith('assets/')) {
       return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => _fallback());

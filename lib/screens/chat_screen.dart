@@ -1,6 +1,7 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS DEFINITIVA (VERSIÓN SMART CACHE)
+// ✅ LISTA DE CHATS DEFINITIVA (VERSIÓN SMART CACHE PRO)
 // 🔥 CACHÉ: CachedNetworkImage con ValueKey inyectado para carga instantánea.
+// 🔥 RENDIMIENTO: memCacheHeight/Width activado para ahorrar RAM en la lista.
 // 🔥 FIX: Se elimina el envío de 'Yo' a Firebase usando el nombre real del perfil.
 // 🔥 UI: Diseño Pro 100% original con degradados Matchy.
 // 🛠️ FIX OVERFLOW: Texto de último mensaje con puntos suspensivos (...) tipo WhatsApp.
@@ -265,12 +266,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         borderRadius: BorderRadius.circular(kAvatarRadius),
                                         child: SizedBox(
                                             width: kAvatarSize, height: kAvatarSize,
-                                            // 🔥 BLINDAJE SMART CACHE INYECTADO AQUÍ
+                                            // 🔥 BLINDAJE SMART CACHE PRO INYECTADO AQUÍ
                                             child: CachedNetworkImage(
                                               key: ValueKey(t.otherUid + t.foto),
                                               imageUrl: t.foto,
                                               fit: BoxFit.cover,
                                               alignment: Alignment.topCenter,
+                                              memCacheHeight: (kAvatarSize * 3).toInt(), // Liberador de RAM
+                                              memCacheWidth: (kAvatarSize * 3).toInt(),  // Liberador de RAM
                                               placeholder: (context, url) => Container(color: Colors.white.withOpacity(0.05)),
                                               errorWidget: (context, url, error) => FotoPerfilUsuario(
                                                   uid: t.otherUid,

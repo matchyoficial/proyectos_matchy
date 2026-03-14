@@ -1,5 +1,6 @@
 // 📂 lib/screens/reprogramar_cita_aceptar_screen.dart
-// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ PANTALLA PARA ACEPTAR REPROGRAMACIÓN BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la foto del banner del lugar.
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables elásticos.
 // 🔥 UI: FotoPerfilUsuario y lógica de WriteBatch intactas.
 // 💄 UI: Botón Back Chevron (Arriba-Izquierda) y Fadeout Inferior.
@@ -9,6 +10,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -208,9 +210,16 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          // FOTO LUGAR
+                          // 🔥 FOTO LUGAR CON SMART CACHE
                           lugarFoto.isNotEmpty
-                              ? Image.network(lugarFoto, fit: BoxFit.cover)
+                              ? CachedNetworkImage(
+                            key: ValueKey(lugarFoto),
+                            imageUrl: lugarFoto,
+                            fit: BoxFit.cover,
+                            memCacheHeight: (kCardHeight * 3).toInt(),
+                            placeholder: (context, url) => Container(color: Colors.black26),
+                            errorWidget: (context, url, error) => Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
+                          )
                               : Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
                           // GRADIENTE OSCURO
                           Container(

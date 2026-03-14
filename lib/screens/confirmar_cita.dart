@@ -1,10 +1,12 @@
 // 📂 lib/screens/confirmar_cita.dart
-// ✅ PANTALLA ÉXITO BLINDADA (DISEÑO Y FUENTES ORIGINALES)
+// ✅ PANTALLA ÉXITO BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en las fotos de ambos usuarios.
 // 🔥 BLINDAJE: Títulos y nombres protegidos con FittedBox.
 // 🔥 UI: Mensajes de racha (naranja/cyan) intactos para evitar encogimiento.
 
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 
 class ConfirmarCitaScreen extends StatefulWidget {
@@ -278,7 +280,16 @@ class _ConfirmarCitaScreenState extends State<ConfirmarCitaScreen> with TickerPr
           child: ClipRRect(
             borderRadius: BorderRadius.circular(kFotoRadius - 2),
             child: assetOrUrl.startsWith('http')
-                ? Image.network(assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter))
+            // 🔥 SMART CACHE INYECTADO
+                ? CachedNetworkImage(
+              key: ValueKey(assetOrUrl),
+              imageUrl: assetOrUrl,
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              memCacheHeight: (kFotoSize * 3).toInt(), // Optimizador de RAM
+              placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)),
+              errorWidget: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter),
+            )
                 : Image.asset(assetOrUrl.isEmpty ? 'assets/images/perfil1.jpg' : assetOrUrl, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_,__,___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter)),
           ),
         ),

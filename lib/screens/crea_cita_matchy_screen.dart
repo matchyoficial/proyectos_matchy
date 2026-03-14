@@ -1,5 +1,6 @@
 // 📂 lib/screens/crea_cita_matchy_screen.dart
-// ✅ CREAR CITA PRIVADA BLINDADA (ESTRATEGIA FINAL + INICIALIZACIÓN DE CAMPOS)
+// ✅ CREAR CITA PRIVADA BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) sincronizado con la pantalla anterior.
 // 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart'; // 🔥 Para los rodillos modernos
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
@@ -73,7 +75,7 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     }
   }
 
-  // 🔥 MISMO SELECTOR EMERGENTE CENTRAL (12H RODILLO)
+  // 🔥 SELECTOR EMERGENTE CENTRAL (12H RODILLO)
   Future<void> _seleccionarHora() async {
     int selHora = 7;
     int selMin = 0;
@@ -362,6 +364,8 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+
+                      // 🔥 FOTO BLINDADA CON SMART CACHE PRO (Sincronización a 0ms)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: kMargenFotoHorizontal),
                         child: Container(
@@ -370,7 +374,14 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
                           clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(borderRadius: BorderRadius.circular(kRadioFoto), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))]),
                           child: fotoUrl.isNotEmpty
-                              ? Image.network(fotoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover))
+                              ? CachedNetworkImage(
+                            key: ValueKey(fotoUrl), // Candado para renderizado instantáneo
+                            imageUrl: fotoUrl,
+                            fit: BoxFit.cover,
+                            memCacheHeight: (kAlturaFoto * 3).toInt(), // Limitador de RAM
+                            placeholder: (context, url) => Container(color: const Color(0xFF1A1A1A), child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+                            errorWidget: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
+                          )
                               : Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover),
                         ),
                       ),

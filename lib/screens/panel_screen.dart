@@ -1,10 +1,12 @@
 // 📂 lib/screens/panel_screen.dart
-// ✅ PANEL CENTRAL BLINDADO (SMART LOADING ACTIVADO)
+// ✅ PANEL CENTRAL BLINDADO (SMART LOADING ACTIVADO + NOTIFICACIONES PRO)
+// 🔥 FIX: Límite de notificaciones reducido a 15 para máximo rendimiento.
+// 🔥 FIX: Swipe-to-delete (Dismissible) habilitado para TODAS las notificaciones (Golden Tickets incluidos).
+// 🔥 FIX: Alertas Nativas eliminadas y reemplazadas por Burbujas Flotantes (Matchy Style).
 // 🔥 FIX NAVEGACIÓN: parentContext inyectado. Adiós a los errores de "unmounted context".
-// 🔥 FIX BUCLE: Lógica Invertida Estricta. Solo abre solicitudes en status 'pending'.
+// 🔥 FIX RUTAS: Se añadió 'pending_approval' a la lista blanca para permitir abrir invitaciones privadas.
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
-// 🔥 UI: Diseño original intacto.
-// 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador (Con ValueKey anti-fotos pegadas).
+// 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador.
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
 
 import 'dart:io';
@@ -34,6 +36,70 @@ import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 // =============================================================================
+// 🔥 BURBUJA FLOTANTE MATCHY STYLE (REEMPLAZO DE SNACKBAR NATIVO)
+// =============================================================================
+void _mostrarBurbuja(BuildContext context, String mensaje, Color color, IconData icono) {
+  final overlayState = Overlay.of(context);
+  late OverlayEntry entry;
+
+  entry = OverlayEntry(
+    builder: (context) => SafeArea(
+      child: Align(
+        alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 25),
+          child: Material(
+            color: Colors.transparent,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.elasticOut,
+              builder: (context, value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: color.withOpacity(0.7), width: 2),
+                  boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                      child: Icon(icono, color: color, size: 28),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                        child: Text(
+                          mensaje,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                        )
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  overlayState.insert(entry);
+  Future.delayed(const Duration(seconds: 3), () {
+    if (entry.mounted) entry.remove();
+  });
+}
+
+// =============================================================================
 // 🔔 LÓGICA DE NOTIFICACIONES (BLINDADA)
 // =============================================================================
 
@@ -57,7 +123,7 @@ final notificationsListProvider = StreamProvider<List<DocumentSnapshot>>((ref) {
       .doc(user.uid)
       .collection('notifications')
       .orderBy('createdAt', descending: true)
-      .limit(30)
+      .limit(15) // 🔥 LÍMITE OPTIMIZADO A 15
       .snapshots()
       .map((snapshot) => snapshot.docs);
 });
@@ -86,7 +152,7 @@ class NotificationLogic {
     } catch (_) {}
   }
 
-  // 🔥 EL FIX MAESTRO: Usamos parentContext para navegar seguros
+  // 🔥 EL FIX MAESTRO: Usamos parentContext para navegar seguros y _mostrarBurbuja para alertas
   static Future<void> handleTap(BuildContext parentContext, BuildContext sheetContext, String docId, String type, String? citaId) async {
     // 1. Archivar notificación en segundo plano
     archiveNotification(docId);
@@ -113,23 +179,27 @@ class NotificationLogic {
       try {
         final doc = await FirebaseFirestore.instance.collection('citas').doc(citaId).get();
         if (!doc.exists) {
-          ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Esta cita ya no existe.")));
+          _mostrarBurbuja(parentContext, "Esta cita ya no existe.", const Color(0xFFFF5252), Icons.error_outline_rounded);
           return;
         }
 
         final data = doc.data()!;
         final status = data['status'];
 
-        // 🔥 LÓGICA INVERTIDA ESTRICTA: Solo permitimos 'pending' (Previene el bucle de citas privadas)
-        if (status == 'pending' || status == 'pendiente') {
+        // 🔥 LÓGICA INVERTIDA ESTRICTA: Permitimos 'pending', 'pendiente' y 'pending_approval'
+        if (status == 'pending' || status == 'pendiente' || status == 'pending_approval') {
           if (type == 'invitacion_cita') {
             Navigator.push(parentContext, MaterialPageRoute(builder: (_) => NuevaCitaSolicitudScreen(citaId: citaId)));
           } else if (type == 'repro_request') {
             Navigator.push(parentContext, MaterialPageRoute(builder: (_) => ReprogramarCitaAceptarScreen(citaId: citaId)));
           }
+        } else if (status == 'matched') {
+          // 🔥 Si ya la aceptaste por otro lado, te avisamos amablemente
+          _mostrarBurbuja(parentContext, "Ya aceptaste esta cita. Búscala en tu agenda.", Colors.orangeAccent, Icons.event_available_rounded);
+          HomeShell.go(parentContext, index: 1);
         } else {
-          // Si es cualquier otra cosa (aceptada, privada_ok, scheduled, cancelled...)
-          ScaffoldMessenger.of(parentContext).showSnackBar(const SnackBar(content: Text("Ya respondiste a esta solicitud.")));
+          // Si es cualquier otra cosa (cancelada, expirada, etc.)
+          _mostrarBurbuja(parentContext, "Esta solicitud ya no está disponible.", Colors.orangeAccent, Icons.info_outline_rounded);
           HomeShell.go(parentContext, index: 1); // Forzamos el salto a Mis Citas
         }
       } catch (e) {
@@ -455,25 +525,8 @@ class _PanelContent extends StatelessWidget {
   void _ejecutarAccion(BuildContext context, VoidCallback accion) {
     if (_estaBloqueado) {
       final dias = strikes * 5;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.lock_outline, color: Colors.white),
-                const SizedBox(width: 10),
-                Expanded(child: Text(
-                    "ACCESO RESTRINGIDO. Tienes $strikes strike(s). Debes esperar $dias días o resolver tus citas pendientes.",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
-                )),
-              ],
-            ),
-            backgroundColor: const Color(0xFFC62828),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(20),
-            duration: const Duration(seconds: 4),
-          )
-      );
+      // 🔥 BURBUJA EN VEZ DE SNACKBAR PARA BLOQUEO
+      _mostrarBurbuja(context, "ACCESO RESTRINGIDO.\nTienes $strikes strike(s). Debes esperar $dias días o resolver tus citas pendientes.", const Color(0xFFC62828), Icons.lock_outline);
     } else {
       accion();
     }
@@ -985,7 +1038,7 @@ class _InfoSheet extends StatelessWidget {
   }
 }
 
-// ... _NotificacionesSheet (BLINDADA HISTORIAL PASIVO Y NAVEGACIÓN PRO)
+// ... _NotificacionesSheet (BLINDADA HISTORIAL PASIVO Y NAVEGACIÓN PRO + SWIPE UNIVERSAL)
 class _NotificacionesSheet extends ConsumerWidget {
   final BuildContext parentContext; // 🔥 CONTEXTO INYECTADO PARA NAVEGAR
 
@@ -1039,28 +1092,40 @@ class _NotificacionesSheet extends ConsumerWidget {
                       if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded;
                       if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded;
 
-                      // 🔥 DISEÑO GOLDEN TICKET
+                      // 🔥 DISEÑO GOLDEN TICKET (AHORA CON DISMISSIBLE)
                       if (type == 'golden_ticket') {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            // Si está archivada se vuelve gris oscura, si está activa brilla dorado
-                            gradient: LinearGradient(colors: isArchived ? [Colors.white10, Colors.black26] : _PanelScreenState.kGoldenGradient),
-                            borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
-                            boxShadow: isArchived ? [] : _PanelScreenState.kNotifShadow,
+                        return Dismissible(
+                          key: Key(docId),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(color: Colors.red.withOpacity(0.8), borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius)),
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child: const Icon(Icons.delete_outline, color: Colors.white)
                           ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            leading: CircleAvatar(backgroundColor: isArchived ? Colors.black12 : Colors.black, child: Icon(Icons.star, color: isArchived ? Colors.white38 : const Color(0xFFFFC107))),
-                            title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
-                            subtitle: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
-                            trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.black45), // Flecha solo si está activa
-                            onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId), // 🔥 LLAMADA CORREGIDA
+                          onDismissed: (_) => NotificationLogic.deleteNotification(docId),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              // Si está archivada se vuelve gris oscura, si está activa brilla dorado
+                              gradient: LinearGradient(colors: isArchived ? [Colors.white10, Colors.black26] : _PanelScreenState.kGoldenGradient),
+                              borderRadius: BorderRadius.circular(_PanelScreenState.kNotifRadius),
+                              boxShadow: isArchived ? [] : _PanelScreenState.kNotifShadow,
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              leading: CircleAvatar(backgroundColor: isArchived ? Colors.black12 : Colors.black, child: Icon(Icons.star, color: isArchived ? Colors.white38 : const Color(0xFFFFC107))),
+                              title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
+                              subtitle: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
+                              trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.black45), // Flecha solo si está activa
+                              onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId), // 🔥 LLAMADA CORREGIDA
+                            ),
                           ),
                         );
                       }
 
-                      // 🔥 DISEÑO NOTIFICACIÓN NORMAL
+                      // 🔥 DISEÑO NOTIFICACIÓN NORMAL (YA TENÍA DISMISSIBLE)
                       return Dismissible(
                           key: Key(docId),
                           direction: DismissDirection.endToStart,

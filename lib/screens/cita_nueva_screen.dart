@@ -1,13 +1,16 @@
 // 📂 lib/screens/cita_nueva_screen.dart
-// ✅ PANTALLA CITA NUEVA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ PANTALLA CITA NUEVA BLINDADA (ESTRATEGIA ADAPTATIVA + SMART CACHE)
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables protegidos.
 // 🔥 UI: Diseño Premium intacto con fotos inteligentes y lógica de invitación.
+// 🔥 CACHÉ: Fallback _SafeImage actualizado con CachedNetworkImage.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
+
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
@@ -413,14 +416,33 @@ class _LugaresPopularesList extends StatelessWidget {
   }
 }
 
+// 🔥 FALLBACK BLINDADO CON SMART CACHE
 class _SafeImage extends StatelessWidget {
   final String path;
   const _SafeImage({required this.path});
+
   @override
   Widget build(BuildContext context) {
     final p = path.trim();
-    if (p.startsWith('http')) return Image.network(p, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
-    if (File(p).existsSync()) return Image.file(File(p), fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
+
+    if (p.startsWith('http')) {
+      return CachedNetworkImage(
+        key: ValueKey(p),
+        imageUrl: p,
+        fit: BoxFit.cover,
+        memCacheHeight: 450, // Supercargador: 150px de altura * 3
+        placeholder: (context, url) => Container(
+            color: Colors.black26,
+            child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFBEB3FF))))
+        ),
+        errorWidget: (_,__,___) => Container(color: Colors.grey),
+      );
+    }
+
+    if (File(p).existsSync()) {
+      return Image.file(File(p), fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
+    }
+
     return Image.asset(p.isNotEmpty ? p : 'assets/images/perfil1.jpg', fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey));
   }
 }

@@ -1,11 +1,13 @@
 // 📂 lib/screens/cita_creada_screen.dart
-// ✅ CITA CREADA BLINDADA (DISEÑO PREMIUM RESPETADO)
+// ✅ CITA CREADA BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) de la foto del lugar.
 // 🔥 BLINDAJE: Textos protegidos con FittedBox y Justificación Profesional.
 // 🔥 REORDEN: Botón de borrado al final con nota aclaratoria de penalidad.
 // 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 
@@ -105,13 +107,21 @@ class CitaCreadaScreen extends StatelessWidget {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(20),
                               child: fotoUrl.isNotEmpty
-                                  ? Image.network(
-                                fotoUrl,
+                              // 🔥 FOTO BLINDADA CON SMART CACHE PRO
+                                  ? CachedNetworkImage(
+                                key: ValueKey(fotoUrl), // Ancla en memoria
+                                imageUrl: fotoUrl,
                                 height: 200,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
                                 alignment: Alignment.topCenter,
-                                errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, height: 200),
+                                memCacheHeight: 600, // Limita la RAM a 200px * 3 (ratio)
+                                placeholder: (context, url) => Container(
+                                    height: 200,
+                                    color: const Color(0xFF1A1A1A),
+                                    child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))
+                                ),
+                                errorWidget: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover, height: 200),
                               )
                                   : Image.asset('assets/images/perfil1.jpg', height: 200, width: double.infinity, fit: BoxFit.cover),
                             ),

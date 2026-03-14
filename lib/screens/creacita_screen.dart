@@ -1,10 +1,11 @@
 // 📂 lib/screens/creacita_screen.dart
-// ✅ CREAR CITA BLINDADA (ESTRATEGIA FINAL + GENERADOR ALFANUMÉRICO 8D)
-// 🔥 FIX: Nuevo generador de códigos aleatorios de 8 dígitos (Letras y Números).
-// 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
+// ✅ CREAR CITA BLINDADA (VERSIÓN PRO FINAL)
+// 🔥 FIX: Bloqueo inteligente de 2 horas entre citas (Revisa todo el calendario del usuario).
+// 🔥 UI FIX: Notificaciones nativas reemplazadas por "Burbujas Matchy" flotantes.
+// 🔥 FIX: Generador alfanumérico de 8 dígitos y selector de hora 12h intactos.
 
 import 'dart:ui';
-import 'dart:math'; // 🔥 Necesario para la aleatoriedad pura
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,7 +26,7 @@ class CreaCitaScreen extends StatefulWidget {
 }
 
 class _CreaCitaScreenState extends State<CreaCitaScreen> {
-  // 🛡️ ZONA DE CHINCHES MAESTROS (CONFIGURACIÓN BLINDADA)
+  // 🛡️ ZONA DE CHINCHES MAESTROS
   static const double kSizeTituloPantalla = 20.0;
   static const double kSizeNombreLugar = 30.0;
   static const double kSizeDireccion = 18.0;
@@ -59,6 +60,50 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     if (widget.lugar.sedes.length == 1) {
       _sedeSeleccionada = widget.lugar.sedes.first;
     }
+  }
+
+  // 🔥 BURBUJA MATCHY (REEMPLAZO DEL SNACKBAR NATIVO)
+  void _showMatchyBubble(String mensaje, {bool isSuccess = false}) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar(); // Ocultar anteriores
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        duration: const Duration(seconds: 4),
+        content: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isSuccess
+                  ? [const Color(0xFF00B4DB), const Color(0xFF0083B0)] // Azul Matchy
+                  : [const Color(0xFFFF4D6D), const Color(0xFFB71C1C)], // Rojo Alerta
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
+            ],
+            border: Border.all(color: Colors.white24, width: 1),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                  isSuccess ? Icons.check_circle_outline : Icons.warning_amber_rounded,
+                  color: Colors.white,
+                  size: 28
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  mensaje,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _seleccionarFecha() async {
@@ -173,9 +218,8 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     );
   }
 
-  // 🔥 NUEVO MOTOR: Generador Alfanumérico de 8 Dígitos Aleatorios
   String _generarCodigoRandom8D() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Omitimos 'I', 'O', '1', '0' para evitar confusiones
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rnd = Random();
     return String.fromCharCodes(Iterable.generate(
       8, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
@@ -192,13 +236,10 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     return '';
   }
 
-  Future<String> _crearCitaEnFirestore() async {
+  // 🔥 RECIBE EL SCHEDULED AT PARA NO RECALCULAR
+  Future<String> _crearCitaEnFirestore(DateTime scheduledAt) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('No hay sesión iniciada');
-    if (_pickedDate == null || _pickedTime == null) throw Exception('Selecciona fecha y hora');
-
-    final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
-    if (scheduledAt.difference(DateTime.now()).inHours < 12) throw Exception('La cita debe programarse con mínimo 12 horas de anticipación.');
 
     final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     final dataUser = snap.data() ?? {};
@@ -242,11 +283,10 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
       }
     }
 
-    // 🔥 APLICACIÓN: Generación de códigos únicos y diferentes
     final codigoOwner = _generarCodigoRandom8D();
     String codigoMatchy = _generarCodigoRandom8D();
     while (codigoMatchy == codigoOwner) {
-      codigoMatchy = _generarCodigoRandom8D(); // Doble seguro
+      codigoMatchy = _generarCodigoRandom8D();
     }
 
     final docRef = FirebaseFirestore.instance.collection(_citasCollection).doc();
@@ -286,20 +326,70 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     return docRef.id;
   }
 
+  // 🔥 VALIDACIÓN MAESTRA DE 2 HORAS E INYECCIÓN DE CITA
   Future<void> _onCrearCitaPressed() async {
     if (_creating) return;
     if (_pickedDate == null || _pickedTime == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona fecha y hora')));
+      _showMatchyBubble('Por favor, selecciona la fecha y la hora.');
       return;
     }
+
     setState(() => _creating = true);
+
     try {
-      final citaId = await _crearCitaEnFirestore();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('No hay sesión iniciada');
+
+      final scheduledAt = DateTime(_pickedDate!.year, _pickedDate!.month, _pickedDate!.day, _pickedTime!.hour, _pickedTime!.minute);
+
+      // 1. REGLA: Mínimo 12 horas de anticipación
+      if (scheduledAt.difference(DateTime.now()).inHours < 12) {
+        _showMatchyBubble('La cita debe programarse con un mínimo de 12 horas de anticipación.');
+        setState(() => _creating = false);
+        return;
+      }
+
+      // 2. REGLA MAESTRA: RASTREO DE 2 HORAS
+      // Obtenemos todas las citas donde soy creador
+      final ownerSnap = await FirebaseFirestore.instance.collection('citas').where('ownerUid', isEqualTo: user.uid).get();
+      // Obtenemos todas las citas donde soy invitado
+      final matchySnap = await FirebaseFirestore.instance.collection('citas').where('matchyUid', isEqualTo: user.uid).get();
+
+      final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
+      final activeStatuses = ['online', 'pending', 'scheduled', 'aceptada'];
+
+      for (var doc in allDocs) {
+        final data = doc.data();
+        final status = data['status'] ?? '';
+
+        if (activeStatuses.contains(status) && data['scheduledAt'] != null) {
+          final existingTime = (data['scheduledAt'] as Timestamp).toDate();
+          final diffMinutes = scheduledAt.difference(existingTime).inMinutes.abs();
+
+          if (diffMinutes < 120) {
+            _showMatchyBubble('Ya tienes una cita muy cerca a esta hora. Debes dejar al menos 2 horas de espacio libre en tu calendario.');
+            setState(() => _creating = false);
+            return; // Bloquea la creación instantáneamente
+          }
+        }
+      }
+
+      // 3. Todo correcto, procedemos a guardar en Firebase
+      final citaId = await _crearCitaEnFirestore(scheduledAt);
+
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CitaCreadaScreen(citaId: citaId, lugar: widget.lugar, fecha: _fecha, hora: _hora, preferencia: _preferencia, intencion: _intencion)));
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CitaCreadaScreen(
+          citaId: citaId,
+          lugar: widget.lugar,
+          fecha: _fecha,
+          hora: _hora,
+          preferencia: _preferencia,
+          intencion: _intencion
+      )));
+
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      _showMatchyBubble(e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _creating = false);
     }

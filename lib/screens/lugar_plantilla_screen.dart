@@ -1,14 +1,17 @@
 // 📂 lib/screens/lugar_plantilla_screen.dart
-// ✅ LUGAR PLANTILLA BLINDADA (UNIFICADA CON VERSIÓN SIN BOTÓN)
+// ✅ LUGAR PLANTILLA BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: CachedNetworkImage aplicado en Carrusel y Zoom.
+// 🔥 RENDIMIENTO: memCacheHeight dinámico para proteger la RAM con galerías de hasta +12 fotos.
 // 🔥 FIX: Tamaños unificados (Nombre 30 / Dirección 18).
 // 🔥 ADD: Texto informativo de sedes múltiples debajo del botón.
-// 🛠️ FIX OVERFLOW FOTO: Carrusel ajustado a proporción 16:9 (AspectRatio) para fotos 1920x1080 sin recortes.
+// 🛠️ FIX OVERFLOW FOTO: Carrusel ajustado a proporción 16:9.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/screens/creacita_screen.dart';
 import 'package:proyectos_matchy/screens/crea_cita_matchy_screen.dart';
@@ -115,6 +118,7 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
     }
   }
 
+  // 🔥 ZOOM BLINDADO CON SMART CACHE
   void _mostrarFotoZoom(String url) {
     showDialog(
       context: context,
@@ -127,7 +131,19 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
             Container(
               width: double.infinity, height: double.infinity,
               decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kNotifGradient)),
-              child: InteractiveViewer(minScale: 0.5, maxScale: 4.0, child: Center(child: Image.network(url, fit: BoxFit.contain))),
+              child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: Center(
+                      child: CachedNetworkImage(
+                        key: ValueKey("zoom_$url"),
+                        imageUrl: url,
+                        fit: BoxFit.contain,
+                        placeholder: (context, url) => const CircularProgressIndicator(color: Color(0xFFBEB3FF)),
+                        errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white54, size: 50),
+                      )
+                  )
+              ),
             ),
             Positioned(top: 50, right: 20, child: GestureDetector(onTap: () => Navigator.pop(ctx), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 28)))),
           ],
@@ -161,7 +177,7 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
                   padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 120),
                   child: Column(
                     children: [
-                      _buildProGallery(lugar.fotos),
+                      _buildProGallery(lugar.fotos, context),
                       const SizedBox(height: 20),
                       // NOMBRE UNIFICADO (30.0)
                       FittedBox(
@@ -222,12 +238,15 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
     );
   }
 
-  Widget _buildProGallery(List<String> fotos) {
+  // 🔥 GALERÍA BLINDADA CON SMART CACHE Y CARGA EN CASCADA
+  Widget _buildProGallery(List<String> fotos, BuildContext context) {
+    // Calculamos el caché en base a la pantalla (16:9 * ratio x 2 para asegurar nitidez HD sin romper RAM)
+    final int dynamicCacheHeight = (MediaQuery.of(context).size.width * (9 / 16) * 2.5).toInt();
+
     return Column(
       children: [
         Stack(
           children: [
-            // 🔥 FIX: AspectRatio 16:9 garantiza que la foto 1920x1080 encaje perfecta sin cortarse
             AspectRatio(
               aspectRatio: 16 / 9,
               child: Container(
@@ -236,14 +255,25 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
                   borderRadius: BorderRadius.circular(24),
                   child: PageView.builder(
                     controller: _pageCtrl,
-                    itemCount: fotos.length,
+                    itemCount: fotos.length, // Soporta infinitas fotos, el PageView las descarga 1 a 1.
                     onPageChanged: (i) => setState(() => _currentPage = i),
                     itemBuilder: (_, i) => GestureDetector(
                         onTap: () => _mostrarFotoZoom(fotos[i]),
-                        child: Image.network(
-                            fotos[i],
-                            fit: BoxFit.cover, // Ahora cover no recortará nada porque el contenedor es exactamente de la misma proporción de la foto.
-                            errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))
+                        child: CachedNetworkImage(
+                            key: ValueKey(fotos[i]),
+                            imageUrl: fotos[i],
+                            fit: BoxFit.cover,
+                            memCacheHeight: dynamicCacheHeight, // Supercargador de Memoria
+                            placeholder: (context, url) => Container(
+                                color: const Color(0xFF1A1A1A),
+                                child: const Center(
+                                    child: SizedBox(
+                                        width: 30, height: 30,
+                                        child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)
+                                    )
+                                )
+                            ),
+                            errorWidget: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))
                         )
                     ),
                   ),

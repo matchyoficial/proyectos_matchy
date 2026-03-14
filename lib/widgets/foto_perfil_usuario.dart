@@ -1,10 +1,12 @@
 // 📂 lib/widgets/foto_perfil_usuario.dart
-// ✅ WIDGET INTELIGENTE DE FOTO DE PERFIL
-// 🔥 FIX: Muestra 'CircularProgressIndicator' mientras carga, eliminando el "parpadeo negro".
-// 🔥 LOGIC: Se conecta a Firestore en tiempo real para mostrar siempre la foto más reciente.
+// ✅ WIDGET INTELIGENTE DE FOTO DE PERFIL (CON SMART CACHE)
+// 🔥 FIX: CachedNetworkImage inyectado con ValueKey.
+// 🔥 LOGIC: StreamBuilder conectado en vivo, pero la imagen ya no parpadea si cambian otros datos del usuario.
+// 🔥 UX: Spinner sutil en fondo oscuro mientras la imagen se descarga por primera vez.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 
 class FotoPerfilUsuario extends StatelessWidget {
   final String uid;
@@ -31,16 +33,7 @@ class FotoPerfilUsuario extends StatelessWidget {
 
         // 🔥 CARGANDO: Muestra un indicador sutil en vez de negro vacío
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            color: Colors.grey[900],
-            child: const Center(
-              child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
-              ),
-            ),
-          );
+          return _buildSpinner();
         }
 
         // Si hay error o el usuario no existe
@@ -55,26 +48,14 @@ class FotoPerfilUsuario extends StatelessWidget {
         // Si el usuario existe pero no tiene foto configurada
         if (url.isEmpty) return _buildDefault();
 
-        // 4. Mostramos la FOTO REAL ACTUALIZADA
-        return Image.network(
-          url,
+        // 4. 🔥 FOTO REAL CON CACHÉ INTELIGENTE
+        return CachedNetworkImage(
+          key: ValueKey(url), // Ancla la imagen para evitar parpadeos en el Stream
+          imageUrl: url,
           fit: fit,
           alignment: alignment,
-          errorBuilder: (_, __, ___) => _buildDefault(),
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            // 🔥 CARGANDO IMAGEN REAL: También muestra spinner
-            return Container(
-              color: Colors.grey[900],
-              child: const Center(
-                child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
-                ),
-              ),
-            );
-          },
+          placeholder: (context, url) => _buildSpinner(), // Spinner mientras descarga
+          errorWidget: (context, url, error) => _buildDefault(), // Respaldo si el link se rompe
         );
       },
     );
@@ -86,6 +67,20 @@ class FotoPerfilUsuario extends StatelessWidget {
       'assets/images/perfil1.jpg', // Asegúrate que esta ruta exista en tus assets
       fit: fit,
       alignment: alignment,
+    );
+  }
+
+  // 🔹 Widget auxiliar para el spinner de carga
+  Widget _buildSpinner() {
+    return Container(
+      color: Colors.grey[900],
+      child: const Center(
+        child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54)
+        ),
+      ),
     );
   }
 }

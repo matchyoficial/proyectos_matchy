@@ -1,8 +1,8 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 30 MINUTOS)
+// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 30 MINUTOS + SMART CACHE PRO)
 // 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
-// 🔥 TEXTOS CAMPANA: Actualizados con Nombre y Lugar.
+// 🔥 CACHÉ PRO: ValueKey y memCacheHeight inyectados en la foto del lugar para evitar parpadeos con el Reloj.
 // 🚀 NEW: CachedNetworkImage inyectado con BLINDAJE ANTI-BUCLES (Filtro HTTP vs Assets).
 
 import 'dart:async';
@@ -460,15 +460,17 @@ class _CitaCard extends StatelessWidget {
     showDialog(context: context, builder: (_) => AlertDialog(backgroundColor: const Color(0xFF1A1A1A), title: Text(titulo, style: const TextStyle(color: Color(0xFFE0D4FF))), content: Text(msg, style: const TextStyle(color: Colors.white70)), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))]));
   }
 
-  // 🔥 LÓGICA DE RENDERIZADO DE FOTO SEGURO
+  // 🔥 LÓGICA DE RENDERIZADO DE FOTO SEGURO CON SMART CACHE PRO
   Widget _buildFotoLugarSegura(String url) {
     final String fotoSafe = url.trim();
 
     // Si la URL es válida de internet, usamos caché
     if (fotoSafe.startsWith('http')) {
       return CachedNetworkImage(
+        key: ValueKey(fotoSafe), // 🔥 Candado: Evita parpadeos al actualizar el reloj
         imageUrl: fotoSafe,
         fit: BoxFit.cover,
+        memCacheHeight: 315, // 🔥 Supercargador de Memoria (105 de alto * 3)
         placeholder: (context, url) => Container(
             color: const Color(0xFF1A1A1A),
             child: const Center(
@@ -554,7 +556,7 @@ class _CitaCard extends StatelessWidget {
             if (mostrarOverlay) Positioned(top: 8, left: 8, child: _EtiquetaPulsante(texto: textoBoton, bg: colorFondoEtiqueta, color: colorEtiqueta))
           ])),
 
-          // FOTO MATCHY
+          // FOTO MATCHY (Ya optimizada desde el widget raíz)
           SizedBox(width: 105, child: ClipRRect(borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)), child: FotoPerfilUsuario(uid: item.matchyUid, fit: BoxFit.cover)))
         ]),
       ),

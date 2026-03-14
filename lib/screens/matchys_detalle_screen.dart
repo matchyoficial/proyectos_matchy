@@ -1,5 +1,6 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY BLINDADO (CONTROL DE HISTORIAL + POP DETALLE)
+// ✅ DETALLE DE MATCHY BLINDADO (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo en el Historial (Grid) y en el Pop-Up (0ms).
 // 🔥 FIX: Implementado click en fotos del historial para mostrar detalle en pop-up.
 // 🔥 UI: Carta de detalle con diseño premium y blindaje adaptativo.
 
@@ -7,6 +8,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
@@ -66,7 +68,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
-  // 🔹 NUEVA FUNCIÓN: Muestra la carta pop del historial
+  // 🔹 NUEVA FUNCIÓN: Muestra la carta pop del historial (CON CACHÉ)
   void _mostrarDetalleCitaHistorica(String foto, String lugar, String fecha) {
     showDialog(
       context: context,
@@ -82,15 +84,17 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Foto del lugar con bordes redondeados arriba
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                child: Image.network(
-                  foto,
+                child: CachedNetworkImage(
+                  key: ValueKey(foto), // 🔥 Toma la imagen que ya está en RAM por el Grid
+                  imageUrl: foto,
                   fit: BoxFit.cover,
                   height: 250,
                   width: double.infinity,
-                  errorBuilder: (_, __, ___) => Container(height: 250, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24)),
+                  memCacheHeight: 750, // 250 * 3
+                  placeholder: (context, url) => Container(height: 250, color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+                  errorWidget: (_, __, ___) => Container(height: 250, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24)),
                 ),
               ),
               Padding(
@@ -169,7 +173,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
-  // 🔹 NUEVA FUNCIÓN: Lógica para purgar la relación en Firebase
   Future<void> _eliminarConexionTotal() async {
     final myUid = FirebaseAuth.instance.currentUser?.uid;
     if (myUid == null) return;
@@ -213,7 +216,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
-  // 🔹 NUEVA FUNCIÓN: Muestra la advertencia antes de eliminar
   void _mostrarAlertaEliminarMatchy() {
     showDialog(
       context: context,
@@ -386,7 +388,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 12),
 
-                  // 2. HISTORIAL (CON CLICK HABILITADO)
+                  // 2. HISTORIAL (CON CACHÉ)
                   Container(
                     height: kHistorialHeight,
                     padding: const EdgeInsets.all(12),
@@ -424,13 +426,20 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                             final fotoLugar = (d['lugarFotoPortada'] ?? '').toString();
                             String fechaMostrable = d['fecha']?.toString() ?? d['fechaHora']?.toString().split(' ').first ?? "Fecha";
 
-                            // 🔥 AHORA LOS ELEMENTOS SON CLICKEABLES
                             return GestureDetector(
                               onTap: () => _mostrarDetalleCitaHistorica(fotoLugar, nombreLugar, fechaMostrable),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: Stack(fit: StackFit.expand, children: [
-                                  Image.network(fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___)=>Container(color: Colors.grey[800])),
+                                  // 🔥 FOTO DE GRID OPTIMIZADA
+                                  CachedNetworkImage(
+                                    key: ValueKey(fotoLugar),
+                                    imageUrl: fotoLugar,
+                                    fit: BoxFit.cover,
+                                    memCacheHeight: 300, // Optimizador de celdas
+                                    placeholder: (context, url) => Container(color: Colors.black26),
+                                    errorWidget: (_,__,___) => Container(color: Colors.grey[800]),
+                                  ),
                                   Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.5, 1.0]))),
                                   Positioned(bottom: 8, left: 8, right: 8, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                                     FittedBox(fit: BoxFit.scaleDown, child: Text(nombreLugar.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, fontFamily: 'Poppins'))),

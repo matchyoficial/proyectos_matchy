@@ -1,5 +1,6 @@
 // 📂 lib/screens/citas_pendientes_detalle.dart
-// ✅ DISEÑO "MATCHY EVENT STYLE" (CORREGIDO Y FINAL)
+// ✅ DISEÑO "MATCHY EVENT STYLE" (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en el Banner y en el Popup del lugar.
 // 🔥 FIX ERROR: kGoldBtn1 ahora es visible para todos los widgets.
 // 🔥 UI: Título centrado, Reloj Neón estilo "Sin Bloqueo", Sombras Premium.
 // 🔥 UI: Cápsula adaptable, Letrero de "Aún no hay postulados" incluido.
@@ -15,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/match_screen.dart';
@@ -253,7 +255,7 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
     }
   }
 
-  // POPUP INFO
+  // POPUP INFO CON SMART CACHE PRO
   void _showPlaceDetailPopup(_CitaFS cita) {
     showDialog(
       context: context,
@@ -271,7 +273,15 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
               children: [
                 SizedBox(
                   height: 180, width: double.infinity,
-                  child: Image.network(cita.fotoLugar, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(color: Colors.grey)),
+                  // 🔥 CACHÉ PRO: Renderizado instantáneo
+                  child: CachedNetworkImage(
+                    key: ValueKey(cita.fotoLugar),
+                    imageUrl: cita.fotoLugar,
+                    fit: BoxFit.cover,
+                    memCacheHeight: 540, // 180 * 3
+                    placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+                    errorWidget: (_,__,___) => Container(color: Colors.grey),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(20),
@@ -436,12 +446,22 @@ class _BannerPlaceCard extends StatelessWidget {
       child: Container(
         height: kCardLugarHeight,
         decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: kPremiumBoxShadow,
-            image: DecorationImage(image: NetworkImage(cita.fotoLugar), fit: BoxFit.cover, onError: (_,__) {})
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: kPremiumBoxShadow,
         ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
+          fit: StackFit.expand,
           children: [
+            // 🔥 CACHÉ PRO: Renderizado instantáneo
+            CachedNetworkImage(
+              key: ValueKey(cita.fotoLugar),
+              imageUrl: cita.fotoLugar,
+              fit: BoxFit.cover,
+              memCacheHeight: (kCardLugarHeight * 3).toInt(),
+              placeholder: (context, url) => Container(color: Colors.black26),
+              errorWidget: (context, url, error) => Container(color: Colors.grey[900]),
+            ),
             Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
             Padding(
               padding: const EdgeInsets.all(16),

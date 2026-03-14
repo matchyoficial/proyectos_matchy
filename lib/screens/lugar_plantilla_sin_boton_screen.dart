@@ -1,11 +1,13 @@
 // 📂 lib/screens/lugar_plantilla_sin_boton_screen.dart
 // 🔥 PANTALLA SITIO BLINDADA (SOLO LECTURA - DISEÑO PREMIUM PRO)
+// ✅ SMART CACHE: Motor de caché inyectado en Carrusel y Zoom.
 // ✅ LOGIC: Carga Híbrida (ID + Rescate por Nombre) para citas viejas y nuevas.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/models/lugar_data.dart';
 
 const double kLogoHeight = 50.0;
@@ -89,8 +91,27 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
 
   @override void dispose() { _timer?.cancel(); _pageCtrl.dispose(); super.dispose(); }
 
+  // 🔥 ZOOM OPTIMIZADO CON CACHÉ
   void _openFullscreen(BuildContext context, String imageUrl) {
-    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(alignment: Alignment.topRight, children: [Container(width: double.infinity, height: double.infinity, decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kNotifGradient)), child: InteractiveViewer(minScale: 0.5, maxScale: 4.0, child: Center(child: Image.network(imageUrl, fit: BoxFit.contain, loadingBuilder: (_, child, progress) => progress == null ? child : const CircularProgressIndicator(color: Colors.white), errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.white54, size: 50))))), Positioned(top: 50, right: 20, child: GestureDetector(onTap: () => Navigator.pop(ctx), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 28))))])));
+    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(alignment: Alignment.topRight, children: [
+      Container(
+          width: double.infinity, height: double.infinity,
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kNotifGradient)),
+          child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Center(
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                    placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
+                    errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white54, size: 50),
+                  )
+              )
+          )
+      ),
+      Positioned(top: 50, right: 20, child: GestureDetector(onTap: () => Navigator.pop(ctx), child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.white, size: 28))))
+    ])));
   }
 
   @override
@@ -105,7 +126,7 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
           SizedBox(height: kLogoHeight, child: Image.asset('assets/images/logomatchyplano.png')),
           const SizedBox(height: 16),
           Expanded(child: SingleChildScrollView(physics: const BouncingScrollPhysics(), padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 120), child: Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-            _buildProGallery(),
+            _buildProGallery(context),
             const SizedBox(height: 20),
             FittedBox(fit: BoxFit.scaleDown, child: Text(lugar.nombre.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: kLugarTituloFontSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', height: 1.1, shadows: kTextShadow))),
             const SizedBox(height: kLugarGapNombreDireccion),
@@ -133,11 +154,26 @@ class _LugarPlantillaSinBotonScreenState extends State<LugarPlantillaSinBotonScr
     );
   }
 
-  Widget _buildProGallery() {
+  // 🔥 GALERÍA OPTIMIZADA CON SMART CACHE DINÁMICO
+  Widget _buildProGallery(BuildContext context) {
+    // Calculamos el caché vertical dinámico para ahorrar RAM (Contenedor de 250px)
+    final int dynamicCacheHeight = (250 * MediaQuery.of(context).devicePixelRatio).toInt();
+
     return Column(children: [
       Container(height: 250, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 15, offset: Offset(0, 8))]), child: ClipRRect(borderRadius: BorderRadius.circular(24), child: Stack(children: [
         PageView.builder(controller: _pageCtrl, itemCount: _fotosCarrusel.length, onPageChanged: (i) => setState(() => _currentPage = i), itemBuilder: (_, i) {
-          final url = _fotosCarrusel[i]; return GestureDetector(onTap: () => _openFullscreen(context, url), child: Image.network(url, fit: BoxFit.cover, loadingBuilder: (_, child, progress) => progress == null ? child : Container(color: Colors.white10, child: const Center(child: CircularProgressIndicator(strokeWidth: 2))), errorBuilder: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))));
+          final url = _fotosCarrusel[i];
+          return GestureDetector(
+              onTap: () => _openFullscreen(context, url),
+              child: CachedNetworkImage(
+                  key: ValueKey(url),
+                  imageUrl: url,
+                  fit: BoxFit.cover,
+                  memCacheHeight: dynamicCacheHeight, // Limitamos la decodificación para fluidez total
+                  placeholder: (context, url) => Container(color: Colors.white10, child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFBEB3FF)))),
+                  errorWidget: (_,__,___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white54))
+              )
+          );
         }),
         Positioned(bottom: 0, left: 0, right: 0, height: 60, child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.6)])))),
         Positioned(top: 12, right: 12, child: IgnorePointer(child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle), child: const Icon(Icons.zoom_in, color: Colors.white, size: 22)))),

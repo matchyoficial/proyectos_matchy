@@ -1,5 +1,6 @@
 // 📂 lib/screens/match_screen.dart
-// ✅ MATCH SCREEN (SOLUCIÓN QUIRÚRGICA)
+// ✅ MATCH SCREEN (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la función _imageSmart.
 // 🔥 FIX: Botón Verde (Matchy) ahora es un "Link Tonto" a la lista de chats.
 // ❌ LÓGICA ELIMINADA: El botón verde YA NO toca Firebase ni crea hilos.
 // 🔥 UI: Diseño 100% original mantenido.
@@ -12,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
@@ -138,12 +140,23 @@ class _MatchScreenState extends ConsumerState<MatchScreen>
   String _primerNombre(String f) => f.trim().split(RegExp(r'\s+')).first;
   String _pickMyPhoto(ProfileFormState p) => (p.profilePhotoUrl ?? '').isNotEmpty ? p.profilePhotoUrl! : (p.photoUrls.isNotEmpty ? p.photoUrls.first : 'assets/images/perfil1.jpg');
 
+  // 🔥 WIDGET CENTRAL DE IMÁGENES BLINDADO CON SMART CACHE
   Widget _imageSmart(String v, String fb) {
     if (v.isEmpty) return Image.asset(fb, fit: BoxFit.cover);
     if (_isUrl(v)) {
-      return Image.network(v, fit: BoxFit.cover, alignment: Alignment.topCenter,
-          loadingBuilder: (_, c, p) => p == null ? c : Container(color: Colors.black26, alignment: Alignment.center, child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
-          errorBuilder: (_, __, ___) => Image.asset(fb, fit: BoxFit.cover));
+      return CachedNetworkImage(
+        key: ValueKey(v),
+        imageUrl: v,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        memCacheHeight: 600, // Límite de RAM para mantener fluidez
+        placeholder: (context, url) => Container(
+            color: Colors.black26,
+            alignment: Alignment.center,
+            child: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFBEB3FF)))
+        ),
+        errorWidget: (_, __, ___) => Image.asset(fb, fit: BoxFit.cover),
+      );
     }
     if (_isAsset(v)) return Image.asset(v, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset(fb, fit: BoxFit.cover));
     if (_looksLikeFilePath(v)) return Image.file(File(v.replaceFirst('file://', '')), fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset(fb, fit: BoxFit.cover));

@@ -1,9 +1,9 @@
 // 📂 lib/screens/perfil_screen.dart
-// ✅ PERFIL BLINDADO (FIX: CACHÉ FANTASMA ELIMINADO)
+// ✅ PERFIL BLINDADO (FIX: CACHÉ FANTASMA ELIMINADO + SMART CACHE PRO)
+// 🔥 ADD: Botón "EDITAR PERFIL" con azul vibrante y separación estratégica.
 // 🔥 FIX: Se aplica 'ref.invalidate' para borrar la memoria RAM al cerrar sesión.
 // 🔥 FIX: Se usa 'disconnect' en Google para forzar la elección de cuenta.
-// 🔥 UI: Diseño Premium y lógica intacta.
-// 📸 FIX: Visualización de hasta 5 fotos dinámicas agregada.
+// 🔥 CACHÉ PRO: CachedNetworkImage aplicado a las fotos 2, 3, 4 y 5 de la galería.
 
 import 'dart:io';
 
@@ -15,6 +15,7 @@ import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/citas_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
+import 'package:proyectos_matchy/screens/datos_screen.dart'; // 🔥 Import para Editar Perfil
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
@@ -28,6 +29,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 
 class PerfilScreen extends ConsumerStatefulWidget {
   static const String routeName = 'perfil';
@@ -51,7 +53,8 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
   static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
   static const String _kUsersCollection = 'users';
 
-  // 🛡️ CHINCHES MAESTROS (ESTILO DATOS)
+  // 🛡️ CHINCHES MAESTROS (ESTILO DATOS Y BOTONES)
+  static const List<Color> kBtnEditProfileGradient = [Color(0xFF00B4DB), Color(0xFF0083B0)]; // 🔥 Azul Alegre
   static const List<Color> kBtnLogoutGradient = [Color(0xFF0B1F3A), Color(0xFF050F1E)];
   static const List<Color> kBtnDeleteGradient = [Color(0xFFB00020), Color(0xFF600010)];
   static const List<Color> kBtnSoporteGradient = [Color(0xFF6B4EE6), Color(0xFF4527A0)];
@@ -278,15 +281,43 @@ class _PerfilContent extends StatelessWidget {
         if (state.photoUrls.length >= 5 || state.fotosCargadas.length >= 5)
           _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 5) ? state.photoUrls[4] : state.fotosCargadas[4], height: 400),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 25),
+
+        // 🔥 NUEVO BOTÓN: EDITAR PERFIL
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _PremiumButton(text: 'CERRAR SESIÓN', gradient: _PerfilScreenState.kBtnLogoutGradient, busy: busy, onTap: onLogout),
+          child: _PremiumButton(
+            text: 'EDITAR PERFIL',
+            gradient: _PerfilScreenState.kBtnEditProfileGradient,
+            busy: busy,
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DatosScreen())),
+            icon: Icons.edit_rounded,
+          ),
+        ),
+
+        const SizedBox(height: 35), // 🔥 SEPARACIÓN ESTRATÉGICA
+
+        // BLOQUE DE PELIGRO Y SISTEMA
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _PremiumButton(
+            text: 'CERRAR SESIÓN',
+            gradient: _PerfilScreenState.kBtnLogoutGradient,
+            busy: busy,
+            onTap: onLogout,
+            icon: Icons.logout_rounded, // Se añadió icono para homogeneizar el diseño
+          ),
         ),
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: _PremiumButton(text: 'BORRAR PERFIL', gradient: _PerfilScreenState.kBtnDeleteGradient, busy: busy, onTap: onDeleteProfile),
+          child: _PremiumButton(
+            text: 'BORRAR PERFIL',
+            gradient: _PerfilScreenState.kBtnDeleteGradient,
+            busy: busy,
+            onTap: onDeleteProfile,
+            icon: Icons.delete_forever_rounded, // Se añadió icono para homogeneizar el diseño
+          ),
         ),
         const SizedBox(height: 12),
         // BOTÓN CONTÁCTANOS
@@ -400,7 +431,7 @@ class _ContactDialogState extends State<_ContactDialog> {
   }
 }
 
-// 🔹 SUB-WIDGETS Y HELPERS (SIN CAMBIOS)
+// 🔹 SUB-WIDGETS Y HELPERS
 class _ProfileOverlay extends StatelessWidget {
   final ProfileFormState state;
   final TextTheme textTheme;
@@ -464,12 +495,38 @@ class _CardChips extends StatelessWidget {
 class _FotoTarjeta extends StatelessWidget {
   final String? imagePathOrAssetOrUrl; final double height; final Widget Function(BuildContext context)? overlay; final String? smartUid;
   const _FotoTarjeta({required this.imagePathOrAssetOrUrl, required this.height, this.overlay, this.smartUid});
+
   @override
   Widget build(BuildContext context) {
     Widget background = Container(color: Colors.white10, child: const Center(child: Icon(Icons.person, color: Colors.white24, size: 80)));
     final raw = (imagePathOrAssetOrUrl ?? '').trim();
-    if (smartUid != null) { background = FotoPerfilUsuario(uid: smartUid!, fit: BoxFit.cover, alignment: Alignment.topCenter); }
-    else if (raw.isNotEmpty) { if (raw.startsWith('http')) { background = Image.network(raw, fit: BoxFit.cover, alignment: Alignment.topCenter); } else if (raw.startsWith('assets/')) { background = Image.asset(raw, fit: BoxFit.cover, alignment: Alignment.topCenter); } else { background = Image.file(File(raw), fit: BoxFit.cover, alignment: Alignment.topCenter); } }
+
+    if (smartUid != null) {
+      background = FotoPerfilUsuario(uid: smartUid!, fit: BoxFit.cover, alignment: Alignment.topCenter);
+    } else if (raw.isNotEmpty) {
+      if (raw.startsWith('http')) {
+        // 🔥 SMART CACHE APLICADO A LA GALERÍA DE FOTOS
+        background = CachedNetworkImage(
+          key: ValueKey(raw),
+          imageUrl: raw,
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          placeholder: (context, url) => Container(
+              color: const Color(0xFF1A1A1A),
+              child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))
+          ),
+          errorWidget: (context, url, error) => Container(
+              color: Colors.white10,
+              child: const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 80))
+          ),
+        );
+      } else if (raw.startsWith('assets/')) {
+        background = Image.asset(raw, fit: BoxFit.cover, alignment: Alignment.topCenter);
+      } else {
+        background = Image.file(File(raw), fit: BoxFit.cover, alignment: Alignment.topCenter);
+      }
+    }
+
     return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: height, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 10, offset: const Offset(0, 6))]), clipBehavior: Clip.antiAlias, child: Stack(fit: StackFit.expand, children: [background, if (overlay != null) overlay!(context)]));
   }
 }

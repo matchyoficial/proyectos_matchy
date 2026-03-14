@@ -1,5 +1,6 @@
 // 📂 lib/screens/cita_detalle_screen.dart
-// ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (BLINDADO)
+// ✅ DETALLE DE CITA + SISTEMA DE REDENCIÓN (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la tarjeta del Lugar.
 // 🔥 FIX: Burbujas Flotantes "Matchy Style" reemplazan SnackBars y Alertas de error.
 // 🔥 GPS: Implementado sistema de validación de 200m con Master Switch.
 // 🔒 FIX CORRECTO: Reprogramar se bloquea <12h. Cancelar SIEMPRE ACTIVO.
@@ -7,6 +8,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart';
@@ -16,7 +18,7 @@ import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/screens/cancelar_cita_screen.dart';
-import 'package:geolocator/geolocator.dart'; // 🔥 IMPORTANTE: Necesitas este paquete
+import 'package:geolocator/geolocator.dart';
 
 const double kCardTitleSize      = 20.0;
 const double kCardSubtitleSize   = 18.0;
@@ -300,7 +302,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
             title: const Text("⏳ TIEMPO AGOTADO", style: TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.w900)),
             content: const Text(
-              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DEBES ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
+              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DE পাশে ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, height: 1.4, fontSize: 14),
             ),
@@ -334,15 +336,28 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         MatchyPageLayout(
           backgroundAsset: 'assets/images/fondo.jpg', logoAsset: 'assets/images/logomatchyplano.png', topSpacing: 35, logoHeight: 45, spaceLogoToScroll: 15,
           scrollContent: SizedBox(width: double.infinity, child: SingleChildScrollView(physics: const BouncingScrollPhysics(), padding: const EdgeInsets.only(bottom: 120), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+
+            // 🔥 TARJETA DEL LUGAR (SMART CACHE INYECTADO)
             _buildPanelStyleCard(
               onTap: () {
                 final lugarTemp = LugarData(id: widget.lugarId, nombre: _displayNombre, direccion: _displayDireccion, fotoPortada: widget.lugarFotoPortada, fotos: [widget.lugarFotoPortada], bio: '', sitioWeb: '', sedes: [], orden: 0);
                 Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugarTemp)));
               },
-              image: widget.lugarFotoPortada.isNotEmpty ? Image.network(widget.lugarFotoPortada, fit: BoxFit.cover, alignment: Alignment.topCenter) : Container(color: Colors.white10),
+              image: widget.lugarFotoPortada.isNotEmpty
+                  ? CachedNetworkImage(
+                key: ValueKey(widget.lugarFotoPortada), // Candado de Memoria
+                imageUrl: widget.lugarFotoPortada,
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+                memCacheHeight: (kFotoSize * 3).toInt(), // Limitador RAM (110 * 3)
+                placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)))),
+                errorWidget: (_, __, ___) => Container(color: Colors.white10),
+              )
+                  : Container(color: Colors.white10),
               title: _displayNombre, subtitle: _displayDireccion,
             ),
             const SizedBox(height: 20),
+
             _buildPanelStyleCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))), image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter), title: widget.matchyNombre, extraTitle: "${widget.matchyEdad}", subtitle: "Ver perfil completo", footerText: ""),
             const SizedBox(height: 20),
             Column(children: [Row(children: [Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))]), const SizedBox(height: 12), Row(children: [Expanded(child: _buildVividCapsule(Icons.star, widget.intencion)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.favorite, widget.preferencia))])]),

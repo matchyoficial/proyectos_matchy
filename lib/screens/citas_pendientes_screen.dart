@@ -1,5 +1,7 @@
 // 📂 lib/screens/citas_pendientes_screen.dart
-// ✅ CITAS PUBLICADAS BLINDADA (DISEÑO PREMIUM ORIGINAL)
+// ✅ CITAS PUBLICADAS BLINDADA (SMART CACHE PRO + NUBE INFORMATIVA)
+// 🔥 ADD: Nube informativa debajo del título para explicar la función de la pantalla.
+// 🔥 CACHÉ PRO: Renderizado inteligente en ListView para scroll fluido.
 // 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
 // 🔥 LÓGICA: Riverpod y Firestore intactos.
 
@@ -8,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
 
 // ================================================================
@@ -260,7 +263,37 @@ class CitasPendientesScreen extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(height: 10),
+              // 🔥 NUBE INFORMATIVA AÑADIDA AQUÍ
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Icon(Icons.info_outline_rounded, color: Color(0xFFBEB3FF), size: 22),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "Estas son tus citas públicas. Los demás usuarios las verán en su radar y podrán postularse para acompañarte.",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontFamily: 'Poppins',
+                            height: 1.3,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
               Expanded(
                 child: citas.isEmpty
@@ -353,13 +386,20 @@ class _CitaCard extends StatelessWidget {
     const double h = 130;
     const double w = 120;
 
+    // 🔥 SMART CACHE INYECTADO
     final Widget foto = _isNet(cita.fotoLugar)
-        ? Image.network(cita.fotoLugar, fit: BoxFit.cover)
+        ? CachedNetworkImage(
+      key: ValueKey(cita.fotoLugar),
+      imageUrl: cita.fotoLugar,
+      fit: BoxFit.cover,
+      memCacheHeight: (h * 3).toInt(), // Limitador RAM para ListViews
+      placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2)))),
+      errorWidget: (context, url, error) => Image.asset("assets/images/perfil1.jpg", fit: BoxFit.cover),
+    )
         : Image.asset(
       cita.fotoLugar,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) =>
-          Image.asset("assets/images/perfil1.jpg", fit: BoxFit.cover),
+      errorBuilder: (_, __, ___) => Image.asset("assets/images/perfil1.jpg", fit: BoxFit.cover),
     );
 
     return Container(

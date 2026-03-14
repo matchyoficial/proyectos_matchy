@@ -1,5 +1,6 @@
 // 📂 lib/screens/nueva_cita_solicitud_screen.dart
-// ✅ PANTALLA DE SOLICITUD DE CITA BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ PANTALLA DE SOLICITUD DE CITA BLINDADA (SMART CACHE PRO INYECTADO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la foto del lugar.
 // 🔥 FIX: Notificaciones de campana enriquecidas con Nombre y Lugar.
 // 🔥 FIX: Burbuja Flotante "Matchy Style" en reemplazo del SnackBar nativo.
 // 🔥 BLINDAJE: Textos protegidos con FittedBox SIN ALTERAR tamaños de fuente originales.
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
@@ -260,10 +262,15 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(kFotoLugarRadius),
-                                  child: Image.network(
-                                      lugarFoto,
+                                  // 🔥 SMART CACHE INYECTADO
+                                  child: CachedNetworkImage(
+                                      key: ValueKey(lugarFoto),
+                                      imageUrl: lugarFoto,
                                       fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter
+                                      alignment: Alignment.topCenter,
+                                      memCacheHeight: (kFotoLugarHeight * 3).toInt(), // Optimizador RAM (180 * 3 = 540)
+                                      placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+                                      errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24))
                                   ),
                                 ),
                               ),
