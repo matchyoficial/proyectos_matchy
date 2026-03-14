@@ -1,7 +1,7 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
-// ✅ DETALLE DE MATCHY BLINDADO (SMART CACHE PRO INYECTADO)
+// ✅ DETALLE DE MATCHY BLINDADO (SMART CACHE PRO + FILTRO DE HISTORIA FELIZ)
+// 🔥 FILTRO: Solo muestra citas finalizadas que NO sean fallidas (Exclusión de penalizaciones).
 // 🔥 CACHÉ PRO: Renderizado instantáneo en el Historial (Grid) y en el Pop-Up (0ms).
-// 🔥 FIX: Implementado click en fotos del historial para mostrar detalle en pop-up.
 // 🔥 UI: Carta de detalle con diseño premium y blindaje adaptativo.
 
 import 'dart:async';
@@ -68,7 +68,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
     }
   }
 
-  // 🔹 NUEVA FUNCIÓN: Muestra la carta pop del historial (CON CACHÉ)
   void _mostrarDetalleCitaHistorica(String foto, String lugar, String fecha) {
     showDialog(
       context: context,
@@ -87,12 +86,12 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
                 child: CachedNetworkImage(
-                  key: ValueKey(foto), // 🔥 Toma la imagen que ya está en RAM por el Grid
+                  key: ValueKey(foto),
                   imageUrl: foto,
                   fit: BoxFit.cover,
                   height: 250,
                   width: double.infinity,
-                  memCacheHeight: 750, // 250 * 3
+                  memCacheHeight: 750,
                   placeholder: (context, url) => Container(height: 250, color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
                   errorWidget: (_, __, ___) => Container(height: 250, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24)),
                 ),
@@ -188,15 +187,12 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
       final batch = FirebaseFirestore.instance.batch();
       final citasRef = FirebaseFirestore.instance.collection('citas');
 
-      // 1. Eliminar Citas donde yo soy el owner y él/ella el matchy
       final snapshot1 = await citasRef.where('ownerUid', isEqualTo: myUid).where('matchyUid', isEqualTo: matchyUid).get();
       for (var doc in snapshot1.docs) { batch.delete(doc.reference); }
 
-      // 2. Eliminar Citas donde él/ella es el owner y yo el matchy
       final snapshot2 = await citasRef.where('ownerUid', isEqualTo: matchyUid).where('matchyUid', isEqualTo: myUid).get();
       for (var doc in snapshot2.docs) { batch.delete(doc.reference); }
 
-      // 3. Eliminar la relación de Matchy apuntando a la colección real my_matchys
       final myMatchyRef = FirebaseFirestore.instance.collection('users').doc(myUid).collection('my_matchys').doc(matchyUid);
       final suMatchyRef = FirebaseFirestore.instance.collection('users').doc(matchyUid).collection('my_matchys').doc(myUid);
 
@@ -321,7 +317,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
-                  // 1. CÁPSULA PERFIL (BLINDADA)
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyData.uid))),
                     child: Container(
@@ -388,7 +383,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 12),
 
-                  // 2. HISTORIAL (CON CACHÉ)
+                  // 2. HISTORIAL (CON FILTRO DE EXCLUSIÓN PARA CITAS FALLIDAS)
                   Container(
                     height: kHistorialHeight,
                     padding: const EdgeInsets.all(12),
@@ -402,9 +397,18 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                         final docs = (snapshot.data?.docs ?? []).where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
                           final status = data['status'];
+                          final res = (data['resultado'] ?? '').toString(); // 🔥 Leemos el resultado
                           final ownerUid = data['ownerUid'];
                           final matchyUid = data['matchyUid'];
-                          if (status != 'finished') return false;
+
+                          // 🔥 FILTRO DE EXCLUSIÓN: ¿Es una cita fallida?
+                          bool esFallo = res == 'expired_by_inactivity' ||
+                              res == 'timeout_punished' ||
+                              res == 'cancelled_penalty';
+
+                          // Solo dejamos pasar las terminadas que NO sean fallos
+                          if (status != 'finished' || esFallo) return false;
+
                           return (ownerUid == myUid && matchyUid == widget.matchyData.uid) || (matchyUid == myUid && ownerUid == widget.matchyData.uid);
                         }).toList();
 
@@ -431,12 +435,11 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: Stack(fit: StackFit.expand, children: [
-                                  // 🔥 FOTO DE GRID OPTIMIZADA
                                   CachedNetworkImage(
                                     key: ValueKey(fotoLugar),
                                     imageUrl: fotoLugar,
                                     fit: BoxFit.cover,
-                                    memCacheHeight: 300, // Optimizador de celdas
+                                    memCacheHeight: 300,
                                     placeholder: (context, url) => Container(color: Colors.black26),
                                     errorWidget: (_,__,___) => Container(color: Colors.grey[800]),
                                   ),
@@ -455,7 +458,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 25),
 
-                  // 3. BOTÓN NUEVA CITA (BLINDADO)
                   if (_isLoadingStatus)
                     const Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: Colors.white))
                   else
@@ -488,7 +490,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
                   const SizedBox(height: 20),
 
-                  // 4. BOTÓN DESCUENTOS (BLINDADO)
                   ScaleTransition(
                       scale: _scaleAnimation,
                       child: Container(
@@ -516,7 +517,6 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
                   const SizedBox(height: 20),
 
-                  // 5. BOTÓN ELIMINAR MATCHY (NUEVO)
                   GestureDetector(
                     onTap: _mostrarAlertaEliminarMatchy,
                     child: Container(

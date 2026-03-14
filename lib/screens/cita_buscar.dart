@@ -635,7 +635,7 @@ class _SwipeBundleSolid extends StatelessWidget {
                                           Icon(Icons.arrow_back_rounded, color: Color(0xFFFF6E63), size: 14),
                                           SizedBox(width: 4),
                                           Text("NO", style: TextStyle(color: Color(0xFFFF6E63), fontSize: 13, fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
-                                          Text("   -   ¿QUIERES POSTULARTE A ESTA CITA?   -   ", style: TextStyle(color: Colors.white54, fontSize: 10, fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
+                                          Text("   -   ¿POSTULARTE A ESTA CITA?   -   ", style: TextStyle(color: Colors.white54, fontSize: 15, fontFamily: 'Poppins', fontWeight: FontWeight.w600)),
                                           Text("SÍ", style: TextStyle(color: Color(0xFF00E676), fontSize: 13, fontFamily: 'Poppins', fontWeight: FontWeight.bold)),
                                           SizedBox(width: 4),
                                           Icon(Icons.arrow_forward_rounded, color: Color(0xFF00E676), size: 14),

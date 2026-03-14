@@ -1,9 +1,10 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS DEFINITIVA (VERSIÓN SMART CACHE PRO)
+// ✅ LISTA DE CHATS DEFINITIVA (MODO FANTASMA "ESPEJO" + FIX ASPECT RATIO)
+// 🔥 MODO FANTASMA PRO: Actualización silenciosa (cleared_by) para no dejar mensajes huérfanos.
+// 🔥 FILTRO ZOMBIE: Si tú borraste el chat, no reaparece disfrazado de "Nuevo Match".
+// 🔥 FIX FOTOS: memCacheWidth eliminado. Proporción original restaurada sin deformar.
+// 🔥 UI MODO FANTASMA: La tarjeta se tiñe de rojo oscuro al presionar. Diálogo Matchy Style.
 // 🔥 CACHÉ: CachedNetworkImage con ValueKey inyectado para carga instantánea.
-// 🔥 RENDIMIENTO: memCacheHeight/Width activado para ahorrar RAM en la lista.
-// 🔥 FIX: Se elimina el envío de 'Yo' a Firebase usando el nombre real del perfil.
-// 🔥 UI: Diseño Pro 100% original con degradados Matchy.
 // 🛠️ FIX OVERFLOW: Texto de último mensaje con puntos suspensivos (...) tipo WhatsApp.
 
 import 'dart:io';
@@ -58,6 +59,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   static const List<Color> kCardGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
   static const BoxShadow kCardShadow = BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4));
 
+  // Variable de estado para el Modo Fantasma (Resalta de rojo la tarjeta al mantener presionada)
+  String? _highlightedThreadId;
+
   Stream<QuerySnapshot> _matchesStream(String uid) {
     return FirebaseFirestore.instance
         .collection('users')
@@ -77,17 +81,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final List<ChatThreadUI> result = [];
     final Map<String, QueryDocumentSnapshot> threadMap = {};
 
+    // 🔥 ESPEJO ESPEJISMO: Lista para guardar a los que tú decidiste ocultar
+    final Set<String> hiddenOtherUids = {};
+
     for (var t in threads) {
       final data = t.data() as Map<String, dynamic>;
       final List parts = (data['participantUids'] is List) ? data['participantUids'] : [];
       final otherUid = parts.firstWhere((id) => id != myUid, orElse: () => '').toString();
-      if (otherUid.isNotEmpty) threadMap[otherUid] = t;
+
+      if (otherUid.isEmpty) continue;
+
+      // 🔥 LECTURA DEL MODO FANTASMA: ¿Yo lo borré?
+      final List clearedBy = (data['cleared_by'] is List) ? data['cleared_by'] : [];
+      if (clearedBy.contains(myUid)) {
+        // Lo anoto en la lista negra para no mostrarlo como "Nuevo Match" tampoco
+        hiddenOtherUids.add(otherUid);
+        continue; // Salto este chat, no lo agrego al mapa de hilos activos
+      }
+
+      threadMap[otherUid] = t;
     }
 
     for (var m in matches) {
-      final mData = m.data() as Map<String, dynamic>;
       final otherUid = m.id;
 
+      // 🔥 FILTRO ZOMBIE: Si este match está en mi lista de ocultos, lo ignoro por completo.
+      if (hiddenOtherUids.contains(otherUid)) {
+        continue;
+      }
+
+      final mData = m.data() as Map<String, dynamic>;
       String nombreMatch = (mData['nombre'] ?? 'Matchy').toString();
       String foto = (mData['fotoUrl'] ?? mData['foto'] ?? '').toString();
       DateTime? matchDate;
@@ -144,6 +167,50 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     return result;
+  }
+
+  // 🔥 FUNCIÓN: MODO FANTASMA (ESPEJO ESPEJISMO)
+  void _confirmDeleteChat(String threadId, String nombre, String myUid) {
+    if (threadId.isEmpty) return;
+
+    setState(() => _highlightedThreadId = threadId);
+
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFFFF5252), width: 1.5)),
+            title: const Text("ELIMINAR CHAT", style: TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+            content: Text("¿Deseas eliminar tu conversación con $nombre?\n\nSe borrarán los mensajes de tu historial, pero la conexión no se romperá. Si te vuelve a escribir, el chat aparecerá de nuevo.", style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            actions: [
+              TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    if (mounted) setState(() => _highlightedThreadId = null);
+                  },
+                  child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))
+              ),
+              TextButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    try {
+                      // 🔥 ACTUALIZACIÓN SILENCIOSA: Añadimos mi UID a la lista negra del chat
+                      await FirebaseFirestore.instance.collection('chat_threads').doc(threadId).update({
+                        'cleared_by': FieldValue.arrayUnion([myUid])
+                      });
+                    } catch (e) {
+                      debugPrint("Error ocultando chat: $e");
+                    } finally {
+                      if (mounted) setState(() => _highlightedThreadId = null);
+                    }
+                  },
+                  child: const Text("ELIMINAR", style: TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.bold))
+              )
+            ]
+        )
+    ).then((_) {
+      if (mounted) setState(() => _highlightedThreadId = null);
+    });
   }
 
   @override
@@ -221,7 +288,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           separatorBuilder: (_,__) => const SizedBox(height: 14),
                           itemBuilder: (ctx, i) {
                             final t = uiList[i];
+                            final bool isHighlighted = _highlightedThreadId == t.id;
+
                             return GestureDetector(
+                              // 🔥 ACTIVADOR DE MODO FANTASMA
+                              onLongPress: () {
+                                if (t.id.isNotEmpty) {
+                                  _confirmDeleteChat(t.id, t.nombre, user.uid);
+                                }
+                              },
                               onTap: () async {
                                 String threadId = t.id;
                                 if (threadId.isEmpty) {
@@ -256,9 +331,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(kCardRadius),
-                                  gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kCardGradient),
+                                  // 🔥 CAMBIO DE COLOR DINÁMICO AL DEJAR PRESIONADO (ALERTA ROJA)
+                                  gradient: isHighlighted
+                                      ? const LinearGradient(colors: [Color(0xFF8B0000), Color(0xFF4A0000)]) // Sangre oscuro
+                                      : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kCardGradient),
                                   boxShadow: const [kCardShadow],
-                                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                                  border: Border.all(color: isHighlighted ? const Color(0xFFFF5252) : Colors.white.withOpacity(0.08), width: 1),
                                 ),
                                 child: Row(
                                   children: [
@@ -266,14 +344,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         borderRadius: BorderRadius.circular(kAvatarRadius),
                                         child: SizedBox(
                                             width: kAvatarSize, height: kAvatarSize,
-                                            // 🔥 BLINDAJE SMART CACHE PRO INYECTADO AQUÍ
+                                            // 🔥 BLINDAJE FIX ASPECT RATIO (memCacheWidth ELIMINADO, SOLO HEIGHT)
                                             child: CachedNetworkImage(
                                               key: ValueKey(t.otherUid + t.foto),
                                               imageUrl: t.foto,
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
-                                              memCacheHeight: (kAvatarSize * 3).toInt(), // Liberador de RAM
-                                              memCacheWidth: (kAvatarSize * 3).toInt(),  // Liberador de RAM
+                                              fit: BoxFit.cover, // Mantiene la proporción llenando el espacio cuadrado
+                                              alignment: Alignment.topCenter, // Prioriza el rostro
+                                              memCacheHeight: (kAvatarSize * 3).toInt(), // Liberador de RAM seguro (180px)
                                               placeholder: (context, url) => Container(color: Colors.white.withOpacity(0.05)),
                                               errorWidget: (context, url, error) => FotoPerfilUsuario(
                                                   uid: t.otherUid,

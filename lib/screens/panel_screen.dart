@@ -4,7 +4,7 @@
 // 🔥 FIX: Swipe-to-delete (Dismissible) habilitado para TODAS las notificaciones (Golden Tickets incluidos).
 // 🔥 FIX: Alertas Nativas eliminadas y reemplazadas por Burbujas Flotantes (Matchy Style).
 // 🔥 FIX NAVEGACIÓN: parentContext inyectado. Adiós a los errores de "unmounted context".
-// 🔥 FIX RUTAS: Se añadió 'pending_approval' a la lista blanca para permitir abrir invitaciones privadas.
+// 🔥 FIX RUTAS: Se añadió 'pending_approval' y 'reprogramming' a la lista blanca para invitaciones privadas.
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
 // 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador.
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
@@ -186,8 +186,8 @@ class NotificationLogic {
         final data = doc.data()!;
         final status = data['status'];
 
-        // 🔥 LÓGICA INVERTIDA ESTRICTA: Permitimos 'pending', 'pendiente' y 'pending_approval'
-        if (status == 'pending' || status == 'pendiente' || status == 'pending_approval') {
+        // 🔥 LÓGICA INVERTIDA ESTRICTA: Permitimos 'pending', 'pendiente', 'pending_approval' y 'reprogramming'
+        if (status == 'pending' || status == 'pendiente' || status == 'pending_approval' || status == 'reprogramming') {
           if (type == 'invitacion_cita') {
             Navigator.push(parentContext, MaterialPageRoute(builder: (_) => NuevaCitaSolicitudScreen(citaId: citaId)));
           } else if (type == 'repro_request') {
@@ -195,7 +195,7 @@ class NotificationLogic {
           }
         } else if (status == 'matched') {
           // 🔥 Si ya la aceptaste por otro lado, te avisamos amablemente
-          _mostrarBurbuja(parentContext, "Ya aceptaste esta cita. Búscala en tu agenda.", Colors.orangeAccent, Icons.event_available_rounded);
+          _mostrarBurbuja(parentContext, "✅ Ya aceptaste esta cita. Búscala en tu agenda.", Colors.orangeAccent, Icons.event_available_rounded);
           HomeShell.go(parentContext, index: 1);
         } else {
           // Si es cualquier otra cosa (cancelada, expirada, etc.)

@@ -2,7 +2,7 @@
 // ✅ PANTALLA DE CANCELACIÓN BLINDADA (LÓGICA DE BLOQUEO + NOTIFICACIÓN ALERTA)
 // 🔥 LOGIC: -20 Puntos, Strike +1, Bloqueo (x5 días), Racha 0.
 // 🔥 NOTIF: Envía alerta roja al otro usuario con fecha y lugar.
-// 🔒 FIX: Botón "Reprogramar" se bloquea si faltan menos de 12h + Burbuja de Alerta.
+// 🔒 FIX: Parseo de Fecha y Hora exacto para que el bloqueo de 12h sea milimétrico.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -59,7 +59,7 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
   // ===========================================================================
 
   bool _isLoading = false;
-  DateTime? _citaDateTime; // Variable para almacenar la fecha y calcular las 12h
+  DateTime? _citaDateTime; // Variable para almacenar la fecha y hora exactas
 
   @override
   void initState() {
@@ -67,22 +67,45 @@ class _CancelarCitaScreenState extends State<CancelarCitaScreen> {
     _fetchCitaDate();
   }
 
-  // 🔥 Carga la fecha de la cita para validar la regla de las 12 horas
+  // 🔥 Carga la fecha y hora de la cita para validar la regla de las 12 horas milimétricamente
   Future<void> _fetchCitaDate() async {
     try {
       final doc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
       if (doc.exists && mounted) {
         final data = doc.data()!;
         final fechaStr = data['fecha'] as String? ?? '';
+        final horaStr = data['hora'] as String? ?? ''; // 🔥 Extraemos la hora
 
-        // Parseo simple DD/MM/YYYY (ajustar según formato real en DB)
+        // Parseo de Fecha DD/MM/YYYY
         final partes = fechaStr.trim().split(RegExp(r'[/ -]'));
         if (partes.length >= 3) {
-          final dt = DateTime(
-            int.parse(partes[2]), // Año
-            int.parse(partes[1]), // Mes
-            int.parse(partes[0]), // Día
-          );
+          int d = int.parse(partes[0]);
+          int m = int.parse(partes[1]);
+          int y = int.parse(partes[2]);
+
+          int hh = 0;
+          int mm = 0;
+
+          // 🔥 Parseo de Hora Exacto (Soporta AM/PM a 24h)
+          if (horaStr.isNotEmpty) {
+            try {
+              String rawHora = horaStr.toUpperCase().replaceAll('.', '').trim();
+              bool esPM = rawHora.contains("PM");
+              final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+              if (tP.isNotEmpty) {
+                hh = int.parse(tP[0]);
+                if (tP.length > 1) {
+                  mm = int.parse(tP[1]);
+                }
+                if (esPM && hh != 12) hh += 12;
+                else if (!esPM && hh == 12) hh = 0;
+              }
+            } catch (e) {
+              debugPrint("Error parseando hora en cancelación: $e");
+            }
+          }
+
+          final dt = DateTime(y, m, d, hh, mm); // 🔥 DateTime ahora tiene Hora y Minuto reales
           setState(() {
             _citaDateTime = dt;
           });

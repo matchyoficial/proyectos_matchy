@@ -1,5 +1,6 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
-// ✅ PANTALLA REPROGRAMAR BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ PANTALLA REPROGRAMAR BLINDADA (ESTRATEGIA ADAPTATIVA + SMART CACHE PRO)
+// 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la foto del banner del lugar.
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables protegidos.
 // 🔥 UI: Bloques informativos (Yellow/Red) intactos.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
@@ -12,6 +13,7 @@ import 'package:flutter/cupertino.dart'; // 🔥 Para los rodillos modernos
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
@@ -371,9 +373,18 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
+                          // 🔥 FOTO LUGAR CON SMART CACHE
                           lugarFoto.isNotEmpty
-                              ? Image.network(lugarFoto, fit: BoxFit.cover)
+                              ? CachedNetworkImage(
+                            key: ValueKey(lugarFoto),
+                            imageUrl: lugarFoto,
+                            fit: BoxFit.cover,
+                            memCacheHeight: (kCardHeight * 3).toInt(),
+                            placeholder: (context, url) => Container(color: Colors.black26),
+                            errorWidget: (context, url, error) => Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
+                          )
                               : Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover),
+                          // GRADIENTE OSCURO
                           Container(
                             decoration: BoxDecoration(
                               gradient: LinearGradient(

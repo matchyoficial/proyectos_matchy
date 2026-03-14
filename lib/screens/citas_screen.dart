@@ -507,7 +507,10 @@ class _CitaCard extends StatelessWidget {
 
     bool esAcuerdo = item.tengoPropuestaAcuerdo || item.tengoSolicitudAcuerdo;
 
-    if (item.esUrgente && !esAcuerdo) {
+    // 🔥 FIX: Blindaje para que "Próximas Citas" confirmadas no tengan etiquetas infiltradas.
+    if (item.status == 'matched' && !item.esUrgente && !esAcuerdo) {
+      mostrarOverlay = false;
+    } else if (item.esUrgente && !esAcuerdo) {
       mostrarOverlay = true; textoBoton = "SIN CONFIRMAR";
       colorFondoEtiqueta = const Color(0xFFFF5252); bordeCard = const Color(0xFFFF5252);
     } else if (esAcuerdo) {
@@ -519,10 +522,10 @@ class _CitaCard extends StatelessWidget {
       colorFondoEtiqueta = Colors.purpleAccent; bordeCard = Colors.purpleAccent;
     } else if (item.status == 'pending_approval') {
       mostrarOverlay = true;
-      if (item.isOwner) { textoBoton = "ENVIADA"; colorFondoEtiqueta = Colors.grey; }
+      if (item.isOwner) { textoBoton = "EN ESPERA"; colorFondoEtiqueta = Colors.grey; }
       else { textoBoton = "POR ACEPTAR"; colorFondoEtiqueta = const Color(0xFF00E676); }
     } else if (item.reproByUid == myUid && !item.isOwner) {
-      mostrarOverlay = true; textoBoton = "ENVIADA"; colorFondoEtiqueta = Colors.grey;
+      mostrarOverlay = true; textoBoton = "EN ESPERA"; colorFondoEtiqueta = Colors.grey;
     } else if (item.status == 'reprogramming' && item.reproByUid != myUid) {
       mostrarOverlay = true; textoBoton = "RESPONDER"; colorFondoEtiqueta = const Color(0xFF00E676);
     }
