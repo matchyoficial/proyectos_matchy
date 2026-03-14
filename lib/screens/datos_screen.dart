@@ -3,6 +3,8 @@
 // 🔥 FIX DEFINITIVO: Las fotos se suben y se guardan en Firebase apenas se recortan.
 // 🔥 PERFIL: Al reordenar y poner una foto en el slot 0, se actualiza el perfil en Firestore de inmediato.
 // 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y burbujas de notificación.
+// 🚀 NEW: Chips dinámicos de cantidad de hijos (👧/👦) y sección de Signos Zodiacales (♈-♓).
+// 🚀 UPDATE: Cambio de '🛶 Kayak' por '🌇 Atardeceres' junto a '☀️ Amaneceres'.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -325,7 +327,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     );
   }
 
-  // 🔥 LOGICA DE SUBIDA INMEDIATA TRAS EL RECORTE
   Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
     try {
       final XFile? file = await _picker.pickImage(source: source, imageQuality: 85);
@@ -336,14 +337,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         );
 
         if (result != null && result is String) {
-          setState(() => _saving = true); // Indicador visual de que estamos subiendo
-
-          // 1. Subimos inmediatamente a Storage
+          setState(() => _saving = true);
           final fireUrl = await _uploadSinglePhotoToStorage(result);
           if (fireUrl != null) {
-            // 2. Agregamos al estado local
             ctrl.addFoto(fireUrl);
-            // 3. Guardamos en Firestore de inmediato
             final updatedList = _buildDisplayFotos(ref.read(profileFormProvider));
             await _updatePhotosInFirestore(updatedList);
           }
@@ -353,7 +350,82 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     } catch (e) { debugPrint("Error al seleccionar foto: $e"); }
   }
 
-  // 🛡️ UI FOTOS BLINDADA
+  // 🔥 LÓGICA DINÁMICA DE CHIPS DE HIJOS
+  String _obtenerTextoChipDinamico(String base, List<String> seleccionActual) {
+    if (base == '👧 Tengo hija') {
+      final found = seleccionActual.where((e) => e.startsWith('👧')).toList();
+      return found.isNotEmpty ? found.first : base;
+    }
+    if (base == '👦 Tengo hijo') {
+      final found = seleccionActual.where((e) => e.startsWith('👦')).toList();
+      return found.isNotEmpty ? found.first : base;
+    }
+    return base;
+  }
+
+  Future<void> _seleccionarCantidadHijos(BuildContext context, String baseOption, ProfileFormController ctrl, List<String> seleccionActual) async {
+    final isNina = baseOption.contains('👧');
+    final baseEmoji = isNina ? '👧' : '👦';
+    final baseTextSingular = isNina ? 'hija' : 'hijo';
+    final baseTextPlural = isNina ? 'hijas' : 'hijos';
+
+    String? currentSelected;
+    for (var s in seleccionActual) {
+      if (s.startsWith(baseEmoji)) {
+        currentSelected = s;
+        break;
+      }
+    }
+
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20))),
+            const SizedBox(height: 14),
+            Text('¿Cuántos $baseTextPlural tienes?', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(5, (index) {
+                final num = index + 1;
+                return GestureDetector(
+                  onTap: () => Navigator.pop(context, num),
+                  child: Container(
+                    width: 50, height: 50,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(color: Color(0xFFBEB3FF), shape: BoxShape.circle),
+                    child: Text('$num', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 18)),
+                  ),
+                );
+              }),
+            ),
+            const SizedBox(height: 24),
+            if (currentSelected != null)
+              TextButton(
+                onPressed: () => Navigator.pop(context, 0), // 0 indica remover
+                child: const Text('Quitar selección', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      if (currentSelected != null) ctrl.toggleSobreMi(currentSelected); // Remueve el anterior
+      if (result > 0) {
+        final newText = '$baseEmoji Tengo $result ${result == 1 ? baseTextSingular : baseTextPlural}';
+        ctrl.toggleSobreMi(newText); // Agrega el nuevo
+      }
+    }
+  }
+
   Widget _buildFotoReorderArea({required BuildContext context, required ProfileFormState state, required ProfileFormController ctrl}) {
     final displayFotos = _buildDisplayFotos(state);
 
@@ -432,11 +504,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         final item = current.removeAt(from);
         current.insert(index, item);
         ctrl.setFotos(current);
-
-        // 🔥 Si la foto arrastrada llega al primer puesto, actualizamos Firestore AL INSTANTE
-        if (index == 0 || from == 0) {
-          await _updatePhotosInFirestore(current);
-        }
+        if (index == 0 || from == 0) await _updatePhotosInFirestore(current);
       },
       builder: (context, _, __) => LongPressDraggable<int>(
         data: index,
@@ -446,7 +514,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
           final current = List<String>.from(displayFotos);
           current.removeAt(index);
           ctrl.setFotos(current);
-          await _updatePhotosInFirestore(current); // Sincronizar borrado
+          await _updatePhotosInFirestore(current);
         }),
       ),
     );
@@ -466,9 +534,18 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final String? paisSafe = paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
     final String? ciudadSafe = ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
 
-    const List<List<String>> sobreMiOpciones = [['💬 Soltero', '❤️ En una relación'], ['👶 Con hijo', '🙅‍♂️ Sin hijo'], ['🚬 Fumo', '🚭 No fumo'], ['🍷 Tomo', '🚫 No tomo'], ['🐶 Perros', '🐱 Gatos']];
+    const List<List<String>> sobreMiOpciones = [
+      ['💬 Soltero', '❤️ En una relación'],
+      ['👶 Con hijo', '🙅‍♂️ Sin hijo'],
+      ['👧 Tengo hija', '👦 Tengo hijo'], // 🔥 NUEVOS CHIPS DINÁMICOS
+      ['🚬 Fumo', '🚭 No fumo'],
+      ['🍷 Tomo', '🚫 No tomo'],
+      ['🐶 Perros', '🐱 Gatos']
+    ];
+
     const List<String> buscoOpciones = ['💞 Relación estable', '🎉 Citas divertidas', '💬 Conversación', '👫 Amistad', '🌍 Conocer gente nueva', '🔥 Aventura', '💍 Pareja a largo plazo', '👀 Algo casual', '🎶 Compartir gustos', '✈️ Viajar juntos'];
-    const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','🛶 Kayak','💌 Escritura','📷 Selfies','🌙 Noche','☀️ Amaneceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
+    const List<String> signosOpciones = ['♈ Aries', '♉ Tauro', '♊ Géminis', '♋ Cáncer', '♌ Leo', '♍ Virgo', '♎ Libra', '♏ Escorpio', '♐ Sagitario', '♑ Capricornio', '♒ Acuario', '♓ Piscis']; // 🔥 NUEVA LISTA ZODIACAL
+    const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','💌 Escritura','📷 Selfies','🌙 Noche','☀️ Amaneceres','🌇 Atardeceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
 
     if (_isLoadingCloudData) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))));
 
@@ -491,19 +568,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 24),
                       _buildTextField(label: 'Nombre *', controller: _nombreCtrl, showError: _mostrarErrores && !_nombreOk(state)),
                       const SizedBox(height: 14),
-
-                      // 🔥 CAMPO EDAD Y TEXTO DE ADVERTENCIA OBLIGATORIA
                       _buildTextField(label: 'Edad *', controller: _edadCtrl, keyboardType: TextInputType.number, showError: _mostrarErrores && !_edadOk(state)),
                       const SizedBox(height: 6),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                            'Debes ser mayor de edad (18 años o más) para usar Matchy.',
-                            style: TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic)
-                        ),
+                        child: Text('Debes ser mayor de edad (18 años o más) para usar Matchy.', style: TextStyle(color: Colors.white54, fontSize: 11, fontStyle: FontStyle.italic)),
                       ),
                       const SizedBox(height: 14),
-
                       _buildTextField(label: 'Profesión', controller: _profesionCtrl),
                       const SizedBox(height: 14),
                       _buildTextField(label: 'Biografía', controller: _biografiaCtrl, maxLines: 4),
@@ -532,29 +603,56 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 24),
                       Text('SOBRE MÍ', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 10),
+
+                      // 🔥 RENDERIZADO DINÁMICO "SOBRE MÍ"
                       Column(
-                        children: sobreMiOpciones.map((grupo) => Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: grupo.map((opcion) { final sel = state.sobreMiSeleccion.contains(opcion); return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: GestureDetector(onTap: _saving ? null : () => ctrl.toggleSobreMi(opcion), child: Container(padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)), child: Text(opcion, textAlign: TextAlign.center, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 13, fontWeight: FontWeight.w600)))))); }).toList()))).toList(),
+                        children: sobreMiOpciones.map((grupo) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(children: grupo.map((opcion) {
+                              final textoMostrar = (opcion == '👧 Tengo hija' || opcion == '👦 Tengo hijo') ? _obtenerTextoChipDinamico(opcion, state.sobreMiSeleccion) : opcion;
+                              final sel = state.sobreMiSeleccion.contains(textoMostrar);
+                              return Expanded(
+                                  child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                                      child: GestureDetector(
+                                          onTap: _saving ? null : () {
+                                            if (opcion == '👧 Tengo hija' || opcion == '👦 Tengo hijo') {
+                                              _seleccionarCantidadHijos(context, opcion, ctrl, state.sobreMiSeleccion);
+                                            } else {
+                                              ctrl.toggleSobreMi(opcion);
+                                            }
+                                          },
+                                          child: Container(
+                                              padding: const EdgeInsets.symmetric(vertical: 12),
+                                              decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)),
+                                              child: Text(textoMostrar, textAlign: TextAlign.center, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 13, fontWeight: FontWeight.w600))
+                                          )
+                                      )
+                                  )
+                              );
+                            }).toList())
+                        )).toList(),
                       ),
+
                       const SizedBox(height: 45),
                       _SeccionBotonesChipsSimetricos(titulo: 'BUSCO...', opciones: buscoOpciones, seleccionActual: state.buscoSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleBusco(op)),
                       const SizedBox(height: 45),
+
+                      // 🔥 NUEVA SECCIÓN: SIGNO ZODIACAL
+                      _SeccionBotonesChipsSimetricos(titulo: 'SIGNO ZODIACAL', opciones: signosOpciones, seleccionActual: state.sobreMiSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleSobreMi(op)),
+                      const SizedBox(height: 45),
+
                       _SeccionBotonesChipsSimetricos(titulo: 'INTERESES Y HOBBIES', opciones: interesesOpciones, seleccionActual: state.interesesSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleInteres(op)),
                       const SizedBox(height: 40),
 
-                      // 🔥 BOTON GUARDAR PERFIL (CON LÓGICA DE BURBUJAS DE ERROR)
                       GestureDetector(
                         onTap: _saving ? null : () async {
                           if (_formularioValido(ref.read(profileFormProvider))) {
                             setState(() => _saving = true);
                             try {
-                              // 🔥 Sincronizamos textos y chips (Las fotos ya se subieron en vivo)
                               await _syncProfileToFirestore(ref.read(profileFormProvider));
                               await ctrl.saveDraft(); await ctrl.publishProfile(); await ctrl.setOnboardingCompleted(true);
-
-                              // Limpiamos cache para que el Panel cargue la foto nueva de perfil sí o sí
-                              PaintingBinding.instance.imageCache.clear();
-                              PaintingBinding.instance.imageCache.clearLiveImages();
-
+                              PaintingBinding.instance.imageCache.clear(); PaintingBinding.instance.imageCache.clearLiveImages();
                               if (!mounted) return;
                               Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (route) => false);
                             } catch (e) {
@@ -563,11 +661,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                             finally { if (mounted) setState(() => _saving = false); }
                           } else {
                             setState(() => _mostrarErrores = true);
-
-                            // Validar específicamente si es por culpa de la edad para mostrar un mensaje exacto
                             final edadStr = ref.read(profileFormProvider).edad.trim();
                             final edadInt = int.tryParse(edadStr);
-
                             if (edadStr.isNotEmpty && edadInt != null && edadInt < 18) {
                               _mostrarBurbuja("Acceso denegado: Debes tener al menos 18 años para usar Matchy.", const Color(0xFFFF5252), Icons.block_flipped);
                             } else {
