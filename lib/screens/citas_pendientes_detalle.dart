@@ -3,7 +3,8 @@
 // 🔥 FIX ERROR: kGoldBtn1 ahora es visible para todos los widgets.
 // 🔥 UI: Título centrado, Reloj Neón estilo "Sin Bloqueo", Sombras Premium.
 // 🔥 UI: Cápsula adaptable, Letrero de "Aún no hay postulados" incluido.
-// 🔥 LOGIC: 100% Intacta.
+// 🚀 NEW LOGIC: Spinner aislado (Solo carga el candidato seleccionado).
+// 🚀 NEW UI: Efecto "¡ES TU MATCHY!" inyectado en la foto al seleccionar.
 // 🎫 STATUS: Destino oficial de Notificaciones Golden Ticket.
 // 🧹 FIX: Limpieza automática de notificaciones al hacer Matchy.
 // 🛠️ FIX FECHA: Cálculo dinámico del día de la semana para evitar "Jueves" fijo.
@@ -113,7 +114,9 @@ class CitasPendientesDetalleScreen extends ConsumerStatefulWidget {
 
 class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDetalleScreen> with SingleTickerProviderStateMixin {
 
-  bool _busy = false;
+  // 🔥 NUEVA VARIABLE: En vez de un booleano global, guardamos quién fue seleccionado
+  String? _candidatoSeleccionadoId;
+
   _CitaFS? _cita;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _candidatosStreamCache;
 
@@ -188,7 +191,10 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
   }
 
   Future<void> _hacerMatchyFlow({required _CandidatoFS c, required _CitaFS cita}) async {
-    if (_busy) return; setState(() => _busy = true);
+    if (_candidatoSeleccionadoId != null) return; // Prevenir doble toque
+
+    setState(() => _candidatoSeleccionadoId = c.uid); // 🔥 Activamos el spinner solo en este candidato
+
     final user = FirebaseAuth.instance.currentUser; if (user == null) return;
     final db = FirebaseFirestore.instance;
 
@@ -217,7 +223,6 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
       });
 
       // 🔥 FIX: LIMPIEZA AUTOMÁTICA DE NOTIFICACIONES (Golden Tickets)
-      // Buscamos si hay notificaciones pendientes sobre esta cita y las borramos
       try {
         final notifsSnap = await db.collection(kUsersCollection).doc(user.uid)
             .collection('notifications')
@@ -232,6 +237,10 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
       }
 
       if (!mounted) return;
+
+      // Pequeño delay opcional para que el usuario disfrute el letrero "Es tu matchy" un segundito más
+      await Future.delayed(const Duration(milliseconds: 600));
+
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => MatchScreen(
           candidatoId: cFull.uid, candidatoNombre: cFull.nombre, candidatoEdad: cFull.edad, candidatoFotoAsset: cFull.foto,
           citaId: cita.docId, lugarNombre: cita.nombreLugar, lugarFoto: cita.fotoLugar, soyElOwner: true
@@ -239,7 +248,9 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
 
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    } finally { if (mounted) setState(() => _busy = false); }
+    } finally {
+      if (mounted) setState(() => _candidatoSeleccionadoId = null);
+    }
   }
 
   // POPUP INFO
@@ -369,7 +380,20 @@ class _CitasPendientesDetalleScreenState extends ConsumerState<CitasPendientesDe
                                   physics: const NeverScrollableScrollPhysics(),
                                   itemCount: list.length,
                                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.72, crossAxisSpacing: 12, mainAxisSpacing: 12),
-                                  itemBuilder: (_, i) => _CardCandidatoGoldPremium(c: list[i], busy: _busy, pulseAnimation: _pulseAnimation, onTapPerfil: (uid) => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: uid))), onMatch: (c) => _hacerMatchyFlow(c: c, cita: _cita!)),
+                                  itemBuilder: (_, i) {
+                                    final candidato = list[i];
+                                    final bool isSelected = _candidatoSeleccionadoId == candidato.uid;
+                                    final bool isAnyBusy = _candidatoSeleccionadoId != null;
+
+                                    return _CardCandidatoGoldPremium(
+                                        c: candidato,
+                                        isSelected: isSelected,
+                                        isAnyBusy: isAnyBusy,
+                                        pulseAnimation: _pulseAnimation,
+                                        onTapPerfil: (uid) => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: uid))),
+                                        onMatch: (c) => _hacerMatchyFlow(c: c, cita: _cita!)
+                                    );
+                                  },
                                 );
                               },
                             ),
@@ -534,11 +558,99 @@ class _CapsulaTitulo extends StatelessWidget {
   }
 }
 
+// 🔥 WIDGET ACTUALIZADO CON LÓGICA DE "EL ELEGIDO" Y OVERLAY FESTIVO
 class _CardCandidatoGoldPremium extends StatelessWidget {
-  final _CandidatoFS c; final bool busy; final Animation<double> pulseAnimation; final Function(String) onTapPerfil; final Function(_CandidatoFS) onMatch;
-  const _CardCandidatoGoldPremium({required this.c, required this.busy, required this.pulseAnimation, required this.onTapPerfil, required this.onMatch});
+  final _CandidatoFS c;
+  final bool isSelected;
+  final bool isAnyBusy;
+  final Animation<double> pulseAnimation;
+  final Function(String) onTapPerfil;
+  final Function(_CandidatoFS) onMatch;
+
+  const _CardCandidatoGoldPremium({
+    required this.c,
+    required this.isSelected,
+    required this.isAnyBusy,
+    required this.pulseAnimation,
+    required this.onTapPerfil,
+    required this.onMatch
+  });
+
   @override Widget build(BuildContext context) {
-    return Column(children: [Expanded(child: GestureDetector(onTap: () => onTapPerfil(c.uid), child: Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(kAvatarRadius), color: Colors.black, boxShadow: kPremiumBoxShadow), child: ClipRRect(borderRadius: BorderRadius.circular(kAvatarRadius), child: Stack(fit: StackFit.expand, children: [FotoPerfilUsuario(uid: c.uid, fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))), Positioned(bottom: 8, left: 5, right: 5, child: Text("${c.nombre}, ${c.edad}", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 2)])))]))))), const SizedBox(height: 8), ScaleTransition(scale: pulseAnimation, child: GestureDetector(onTap: busy ? null : () => onMatch(c), child: Container(width: double.infinity, height: 35, decoration: BoxDecoration(gradient: LinearGradient(colors: kBtnGoldGradient), borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: kGoldBtn1, blurRadius: 6, offset: Offset(0, 2))]), alignment: Alignment.center, child: busy ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black)) : const Text("HACER MATCHY", style: TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w900)))))]);
+    return Column(
+        children: [
+          Expanded(
+              child: GestureDetector(
+                  onTap: () => onTapPerfil(c.uid),
+                  child: Container(
+                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(kAvatarRadius), color: Colors.black, boxShadow: kPremiumBoxShadow),
+                      child: ClipRRect(
+                          borderRadius: BorderRadius.circular(kAvatarRadius),
+                          child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                FotoPerfilUsuario(uid: c.uid, fit: BoxFit.cover),
+                                Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))),
+                                Positioned(bottom: 8, left: 5, right: 5, child: Text("${c.nombre}, ${c.edad}", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 2)]))),
+
+                                // 🔥 OVERLAY MÁGICO "¡ES TU MATCHY!"
+                                if (isSelected)
+                                  Container(
+                                    color: Colors.black.withOpacity(0.65), // Oscurece la foto
+                                    child: Center(
+                                      child: Transform.rotate(
+                                        angle: -0.15, // Inclinación fiestera
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                          decoration: BoxDecoration(
+                                            color: kNeonGreen, // Neónazo
+                                            borderRadius: BorderRadius.circular(12),
+                                            boxShadow: kNeonGlowShadow,
+                                            border: Border.all(color: Colors.white, width: 2),
+                                          ),
+                                          child: const Text(
+                                            "¡ES TU\nMATCHY!",
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                                color: Colors.black,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w900,
+                                                height: 1.1
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ]
+                          )
+                      )
+                  )
+              )
+          ),
+          const SizedBox(height: 8),
+          ScaleTransition(
+              scale: pulseAnimation,
+              child: GestureDetector(
+                  onTap: isAnyBusy ? null : () => onMatch(c),
+                  child: Container(
+                      width: double.infinity,
+                      height: 35,
+                      // 🔥 Si otro está cargando, este botón se pone gris. Si este está cargando, mantiene su oro.
+                      decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: isAnyBusy && !isSelected ? [Colors.grey.shade800, Colors.grey.shade900] : kBtnGoldGradient),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: isAnyBusy && !isSelected ? [] : [BoxShadow(color: kGoldBtn1, blurRadius: 6, offset: const Offset(0, 2))]
+                      ),
+                      alignment: Alignment.center,
+                      child: isSelected
+                          ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                          : Text("HACER MATCHY", style: TextStyle(color: isAnyBusy && !isSelected ? Colors.white54 : Colors.black, fontSize: 10, fontWeight: FontWeight.w900))
+                  )
+              )
+          )
+        ]
+    );
   }
 }
 
