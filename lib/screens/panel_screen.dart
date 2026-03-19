@@ -8,8 +8,10 @@
 // 🔥 ADD: Nueva tarjeta "GUÍA RÁPIDA DE REPORTE" con iconos personalizados.
 // 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador.
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
+// 💰 ADD: BANNER DE PUBLICIDAD (Llamado a Widget Independiente).
 
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,6 +24,7 @@ import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
+import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT INYECTADO AQUÍ
 
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
@@ -659,6 +662,11 @@ class _PanelContent extends StatelessWidget {
             ]),
           ]),
         ),
+
+        const SizedBox(height: 16),
+        // 🔥 WIDGET PUBLICITARIO INYECTADO AQUÍ
+        const BannerPublicidad(),
+
         const SizedBox(height: 40),
       ],
     );
