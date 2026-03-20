@@ -4,6 +4,8 @@
 // 🔥 FIX: Se aplica 'ref.invalidate' para borrar la memoria RAM al cerrar sesión.
 // 🔥 FIX: Se usa 'disconnect' en Google para forzar la elección de cuenta.
 // 🔥 CACHÉ PRO: CachedNetworkImage aplicado a las fotos 2, 3, 4 y 5 de la galería.
+// 🌍 UPDATE: Lógica inteligente de ubicación en la foto principal (Extranjero/Nómada/Local).
+// 🛠️ FIX: Chips de raíces integrados a "Sobre Mí" y botones de carga (spinners) independientes.
 
 import 'dart:io';
 
@@ -46,7 +48,9 @@ class PerfilScreen extends ConsumerStatefulWidget {
 
 class _PerfilScreenState extends ConsumerState<PerfilScreen> {
   bool _bootstrapped = false;
-  bool _busy = false;
+
+  // ✅ FIX: Control individual para los botones en vez de un bool general
+  String? _activeAction;
 
   static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
   static const String _kProfilePublishedKey = 'matchy_profile_published_v1';
@@ -78,9 +82,10 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     );
   }
 
-  Future<void> _logout() async {
-    if (_busy) return;
-    setState(() => _busy = true);
+  // ✅ FIX: Método centralizado para manejar logout sin chocar con otros botones
+  Future<void> _logoutCore(String actionStr) async {
+    if (_activeAction != null) return;
+    setState(() => _activeAction = actionStr);
     try {
       // 1. 🔥 LOBOTOMÍA DE MEMORIA: Borramos la caché de Riverpod
       ref.invalidate(profileFormProvider);
@@ -89,7 +94,6 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
       try {
         await GoogleSignIn().disconnect();
       } catch (_) {
-        // Si no estaba conectado con Google, ignoramos el error
         await GoogleSignIn().signOut();
       }
 
@@ -100,7 +104,6 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
       await prefs.remove(_kProfilePublishedKey);
       await prefs.remove(_kOnboardingCompletedKey);
 
-      // Limpieza adicional (aunque invalidate ya lo hizo)
       await ref.read(profileFormProvider.notifier).clearDraft();
 
       if (!mounted) return;
@@ -108,20 +111,23 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error: $e')));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _activeAction = null);
     }
   }
 
+  Future<void> _logout() async => _logoutCore('logout');
+
   Future<void> _deleteProfile() async {
-    if (_busy) return;
+    if (_activeAction != null) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) { if (!mounted) return; _goSplash(); return; }
-    setState(() => _busy = true);
-    _logout();
+    // Dejamos que _logoutCore maneje el estado de carga con su propio ID
+    await _logoutCore('delete');
   }
 
   // 🔥 DIÁLOGO DE CONTACTO (CON MANEJO DE ERRORES)
   void _mostrarDialogoContacto() {
+    if (_activeAction != null) return;
     showDialog(
       context: context,
       builder: (context) => _ContactDialog(
@@ -130,7 +136,6 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
           if (user == null || mensaje.trim().isEmpty) return;
 
           try {
-            // Guardamos en Firebase (Esto disparará la extensión de email luego)
             await FirebaseFirestore.instance.collection('buzon_soporte').add({
               'uid': user.uid,
               'email_usuario': user.email ?? 'Sin email',
@@ -149,14 +154,13 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
               );
             }
           } catch (e) {
-            // Si falla, mostramos error y relanzamos para que el diálogo sepa
             debugPrint("Error enviando soporte: $e");
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text("Error al enviar: $e"), backgroundColor: Colors.red),
               );
             }
-            rethrow; // Importante para detener el spinner en el diálogo
+            rethrow;
           }
         },
       ),
@@ -190,7 +194,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
             scrollContent: _PerfilContent(
               textTheme: textTheme,
               state: state,
-              busy: _busy,
+              activeAction: _activeAction, // Pasamos la acción activa
               onLogout: _logout,
               onDeleteProfile: _deleteProfile,
               onContact: _mostrarDialogoContacto,
@@ -224,7 +228,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
 class _PerfilContent extends StatelessWidget {
   final TextTheme textTheme;
   final ProfileFormState state;
-  final bool busy;
+  final String? activeAction; // Recibe la acción activa
   final Future<void> Function() onLogout;
   final Future<void> Function() onDeleteProfile;
   final VoidCallback onContact;
@@ -232,7 +236,7 @@ class _PerfilContent extends StatelessWidget {
   const _PerfilContent({
     required this.textTheme,
     required this.state,
-    required this.busy,
+    required this.activeAction,
     required this.onLogout,
     required this.onDeleteProfile,
     required this.onContact,
@@ -240,7 +244,17 @@ class _PerfilContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sobreMi = [if (state.estatura.trim().isNotEmpty) '📏 ${state.estatura.trim()}', ...state.sobreMiSeleccion];
+    final paisOrigen = (state.paisOrigen ?? '').trim();
+    final ciudadOrigen = (state.ciudadOrigen ?? '').trim();
+
+    // 🚀 CHIPS CON ORÍGENES REINTEGRADOS
+    final sobreMi = [
+      if (state.estatura.trim().isNotEmpty) '📏 ${state.estatura.trim()}',
+      if (paisOrigen.isNotEmpty) '🌍 País de origen: $paisOrigen',
+      if (ciudadOrigen.isNotEmpty) '🏙️ Ciudad de origen: $ciudadOrigen',
+      ...state.sobreMiSeleccion
+    ];
+
     final busco = List<String>.from(state.buscoSeleccion);
     final intereses = List<String>.from(state.interesesSeleccion);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -260,6 +274,7 @@ class _PerfilContent extends StatelessWidget {
         const SizedBox(height: 6),
 
         _CardTexto(titulo: 'Biografía', texto: state.biografia.isEmpty ? 'Aún no has escrito tu biografía.' : state.biografia, textTheme: textTheme),
+
         if (sobreMi.isNotEmpty) _CardChips(titulo: 'Sobre mí', items: sobreMi, textTheme: textTheme),
 
         if (state.photoUrls.length >= 2 || state.fotosCargadas.length >= 2)
@@ -283,29 +298,28 @@ class _PerfilContent extends StatelessWidget {
 
         const SizedBox(height: 25),
 
-        // 🔥 NUEVO BOTÓN: EDITAR PERFIL
+        // 🔥 BOTONES CON SPINNERS INDEPENDIENTES
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _PremiumButton(
             text: 'EDITAR PERFIL',
             gradient: _PerfilScreenState.kBtnEditProfileGradient,
-            busy: busy,
+            busy: activeAction == 'edit',
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DatosScreen())),
             icon: Icons.edit_rounded,
           ),
         ),
 
-        const SizedBox(height: 35), // 🔥 SEPARACIÓN ESTRATÉGICA
+        const SizedBox(height: 35),
 
-        // BLOQUE DE PELIGRO Y SISTEMA
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _PremiumButton(
             text: 'CERRAR SESIÓN',
             gradient: _PerfilScreenState.kBtnLogoutGradient,
-            busy: busy,
+            busy: activeAction == 'logout',
             onTap: onLogout,
-            icon: Icons.logout_rounded, // Se añadió icono para homogeneizar el diseño
+            icon: Icons.logout_rounded,
           ),
         ),
         const SizedBox(height: 12),
@@ -314,20 +328,19 @@ class _PerfilContent extends StatelessWidget {
           child: _PremiumButton(
             text: 'BORRAR PERFIL',
             gradient: _PerfilScreenState.kBtnDeleteGradient,
-            busy: busy,
+            busy: activeAction == 'delete',
             onTap: onDeleteProfile,
-            icon: Icons.delete_forever_rounded, // Se añadió icono para homogeneizar el diseño
+            icon: Icons.delete_forever_rounded,
           ),
         ),
         const SizedBox(height: 12),
-        // BOTÓN CONTÁCTANOS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _PremiumButton(
             text: 'CONTÁCTANOS',
             gradient: _PerfilScreenState.kBtnSoporteGradient,
-            busy: busy,
-            onTap: () async { await Future.value(); onContact(); },
+            busy: false, // El diálogo tiene su propio loading
+            onTap: onContact,
             icon: Icons.support_agent_rounded,
           ),
         ),
@@ -397,15 +410,13 @@ class _ContactDialogState extends State<_ContactDialog> {
                 ),
                 Expanded(
                   child: GestureDetector(
-                    // 🔥 LÓGICA DE SEGURIDAD PARA QUE NO SE CUELGUE
                     onTap: _sending ? null : () async {
                       if (_ctrl.text.trim().isEmpty) return;
                       setState(() => _sending = true);
                       try {
                         await widget.onSend(_ctrl.text);
-                        if (mounted) Navigator.pop(context); // Éxito: Cierra
+                        if (mounted) Navigator.pop(context);
                       } catch (e) {
-                        // Error: Detiene carga y deja intentar de nuevo
                         if (mounted) setState(() => _sending = false);
                       }
                     },
@@ -436,11 +447,28 @@ class _ProfileOverlay extends StatelessWidget {
   final ProfileFormState state;
   final TextTheme textTheme;
   const _ProfileOverlay({required this.state, required this.textTheme});
+
   @override
   Widget build(BuildContext context) {
     final pais = (state.paisSeleccionado ?? '').trim();
     final ciudad = (state.ciudadSeleccionada ?? '').trim();
-    final ubicacion = (ciudad.isEmpty && pais.isEmpty) ? 'Sin ubicación' : '$ciudad - $pais';
+    final paisOrigen = (state.paisOrigen ?? '').trim();
+    final ciudadOrigen = (state.ciudadOrigen ?? '').trim();
+
+    String stringUbicacion = '';
+
+    if (ciudad.isEmpty && pais.isEmpty) {
+      stringUbicacion = 'Sin ubicación';
+    } else {
+      if (paisOrigen.isNotEmpty && pais.isNotEmpty && paisOrigen != pais) {
+        stringUbicacion = '🌍 De $paisOrigen, ahora en $ciudad - $pais';
+      } else if (ciudadOrigen.isNotEmpty && ciudad.isNotEmpty && ciudadOrigen != ciudad) {
+        stringUbicacion = '🏙️ De $ciudadOrigen, ahora en $ciudad - $pais';
+      } else {
+        stringUbicacion = '📍 $ciudad - $pais';
+      }
+    }
+
     return Stack(children: [
       Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)])))),
       Positioned(left: 30, bottom: 30, right: 30, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -448,7 +476,19 @@ class _ProfileOverlay extends StatelessWidget {
         const SizedBox(height: 4),
         FittedBox(fit: BoxFit.scaleDown, child: Text(state.profesion.isEmpty ? '—' : state.profesion, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontSize: 16, shadows: _PerfilScreenState.kTextShadow))),
         const SizedBox(height: 2),
-        Text(ubicacion, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontSize: 14, shadows: _PerfilScreenState.kTextShadow)),
+        // ✅ FIX: Obligado a maxLines: 1 para que NUNCA salte a un segundo renglón
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            stringUbicacion,
+            maxLines: 1,
+            style: textTheme.bodyMedium?.copyWith(
+                color: Colors.white,
+                fontSize: 14,
+                shadows: _PerfilScreenState.kTextShadow
+            ),
+          ),
+        ),
       ])),
     ]);
   }
@@ -471,6 +511,7 @@ class _CardTexto extends StatelessWidget {
 class _CardChips extends StatelessWidget {
   final String titulo; final List<String> items; final TextTheme textTheme;
   const _CardChips({required this.titulo, required this.items, required this.textTheme});
+
   List<List<String>> _buildRows(List<String> all) {
     const int maxShortLength = 14; final rows = <List<String>>[]; int i = 0;
     while (i < all.length) {

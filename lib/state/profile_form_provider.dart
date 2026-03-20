@@ -26,6 +26,10 @@
 // ✅ NUEVO (VITAL MATCH REAL):
 //    - genero obligatorio: 'hombre' | 'mujer' | 'otro' | 'no_decir'
 //    - preferenciaCitas: 'Hombres' | 'Mujeres' | 'Ambos'
+//
+// 🌍 NUEVO (2026): Integración nativa de "Mis Raíces" (paisOrigen y ciudadOrigen)
+//    - Estado global actualizado.
+//    - Hydrate y Sync adaptados para estas nuevas variables obligatorias.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -70,9 +74,13 @@ class ProfileFormState {
   final String detalle;
   final String estatura;
 
-  // País / ciudad
+  // País / ciudad (Residencia)
   final String? paisSeleccionado;
   final String? ciudadSeleccionada;
+
+  // 🌍 NUEVO: País / ciudad (Origen - Raíces)
+  final String? paisOrigen;
+  final String? ciudadOrigen;
 
   // ✅ NUEVO: Género obligatorio (canónico)
   final String genero; // '' si no seleccionado
@@ -109,6 +117,8 @@ class ProfileFormState {
     this.estatura = '',
     this.paisSeleccionado,
     this.ciudadSeleccionada,
+    this.paisOrigen,       // 🌍 Add Origens
+    this.ciudadOrigen,     // 🌍 Add Origens
     this.genero = '',
     this.preferenciaCitas = 'Ambos',
     this.sobreMiSeleccion = const [],
@@ -132,6 +142,8 @@ class ProfileFormState {
     String? estatura,
     String? paisSeleccionado,
     String? ciudadSeleccionada,
+    String? paisOrigen,    // 🌍 Add Origens
+    String? ciudadOrigen,  // 🌍 Add Origens
     String? genero,
     String? preferenciaCitas,
     List<String>? sobreMiSeleccion,
@@ -154,6 +166,8 @@ class ProfileFormState {
       estatura: estatura ?? this.estatura,
       paisSeleccionado: paisSeleccionado ?? this.paisSeleccionado,
       ciudadSeleccionada: ciudadSeleccionada ?? this.ciudadSeleccionada,
+      paisOrigen: paisOrigen ?? this.paisOrigen,       // 🌍 Assign Origens
+      ciudadOrigen: ciudadOrigen ?? this.ciudadOrigen, // 🌍 Assign Origens
       genero: genero ?? this.genero,
       preferenciaCitas: preferenciaCitas ?? this.preferenciaCitas,
       sobreMiSeleccion: sobreMiSeleccion ?? this.sobreMiSeleccion,
@@ -178,6 +192,8 @@ class ProfileFormState {
     'estatura': estatura,
     'paisSeleccionado': paisSeleccionado,
     'ciudadSeleccionada': ciudadSeleccionada,
+    'paisOrigen': paisOrigen,     // 🌍 Serialize Origens
+    'ciudadOrigen': ciudadOrigen, // 🌍 Serialize Origens
     'genero': genero,
     'preferenciaCitas': preferenciaCitas,
     'sobreMiSeleccion': sobreMiSeleccion,
@@ -217,6 +233,8 @@ class ProfileFormState {
       estatura: (json['estatura'] ?? '').toString(),
       paisSeleccionado: json['paisSeleccionado'] as String?,
       ciudadSeleccionada: json['ciudadSeleccionada'] as String?,
+      paisOrigen: json['paisOrigen'] as String?,       // 🌍 Deserialize Origens
+      ciudadOrigen: json['ciudadOrigen'] as String?,   // 🌍 Deserialize Origens
       genero: generoRaw,
       preferenciaCitas: prefRaw.isEmpty ? 'Ambos' : prefRaw,
       sobreMiSeleccion: safeList(json['sobreMiSeleccion']),
@@ -333,6 +351,18 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
   void setCiudad(String? ciudad) =>
       state = state.copyWith(ciudadSeleccionada: ciudad, error: null);
 
+  // 🌍 NUEVO: Setters para Origen
+  void setPaisOrigen(String? pais) {
+    state = state.copyWith(
+      paisOrigen: pais,
+      ciudadOrigen: null, // Resetear ciudad si cambia el país
+      error: null,
+    );
+  }
+
+  void setCiudadOrigen(String? ciudad) =>
+      state = state.copyWith(ciudadOrigen: ciudad, error: null);
+
   // ===========================================================
   // ✅ NUEVO: género obligatorio + preferencia citas
   // ===========================================================
@@ -415,6 +445,11 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     final nombreOk = state.nombre.trim().isNotEmpty;
     final edadInt = int.tryParse(state.edad.trim());
     final edadOk = edadInt != null && edadInt >= 18 && edadInt <= 99;
+
+    // 🌍 Validar Origen (Obligatorio)
+    final origenOk = (state.paisOrigen ?? '').trim().isNotEmpty && (state.ciudadOrigen ?? '').trim().isNotEmpty;
+
+    // Residencia (Obligatorio)
     final paisOk = (state.paisSeleccionado ?? '').trim().isNotEmpty;
     final ciudadOk = (state.ciudadSeleccionada ?? '').trim().isNotEmpty;
 
@@ -424,7 +459,7 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     // ✅ NUEVO: género obligatorio (cualquier opción vale, incluso no_decir)
     final generoOk = state.genero.trim().isNotEmpty;
 
-    return nombreOk && edadOk && paisOk && ciudadOk && fotosOk && generoOk;
+    return nombreOk && edadOk && origenOk && paisOk && ciudadOk && fotosOk && generoOk;
   }
 
   bool get isDirty {
@@ -570,8 +605,12 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
       'biografia': state.biografia.trim(),
       'detalle': state.detalle.trim(),
       'estatura': state.estatura.trim(),
+
+      // 🌍 Nuevos campos Obligatorios
       'pais': (state.paisSeleccionado ?? '').trim(),
       'ciudad': (state.ciudadSeleccionada ?? '').trim(),
+      'paisOrigen': (state.paisOrigen ?? '').trim(),
+      'ciudadOrigen': (state.ciudadOrigen ?? '').trim(),
 
       // ✅ NUEVO: genero + preferenciaCitas
       'genero': state.genero.trim(),
@@ -664,8 +703,17 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
       final fotosLocalSafe = _safeLocalForFirestore(listStr(data['photosLocalPaths']));
 
       final nombre = s(data['nombre']);
+
+      // Residencia Actual
       final pais = s(data['pais']).trim().isEmpty ? null : s(data['pais']).trim();
       final ciudad = s(data['ciudad']).trim().isEmpty ? null : s(data['ciudad']).trim();
+
+      // 🌍 Extracción de Origen (Con Fallback para Testers Legacy)
+      final rawPaisOrigen = s(data['paisOrigen']).trim();
+      final rawCiudadOrigen = s(data['ciudadOrigen']).trim();
+
+      final paisOrigen = rawPaisOrigen.isNotEmpty ? rawPaisOrigen : pais;
+      final ciudadOrigen = rawCiudadOrigen.isNotEmpty ? rawCiudadOrigen : ciudad;
 
       final genero = s(data['genero']).trim();
       final prefCitas = s(data['preferenciaCitas']).trim().isEmpty ? 'Ambos' : s(data['preferenciaCitas']).trim();
@@ -682,7 +730,8 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
         estatura: s(data['estatura']),
         paisSeleccionado: pais,
         ciudadSeleccionada: ciudad,
-
+        paisOrigen: paisOrigen,       // 🌍 Inject
+        ciudadOrigen: ciudadOrigen,   // 🌍 Inject
         genero: genero,
         preferenciaCitas: prefCitas,
 

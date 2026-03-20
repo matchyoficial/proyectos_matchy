@@ -4,7 +4,8 @@
 // 🔥 PERFIL: Al reordenar y poner una foto en el slot 0, se actualiza el perfil en Firestore de inmediato.
 // 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y burbujas de notificación.
 // 🚀 NEW: Chips dinámicos de cantidad de hijos (👧/👦) y sección de Signos Zodiacales (♈-♓).
-// 🚀 UPDATE: Cambio de '🛶 Kayak' por '🌇 Atardeceres' junto a '☀️ Amaneceres'.
+// 🌍 NEW: Sección "MIS RAÍCES" Obligatoria con Checkbox inteligente para residencia local.
+// 🛠️ FIX: Sincronización inicial del Dropdown (Se leen las raíces del estado apenas carga la pantalla).
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -59,6 +60,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   String _preferenciaCitas = 'Ambos';
   String _genero = '';
 
+  // 🔥 Variables de Estado para el Origen (Ahora son la base de la identidad)
+  String? _paisOrigen;
+  String? _ciudadOrigen;
+  bool _vivoEnMiOrigen = false; // Checkbox inteligente
+
   final List<String> _estaturas = List.generate(76, (i) {
     final v = 1.40 + (i * 0.01);
     return '${v.toStringAsFixed(2)} m';
@@ -74,6 +80,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _biografiaCtrl = TextEditingController(text: s.biografia);
     _detalleCtrl = TextEditingController(text: s.detalle);
     _estaturaCtrl = TextEditingController(text: s.estatura);
+
+    // ✅ FIX: Sincronizar origen inicial desde el State para evitar Dropdowns vacíos
+    _paisOrigen = s.paisOrigen;
+    _ciudadOrigen = s.ciudadOrigen;
+
     _preferenciaCitas = s.preferenciaCitas.trim().isEmpty ? 'Ambos' : s.preferenciaCitas.trim();
     _genero = s.genero.trim();
 
@@ -93,10 +104,17 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       _biografiaCtrl.text = finalState.biografia;
       _detalleCtrl.text = finalState.detalle;
       _estaturaCtrl.text = finalState.estatura;
+
       if (!mounted) return;
       setState(() {
         _preferenciaCitas = finalState.preferenciaCitas.trim().isEmpty ? 'Ambos' : finalState.preferenciaCitas.trim();
         _genero = finalState.genero.trim();
+
+        // ✅ FIX: Volver a sincronizar tras cargar para mostrar selecciones previas
+        _paisOrigen = finalState.paisOrigen;
+        _ciudadOrigen = finalState.ciudadOrigen;
+        _vivoEnMiOrigen = (_paisOrigen == finalState.paisSeleccionado && _ciudadOrigen == finalState.ciudadSeleccionada && _paisOrigen != null && _paisOrigen!.isNotEmpty);
+
         _isLoadingCloudData = false;
       });
     });
@@ -185,8 +203,33 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         ctrl.setBiografia(data['biografia'] ?? '');
         ctrl.setDetalle(data['detalle'] ?? '');
         ctrl.setEstatura(data['estatura'] ?? '');
-        ctrl.setPais(data['pais']);
-        ctrl.setCiudad(data['ciudad']);
+
+        // 🛡️ BLINDAJE PARA TESTERS ANTIGUOS: Fallback inteligente
+        if (mounted) {
+          setState(() {
+            if (data['paisOrigen'] != null && data['paisOrigen'].toString().isNotEmpty) {
+              // Usuario nuevo/actualizado: Carga sus raíces reales
+              _paisOrigen = data['paisOrigen'];
+              _ciudadOrigen = data['ciudadOrigen'];
+              ctrl.setPaisOrigen(_paisOrigen);
+              ctrl.setCiudadOrigen(_ciudadOrigen);
+              ctrl.setPais(data['pais']);
+              ctrl.setCiudad(data['ciudad']);
+              // Verifica si su residencia coincide con su origen para marcar el checkbox
+              _vivoEnMiOrigen = (_paisOrigen == data['pais'] && _ciudadOrigen == data['ciudad']);
+            } else {
+              // Tester Antiguo: No tiene raíces. Tomamos su residencia y la convertimos en su origen.
+              _paisOrigen = data['pais'];
+              _ciudadOrigen = data['ciudad'];
+              ctrl.setPaisOrigen(_paisOrigen);
+              ctrl.setCiudadOrigen(_ciudadOrigen);
+              ctrl.setPais(data['pais']);
+              ctrl.setCiudad(data['ciudad']);
+              _vivoEnMiOrigen = true; // Por defecto asumimos que el tester vive donde nació para no romper la UX
+            }
+          });
+        }
+
         ctrl.setGenero(data['genero'] ?? '');
         ctrl.setPreferenciaCitas(data['preferenciaCitas'] ?? 'Ambos');
         if (data['sobreMiSeleccion'] is List) {
@@ -213,20 +256,23 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     super.dispose();
   }
 
-  // VALIDACIONES
+  // VALIDACIONES ACTUALIZADAS
   bool _nombreOk(ProfileFormState s) => s.nombre.trim().isNotEmpty;
   bool _edadOk(ProfileFormState s) {
     final edadInt = int.tryParse(s.edad.trim());
     return edadInt != null && edadInt >= 18 && edadInt <= 99;
   }
-  bool _paisOk(ProfileFormState s) => (s.paisSeleccionado ?? '').trim().isNotEmpty;
-  bool _ciudadOk(ProfileFormState s) => (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+  // Raíces Obligatorias
+  bool _origenOk() => (_paisOrigen ?? '').isNotEmpty && (_ciudadOrigen ?? '').isNotEmpty;
+  // Residencia condicionada al checkbox
+  bool _residenciaOk(ProfileFormState s) => _vivoEnMiOrigen ? true : (s.paisSeleccionado ?? '').trim().isNotEmpty && (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
+
   bool _generoOk() => _genero.trim().isNotEmpty;
   bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty;
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
   bool _formularioValido(ProfileFormState s) {
-    return _nombreOk(s) && _edadOk(s) && _paisOk(s) && _ciudadOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
+    return _nombreOk(s) && _edadOk(s) && _origenOk() && _residenciaOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
   }
 
   List<String> _buildDisplayFotos(ProfileFormState s) {
@@ -284,8 +330,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'biografia': s.biografia.trim(),
       'detalle': s.detalle.trim(),
       'estatura': s.estatura.trim(),
-      'pais': (s.paisSeleccionado ?? '').trim(),
-      'ciudad': (s.ciudadSeleccionada ?? '').trim(),
+      'paisOrigen': _paisOrigen,
+      'ciudadOrigen': _ciudadOrigen,
+      // Si el checkbox está marcado, guardamos el origen como residencia también.
+      'pais': _vivoEnMiOrigen ? _paisOrigen : (s.paisSeleccionado ?? '').trim(),
+      'ciudad': _vivoEnMiOrigen ? _ciudadOrigen : (s.ciudadSeleccionada ?? '').trim(),
       'genero': _genero,
       'preferenciaCitas': _preferenciaCitas,
       'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
@@ -528,23 +577,75 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final state = ref.watch(profileFormProvider);
     final ctrl = ref.read(profileFormProvider.notifier);
 
-    const List<String> paises = ['Colombia', 'México', 'Argentina', 'Chile', 'Perú', 'España'];
-    const Map<String, List<String>> ciudadesPorPais = {'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena'], 'México': ['Ciudad de México', 'Guadalajara', 'Monterrey'], 'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario'], 'Chile': ['Santiago', 'Valparaíso', 'Concepción'], 'Perú': ['Lima', 'Cusco', 'Arequipa'], 'España': ['Madrid', 'Barcelona', 'Valencia']};
-    final List<String> ciudades = state.paisSeleccionado != null ? (ciudadesPorPais[state.paisSeleccionado!] ?? []) : [];
-    final String? paisSafe = paises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
+    // 🔥 MEGA-CATÁLOGO DE PAÍSES Y CIUDADES (LatAm, NA, Europa)
+    const Map<String, List<String>> grandesCiudadesPorPais = {
+      // 🌎 Sudamérica
+      'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena', 'Bucaramanga', 'Pereira', 'Manizales', 'Armenia', 'Cúcuta', 'Ibagué', 'Santa Marta', 'Villavicencio', 'Pasto', 'Montería', 'Neiva'],
+      'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'Tucumán', 'La Plata', 'Mar del Plata', 'Salta'],
+      'Bolivia': ['La Paz', 'Santa Cruz de la Sierra', 'Cochabamba', 'Sucre'],
+      'Brasil': ['São Paulo', 'Río de Janeiro', 'Brasilia', 'Salvador', 'Fortaleza', 'Belo Horizonte', 'Curitiba', 'Manaos'],
+      'Chile': ['Santiago', 'Valparaíso', 'Concepción', 'La Serena', 'Antofagasta', 'Temuco', 'Rancagua'],
+      'Ecuador': ['Quito', 'Guayaquil', 'Cuenca', 'Santo Domingo', 'Machala'],
+      'Paraguay': ['Asunción', 'Ciudad del Este', 'Encarnación'],
+      'Perú': ['Lima', 'Arequipa', 'Trujillo', 'Chiclayo', 'Piura', 'Iquitos', 'Cusco', 'Huancayo'],
+      'Uruguay': ['Montevideo', 'Punta del Este', 'Salto'],
+      'Venezuela': ['Caracas', 'Maracaibo', 'Valencia', 'Barquisimeto', 'Maracay', 'San Cristóbal', 'Mérida'],
+
+      // 🌎 Centroamérica y Norteamérica Latina
+      'México': ['Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana', 'Toluca', 'Cancún', 'Mérida', 'Querétaro', 'León'],
+      'Costa Rica': ['San José', 'Alajuela', 'Cartago', 'Heredia', 'Puntarenas'],
+      'Cuba': ['La Habana', 'Santiago de Cuba', 'Camagüey'],
+      'El Salvador': ['San Salvador', 'Santa Ana', 'San Miguel'],
+      'Guatemala': ['Ciudad de Guatemala', 'Quetzaltenango', 'Antigua Guatemala'],
+      'Honduras': ['Tegucigalpa', 'San Pedro Sula', 'La Ceiba'],
+      'Nicaragua': ['Managua', 'León', 'Granada'],
+      'Panamá': ['Ciudad de Panamá', 'San Miguelito', 'David', 'Colón'],
+      'Puerto Rico': ['San Juan', 'Bayamón', 'Ponce', 'Carolina'],
+      'República Dominicana': ['Santo Domingo', 'Santiago de los Caballeros', 'Punta Cana'],
+
+      // 🌎 Norteamérica Anglosajona
+      'Estados Unidos': ['Miami', 'Nueva York', 'Los Ángeles', 'Chicago', 'Houston', 'Phoenix', 'San Antonio', 'San Diego', 'Dallas', 'Orlando', 'Las Vegas', 'San Francisco', 'Seattle'],
+      'Canadá': ['Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Quebec'],
+
+      // 🌍 Europa
+      'España': ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Zaragoza', 'Málaga', 'Murcia', 'Palma', 'Las Palmas', 'Bilbao'],
+      'Alemania': ['Berlín', 'Múnich', 'Fráncfort', 'Hamburgo', 'Colonia'],
+      'Francia': ['París', 'Marsella', 'Lyon', 'Toulouse', 'Niza'],
+      'Italia': ['Roma', 'Milán', 'Nápoles', 'Turín', 'Florencia'],
+      'Reino Unido': ['Londres', 'Mánchester', 'Birmingham', 'Edimburgo', 'Glasgow'],
+      'Portugal': ['Lisboa', 'Oporto', 'Faro', 'Braga'],
+      'Países Bajos': ['Ámsterdam', 'Róterdam', 'La Haya', 'Utrecht'],
+      'Suiza': ['Zúrich', 'Ginebra', 'Basilea', 'Berna']
+    };
+
+    final List<String> todosLosPaises = grandesCiudadesPorPais.keys.toList();
+    todosLosPaises.sort();
+
+    // 📌 Lógica para Origen (AHORA ES OBLIGATORIO)
+    final List<String> ciudadesOrigen = _paisOrigen != null ? List<String>.from(grandesCiudadesPorPais[_paisOrigen!] ?? []) : [];
+    if (ciudadesOrigen.isNotEmpty) ciudadesOrigen.sort();
+
+    final String? paisOrigenSafe = todosLosPaises.contains(_paisOrigen) ? _paisOrigen : null;
+    final String? ciudadOrigenSafe = ciudadesOrigen.contains(_ciudadOrigen) ? _ciudadOrigen : null;
+
+    // 📌 Lógica para Residencia (Condicional)
+    final List<String> ciudades = state.paisSeleccionado != null ? List<String>.from(grandesCiudadesPorPais[state.paisSeleccionado!] ?? []) : [];
+    if (ciudades.isNotEmpty) ciudades.sort();
+
+    final String? paisSafe = todosLosPaises.contains(state.paisSeleccionado) ? state.paisSeleccionado : null;
     final String? ciudadSafe = ciudades.contains(state.ciudadSeleccionada) ? state.ciudadSeleccionada : null;
 
     const List<List<String>> sobreMiOpciones = [
       ['💬 Soltero', '❤️ En una relación'],
       ['👶 Con hijo', '🙅‍♂️ Sin hijo'],
-      ['👧 Tengo hija', '👦 Tengo hijo'], // 🔥 NUEVOS CHIPS DINÁMICOS
+      ['👧 Tengo hija', '👦 Tengo hijo'],
       ['🚬 Fumo', '🚭 No fumo'],
       ['🍷 Tomo', '🚫 No tomo'],
       ['🐶 Perros', '🐱 Gatos']
     ];
 
     const List<String> buscoOpciones = ['💞 Relación estable', '🎉 Citas divertidas', '💬 Conversación', '👫 Amistad', '🌍 Conocer gente nueva', '🔥 Aventura', '💍 Pareja a largo plazo', '👀 Algo casual', '🎶 Compartir gustos', '✈️ Viajar juntos'];
-    const List<String> signosOpciones = ['♈ Aries', '♉ Tauro', '♊ Géminis', '♋ Cáncer', '♌ Leo', '♍ Virgo', '♎ Libra', '♏ Escorpio', '♐ Sagitario', '♑ Capricornio', '♒ Acuario', '♓ Piscis']; // 🔥 NUEVA LISTA ZODIACAL
+    const List<String> signosOpciones = ['♈ Aries', '♉ Tauro', '♊ Géminis', '♋ Cáncer', '♌ Leo', '♍ Virgo', '♎ Libra', '♏ Escorpio', '♐ Sagitario', '♑ Capricornio', '♒ Acuario', '♓ Piscis'];
     const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','💌 Escritura','📷 Selfies','🌙 Noche','☀️ Amaneceres','🌇 Atardeceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
 
     if (_isLoadingCloudData) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))));
@@ -582,9 +683,80 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       _buildTextField(label: 'Un detalle que me enamora', controller: _detalleCtrl, maxLines: 3),
                       const SizedBox(height: 14),
                       GestureDetector(onTap: () => _seleccionarEstatura(context), child: AbsorbPointer(child: _buildTextField(label: 'Estatura (selección)', controller: _estaturaCtrl, suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white)))),
-                      const SizedBox(height: 20),
-                      _buildPaisCiudadSection(paisSeleccionado: paisSafe, ciudadSeleccionada: ciudadSafe, paises: paises, ciudades: ciudades, showPaisError: _mostrarErrores && !_paisOk(state), showCiudadError: _mostrarErrores && !_ciudadOk(state), onPaisChanged: (v) => ctrl.setPais(v), onCiudadChanged: (v) => ctrl.setCiudad(v)),
                       const SizedBox(height: 25),
+
+                      // 🌍 SECCIÓN PRINCIPAL: MIS RAÍCES (OBLIGATORIO)
+                      Text('MIS RAÍCES (De dónde soy) *', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
+                      const SizedBox(height: 15),
+                      _buildPaisCiudadOrigenSection(
+                          paisSeleccionado: paisOrigenSafe,
+                          ciudadSeleccionada: ciudadOrigenSafe,
+                          paises: todosLosPaises,
+                          ciudades: ciudadesOrigen,
+                          showError: _mostrarErrores && !_origenOk(),
+                          onPaisChanged: (v) {
+                            setState(() {
+                              _paisOrigen = v;
+                              _ciudadOrigen = null;
+                              ctrl.setPaisOrigen(v);
+                              ctrl.setCiudadOrigen(null);
+                              if (_vivoEnMiOrigen) {
+                                ctrl.setPais(v);
+                                ctrl.setCiudad(null);
+                              }
+                            });
+                          },
+                          onCiudadChanged: (v) {
+                            setState(() {
+                              _ciudadOrigen = v;
+                              ctrl.setCiudadOrigen(v);
+                              if (_vivoEnMiOrigen) ctrl.setCiudad(v);
+                            });
+                          }
+                      ),
+                      const SizedBox(height: 10),
+
+                      // 📍 CHECKBOX INTELIGENTE
+                      Theme(
+                        data: ThemeData(unselectedWidgetColor: Colors.white54),
+                        child: CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          activeColor: const Color(0xFFBEB3FF),
+                          checkColor: Colors.black,
+                          title: const Text('📍 Actualmente vivo en mi ciudad de origen', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                          value: _vivoEnMiOrigen,
+                          onChanged: (bool? value) {
+                            setState(() {
+                              _vivoEnMiOrigen = value ?? false;
+                              if (_vivoEnMiOrigen) {
+                                // Clonar origen a residencia en tiempo real para el StateProvider
+                                ctrl.setPais(_paisOrigen);
+                                ctrl.setCiudad(_ciudadOrigen);
+                              }
+                            });
+                          },
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+
+                      // 🏠 SECCIÓN RESIDENCIA ACTUAL (SE OCULTA SI VIVE EN ORIGEN)
+                      if (!_vivoEnMiOrigen) ...[
+                        Text('¿DÓNDE ESTÁS AHORA? *', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
+                        const SizedBox(height: 15),
+                        _buildPaisCiudadSection(
+                            paisSeleccionado: paisSafe,
+                            ciudadSeleccionada: ciudadSafe,
+                            paises: todosLosPaises,
+                            ciudades: ciudades,
+                            showPaisError: _mostrarErrores && !_residenciaOk(state) && (state.paisSeleccionado ?? '').isEmpty,
+                            showCiudadError: _mostrarErrores && !_residenciaOk(state) && (state.ciudadSeleccionada ?? '').isEmpty,
+                            onPaisChanged: (v) => ctrl.setPais(v),
+                            onCiudadChanged: (v) => ctrl.setCiudad(v)
+                        ),
+                        const SizedBox(height: 30),
+                      ],
+
                       Align(alignment: Alignment.centerLeft, child: Text('GÉNERO *', style: TextStyle(color: (_mostrarErrores && !_generoOk()) ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheTituloSeccion))),
                       const SizedBox(height: 10),
                       _GeneroSelector(value: _genero, showError: _mostrarErrores && !_generoOk(), onChanged: _saving ? null : (v) => _setGenero(ctrl, v)),
@@ -695,6 +867,20 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         decoration: InputDecoration(labelText: label, labelStyle: TextStyle(color: showError ? Colors.redAccent : Colors.white60, fontSize: kChincheLabelInput), contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15), border: InputBorder.none, suffixIcon: suffixIcon),
       ),
     );
+  }
+
+  Widget _buildPaisCiudadOrigenSection({required String? paisSeleccionado, required String? ciudadSeleccionada, required List<String> paises, required List<String> ciudades, required ValueChanged<String?> onPaisChanged, required ValueChanged<String?> onCiudadChanged, required bool showError}) {
+    final bool errPais = showError && (paisSeleccionado ?? '').isEmpty;
+    final bool errCiudad = showError && (ciudadSeleccionada ?? '').isEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('PAÍS DE ORIGEN', style: TextStyle(color: errPais ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheLabelInput)),
+      const SizedBox(height: 8),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 15), decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(15), border: Border.all(color: errPais ? Colors.redAccent : Colors.white12)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(hint: const Text('Selecciona tu país de origen', style: TextStyle(color: Colors.white38)), value: paisSeleccionado, dropdownColor: const Color(0xFF222222), iconEnabledColor: Colors.white, isExpanded: true, style: const TextStyle(color: Colors.white, fontSize: kChincheTextoInput), items: paises.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: onPaisChanged))),
+      const SizedBox(height: 20),
+      Text('CIUDAD DE ORIGEN', style: TextStyle(color: errCiudad ? Colors.redAccent : Colors.white70, fontWeight: FontWeight.bold, fontSize: kChincheLabelInput)),
+      const SizedBox(height: 8),
+      Container(padding: const EdgeInsets.symmetric(horizontal: 15), decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(15), border: Border.all(color: errCiudad ? Colors.redAccent : Colors.white12)), child: DropdownButtonHideUnderline(child: DropdownButton<String>(hint: const Text('Selecciona tu ciudad de origen', style: TextStyle(color: Colors.white38)), value: ciudadSeleccionada, dropdownColor: const Color(0xFF222222), iconEnabledColor: Colors.white, isExpanded: true, style: const TextStyle(color: Colors.white, fontSize: kChincheTextoInput), items: ciudades.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: onCiudadChanged))),
+    ]);
   }
 
   Widget _buildPaisCiudadSection({required String? paisSeleccionado, required String? ciudadSeleccionada, required List<String> paises, required List<String> ciudades, required ValueChanged<String?> onPaisChanged, required ValueChanged<String?> onCiudadChanged, required bool showPaisError, required bool showCiudadError}) {
