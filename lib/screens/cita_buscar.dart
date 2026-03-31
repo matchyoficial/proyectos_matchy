@@ -1,12 +1,4 @@
 // 📂 lib/screens/cita_buscar.dart
-// ✅ CITA BUSCAR — VERSIÓN FINAL VELOCIDAD LUZ & UX MEJORADA (SMART CACHE PRO INYECTADO)
-// 🔥 FASE 1: "Matchy Speed" - Paginación inteligente en lotes.
-// 🔥 FASE 2: Pre-caché de imágenes silencioso.
-// 🔥 FASE 3: Sellos "ME INTERESA" y "NO ME INTERESA" visibles.
-// 🔥 FASE 4: Micro-copy de asistencia PRO (Flechas + Texto postulante).
-// 🔥 FASE 5: Animación 2-Fases (Tiempos extendidos para lectura clara).
-// 🔥 FASE 6: MatchySpinner anclado matemáticamente al centro.
-// 🚀 SMART CACHE: CachedNetworkImage aplicado sin alterar ni una coma de la estructura UI.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -14,13 +6,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Importación del Caché
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/widgets/publicidad_swap_card.dart';
 
 class CitaBuscarScreen extends StatefulWidget {
   static const String routeName = 'cita_buscar';
@@ -31,27 +25,17 @@ class CitaBuscarScreen extends StatefulWidget {
 }
 
 class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerProviderStateMixin {
-
-  // ==============================================================================
-  // 🔴🔴 ZONA DE CHINCHES MAESTROS 🔴🔴
-  // ==============================================================================
-
   static const double kCardTopMargin      = 30.0;
   static const double kCardWidthFactor    = 0.93;
   static const double kCardHeightFactor   = 0.81;
   static const double kCardBorderRadius   = 24.0;
   static const Color  kCardBackground     = Color(0xFF1A1A1A);
 
-  // --- ALTURAS FIJAS ---
   static const double kInfoHeight    = 80.0;
   static const double kBarHeight     = 55.0;
   static const double kButtonsHeight = 60.0;
-
-  // --- ESPACIADOS ---
   static const double kGapSmall      = 5.0;
   static const double kGapTiny       = 1.0;
-
-  // ==============================================================================
 
   static const double decisionThresholdPx = 75.0;
   static const double rotationDivisor = 14.0;
@@ -89,13 +73,14 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   Animation<double>? _dxAnim;
   final Map<String, Map<String, dynamic>> _userCache = {};
 
-  // 🔥 VARIABLES MATCHY SPEED
   DocumentSnapshot? _lastDoc;
   bool _isLoading = true;
   bool _hasMore = true;
   String _uid = '';
   String _prefGlobal = '';
   String _generoUser = '';
+  String _userPais = 'Colombia';
+  String _userCiudad = 'Cali';
 
   @override
   void initState() {
@@ -113,7 +98,6 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     _initMatchySpeed();
   }
 
-  // 🔥 FASE 1: INICIALIZACIÓN SIN STREAMS
   Future<void> _initMatchySpeed() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -124,14 +108,77 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       final udata = snap.data() ?? {};
       _prefGlobal = _normPref((udata[kUserPreferenciaCitasField] ?? 'Ambos').toString());
       _generoUser = _normGenero((udata[kUserGeneroField] ?? 'Prefiero no decirlo').toString());
+      _userPais = (udata['pais'] ?? 'Colombia').toString();
+      _userCiudad = (udata['ciudad'] ?? 'Cali').toString();
     } catch (_) {
       _prefGlobal = 'Ambos';
       _generoUser = 'NoDecir';
     }
+
     await _fetchCitasBatch();
   }
 
-  // 🔥 FASE 1: PAGINACIÓN INTELIGENTE (LOTES DE 10)
+  Future<void> _inyectarAdSiAplica() async {
+    if (_deck.isEmpty || _topIndex >= _deck.length) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    try {
+      final snap = await FirebaseFirestore.instance.collection('publicidad_swap')
+          .where('activo', isEqualTo: true)
+          .where('pais', isEqualTo: _userPais)
+          .where('ciudad', isEqualTo: _userCiudad)
+          .limit(20)
+          .get();
+
+      if (snap.docs.isEmpty) return;
+
+      List<QueryDocumentSnapshot> anunciosDisponibles = [];
+      for (var doc in snap.docs) {
+        final adId = doc.id;
+        final lastSeenDate = prefs.getString('seen_ad_${adId}_$_uid');
+        if (lastSeenDate != today) {
+          anunciosDisponibles.add(doc);
+        }
+      }
+
+      if (anunciosDisponibles.isEmpty) return;
+
+      anunciosDisponibles.shuffle();
+
+      setState(() {
+        int remainingCards = _deck.length - _topIndex;
+        int adsNeeded = (remainingCards / 5).floor();
+
+        if (adsNeeded == 0 && !_deck.any((card) => card.isAd)) {
+          adsNeeded = 1;
+        }
+
+        int adsInjected = 0;
+        for (int i = 0; i < adsNeeded && i < anunciosDisponibles.length; i++) {
+          final adData = anunciosDisponibles[i].data() as Map<String, dynamic>;
+          final adUrl = adData['foto']?.toString() ?? '';
+          final adId = anunciosDisponibles[i].id;
+
+          if (adUrl.isNotEmpty) {
+            final adCard = _CitaCardModel.ad(adUrl, adId);
+            int insertIndex = _topIndex + 4 + (adsInjected * 5);
+            if (insertIndex < _deck.length) {
+              _deck.insert(insertIndex, adCard);
+            } else {
+              _deck.add(adCard);
+            }
+            adsInjected++;
+            precacheImage(CachedNetworkImageProvider(adUrl), context).catchError((_) {});
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint("🎯 [ADS] Error crítico: $e");
+    }
+  }
+
   Future<void> _fetchCitasBatch() async {
     if (!_hasMore || !mounted) return;
     setState(() => _isLoading = true);
@@ -140,7 +187,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       Query q = FirebaseFirestore.instance
           .collection(kCitasCol)
           .where('status', isEqualTo: publicStatus)
-          .limit(10);
+          .limit(15);
 
       if (_lastDoc != null) {
         q = q.startAfterDocument(_lastDoc!);
@@ -165,10 +212,11 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
         _isLoading = false;
       });
 
-      // 🔥 FASE 2: PRE-CACHÉ SILENCIOSO (MODIFICADO CON CACHEDNETWORKIMAGEPROVIDER)
       _precacheDeckImages(validCards);
 
-      if (validCards.isEmpty && _hasMore) {
+      if (validCards.isNotEmpty) {
+        _inyectarAdSiAplica();
+      } else if (_hasMore) {
         _fetchCitasBatch();
       }
 
@@ -179,6 +227,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
 
   void _precacheDeckImages(List<_CitaCardModel> newCards) {
     for (var card in newCards) {
+      if (card.isAd) continue;
       if (card.creatorPhoto.startsWith('http')) {
         precacheImage(CachedNetworkImageProvider(card.creatorPhoto), context).catchError((_) {});
       }
@@ -222,7 +271,13 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
 
     setState(() { _topIndex++; _dx = 0.0; });
 
-    // 🔥 FASE 1: SILENT RELOAD (VIGILANTE DE RECARGA)
+    if (model.isAd) {
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      await prefs.setString('seen_ad_${model.citaId}_$_uid', today);
+      return;
+    }
+
     if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) {
       _fetchCitasBatch();
     }
@@ -244,22 +299,19 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     await _flingOut(right: _dx > 0, size: size, model: model, uid: uid, durationMs: flingDurationMs);
   }
 
-  // 🔥 FASE 5: ANIMACIÓN 2-FASES CON TIEMPOS EXTENDIDOS Y MÁS INCLINACIÓN
   Future<void> _onNope(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
     _isAnimating = true;
-    // 1. Amague pronunciado para mostrar el sello claramente (300ms)
-    await _animateTo(-decisionThresholdPx - 60, const Duration(milliseconds: 300));
-    // 2. Disparar fuera de la pantalla de forma más natural (450ms)
+    final isAd = _deck[_topIndex].isAd;
+    await _animateTo(isAd ? -40 : -decisionThresholdPx - 60, const Duration(milliseconds: 300));
     await _flingOut(right: false, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
 
   Future<void> _onLike(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
     _isAnimating = true;
-    // 1. Amague pronunciado para mostrar el sello claramente (300ms)
-    await _animateTo(decisionThresholdPx + 60, const Duration(milliseconds: 300));
-    // 2. Disparar fuera de la pantalla de forma más natural (450ms)
+    final isAd = _deck[_topIndex].isAd;
+    await _animateTo(isAd ? 40 : decisionThresholdPx + 60, const Duration(milliseconds: 300));
     await _flingOut(right: true, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
 
@@ -384,6 +436,25 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
 
   void _backToPanel() { final nav = Navigator.of(context); if (nav.canPop()) { nav.pop(); return; } nav.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const PanelScreen()), (_) => false); }
 
+  Widget _buildCardContent(_CitaCardModel model, double blockW, double safeHeight, double likeOp, double nopeOp, {bool isFrontCard = false}) {
+    if (model.isAd) {
+      return PublicidadSwapCard(
+        imageUrl: model.adUrl,
+        width: blockW,
+        totalHeight: safeHeight,
+        isFrontCard: isFrontCard,
+        onAutoDismiss: () => _onNope(MediaQuery.sizeOf(context), _uid),
+      );
+    }
+    return _SwipeBundleSolid(
+      model: model, likeOpacity: likeOp, nopeOpacity: nopeOp, width: blockW, totalHeight: safeHeight,
+      onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: model.ownerUid))),
+      onPlacePhotoTap: () { final lugar = LugarData(id: model.citaId, nombre: model.placeName, direccion: model.placeAddress, bio: '', fotos: model.placePhotos, fotoPortada: model.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); },
+      onLikeTap: () => _onLike(MediaQuery.sizeOf(context), _uid),
+      onNopeTap: () => _onNope(MediaQuery.sizeOf(context), _uid),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -413,22 +484,31 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       child: Padding(
         padding: const EdgeInsets.only(top: kCardTopMargin),
         child: SizedBox(
-          width: blockW, height: safeHeight, // 🔥 Esta caja define la altura EXACTA de la zona central
+          width: blockW, height: safeHeight,
           child: Stack(
             children: [
-
-              // 🔥 FASE 6: SPINNER MATEMÁTICAMENTE CENTRADO EN LA CAJA
-              if (_isLoading && _deck.isEmpty)
+              if (_isLoading && (_deck.isEmpty || _topIndex >= _deck.length))
                 const Positioned.fill(child: _MatchySpinner()),
 
-              // CARTAS Y LÓGICA DE SWIPE
               if (!_isLoading || _deck.isNotEmpty) ...[
                 if (!noMore && _topIndex + 1 < _deck.length)
-                  Positioned.fill(child: _SwipeBundleSolid(model: _deck[_topIndex + 1], likeOpacity: 0.0, nopeOpacity: 0.0, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex + 1].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex + 1]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () {}, onNopeTap: () {})),
-                if (!noMore)
-                  Positioned.fill(child: GestureDetector(onPanUpdate: _onPanUpdate, onPanEnd: (d) => _onPanEnd(d, MediaQuery.sizeOf(context), _uid), child: Transform.translate(offset: Offset(_dx, 0), child: Transform.rotate(angle: _rotationDeg * (math.pi / 180), child: _SwipeBundleSolid(model: _deck[_topIndex], likeOpacity: _likeOpacityValue, nopeOpacity: _nopeOpacityValue, width: blockW, totalHeight: safeHeight, onCreatorPhotoTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: _deck[_topIndex].ownerUid))), onPlacePhotoTap: () { final m = _deck[_topIndex]; final lugar = LugarData(id: m.citaId, nombre: m.placeName, direccion: m.placeAddress, bio: '', fotos: m.placePhotos, fotoPortada: m.placePhotos.first, sitioWeb: '', orden: 9999, sedes: const []); Navigator.of(context).push(MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: lugar))); }, onLikeTap: () => _onLike(MediaQuery.sizeOf(context), _uid), onNopeTap: () => _onNope(MediaQuery.sizeOf(context), _uid)))))),
+                  Positioned.fill(child: _buildCardContent(_deck[_topIndex + 1], blockW, safeHeight, 0.0, 0.0, isFrontCard: false)),
 
-                // Mensaje final cuando se acaban las cartas (Solo si no está cargando)
+                if (!noMore)
+                  Positioned.fill(
+                      child: GestureDetector(
+                          onPanUpdate: _onPanUpdate,
+                          onPanEnd: (d) => _onPanEnd(d, MediaQuery.sizeOf(context), _uid),
+                          child: Transform.translate(
+                              offset: Offset(_dx, 0),
+                              child: Transform.rotate(
+                                  angle: _rotationDeg * (math.pi / 180),
+                                  child: _buildCardContent(_deck[_topIndex], blockW, safeHeight, _likeOpacityValue, _nopeOpacityValue, isFrontCard: true)
+                              )
+                          )
+                      )
+                  ),
+
                 if (noMore && !_isLoading)
                   Positioned.fill(child: Center(child: Container(width: blockW * 0.92, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: Colors.black.withOpacity(0.38), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white24, width: 1)), child: const Text('No hay citas disponibles ahora.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700))))),
               ],
@@ -440,9 +520,6 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   }
 }
 
-// =============================================================================
-// 🔥 WIDGET NUEVO: MATCHY SPINNER PREMIUM
-// =============================================================================
 class _MatchySpinner extends StatelessWidget {
   const _MatchySpinner();
 
@@ -459,7 +536,7 @@ class _MatchySpinner extends StatelessWidget {
               SizedBox(
                 width: 60, height: 60,
                 child: CircularProgressIndicator(
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7E208E)), // Morado Matchy
+                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF7E208E)),
                   strokeWidth: 6,
                   backgroundColor: Colors.white.withOpacity(0.1),
                 ),
@@ -490,9 +567,6 @@ class _MatchySpinner extends StatelessWidget {
   }
 }
 
-// =============================================================================
-// 🔥 WIDGET CARTA SÓLIDA (AQUÍ ESTÁ LA CIRUGÍA DEL SMART CACHE)
-// =============================================================================
 class _SwipeBundleSolid extends StatelessWidget {
   final _CitaCardModel model; final double likeOpacity; final double nopeOpacity; final double width; final double totalHeight;
   final VoidCallback onCreatorPhotoTap; final VoidCallback onPlacePhotoTap; final VoidCallback onLikeTap; final VoidCallback onNopeTap;
@@ -504,14 +578,13 @@ class _SwipeBundleSolid extends StatelessWidget {
 
   Widget _buildPhoto(String url, VoidCallback onTap, {bool isProfile = false}) {
     final src = url.trim();
-    final int cacheH = isProfile ? 800 : 400; // 🔥 Límite de decodificación en RAM
+    final int cacheH = isProfile ? 800 : 400;
     Widget imgWidget;
 
     if (src.isEmpty) {
       imgWidget = Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover);
     }
     else if (_isNet(src)) {
-      // 🔥 MOTOR DE CACHÉ INYECTADO
       imgWidget = CachedNetworkImage(
           key: ValueKey(src),
           imageUrl: src,
@@ -530,7 +603,6 @@ class _SwipeBundleSolid extends StatelessWidget {
       imgWidget = Image.asset(_isAsset(src) ? src : 'assets/images/perfil1.jpg', fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => Image.asset('assets/images/perfil1.jpg', fit: BoxFit.cover));
     }
 
-    // EL DISEÑO EXACTO QUE TÚ PROGRAMASTE (CERO ALTERACIONES)
     return GestureDetector(
         onTap: onTap,
         child: Container(
@@ -611,7 +683,6 @@ class _SwipeBundleSolid extends StatelessWidget {
               SizedBox(height: _CitaBuscarScreenState.kBarHeight, child: FittedBox(fit: BoxFit.scaleDown, child: Container(width: width * 0.90, height: _CitaBuscarScreenState.kBarHeight, padding: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white12)), child: _MiniTermometro(puntaje: model.puntualidad)))),
               const SizedBox(height: _CitaBuscarScreenState.kGapTiny),
 
-              // 🔥 FASE 4: MICRO-COPY PRO CON FLECHAS Y TEXTO DE POSTULACIÓN
               SizedBox(
                   height: _CitaBuscarScreenState.kButtonsHeight,
                   child: FittedBox(
@@ -654,7 +725,6 @@ class _SwipeBundleSolid extends StatelessWidget {
             ],
           ),
 
-          // 🔥 FASE 3: BADGES LIBERADOS Y VISIBLES DURANTE ANIMACIÓN
           IgnorePointer(
               child: Stack(
                   children: [
@@ -732,4 +802,49 @@ class _ChoiceBadge extends StatelessWidget {
   }
 }
 
-class _CitaCardModel { final String citaId; final String ownerUid; final String creatorName; final int creatorAge; final String creatorPhoto; final List<String> placePhotos; final String placeName; final String placeAddress; final String fecha; final String hora; final String intencion; final String preferencia; final int puntualidad; const _CitaCardModel({required this.citaId, required this.ownerUid, required this.creatorName, required this.creatorAge, required this.creatorPhoto, required this.placePhotos, required this.placeName, required this.placeAddress, required this.fecha, required this.hora, required this.intencion, required this.preferencia, this.puntualidad = 100}); }
+class _CitaCardModel {
+  final bool isAd;
+  final String adUrl;
+  final String citaId;
+  final String ownerUid;
+  final String creatorName;
+  final int creatorAge;
+  final String creatorPhoto;
+  final List<String> placePhotos;
+  final String placeName;
+  final String placeAddress;
+  final String fecha;
+  final String hora;
+  final String intencion;
+  final String preferencia;
+  final int puntualidad;
+
+  const _CitaCardModel({
+    this.isAd = false,
+    this.adUrl = '',
+    required this.citaId,
+    required this.ownerUid,
+    required this.creatorName,
+    required this.creatorAge,
+    required this.creatorPhoto,
+    required this.placePhotos,
+    required this.placeName,
+    required this.placeAddress,
+    required this.fecha,
+    required this.hora,
+    required this.intencion,
+    required this.preferencia,
+    this.puntualidad = 100
+  });
+
+  factory _CitaCardModel.ad(String url, String idRealFirebase) {
+    return _CitaCardModel(
+      isAd: true,
+      adUrl: url,
+      citaId: idRealFirebase,
+      ownerUid: '', creatorName: '', creatorAge: 0, creatorPhoto: '',
+      placePhotos: [], placeName: '', placeAddress: '',
+      fecha: '', hora: '', intencion: '', preferencia: '',
+    );
+  }
+}
