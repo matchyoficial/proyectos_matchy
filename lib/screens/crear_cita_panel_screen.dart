@@ -2,6 +2,7 @@
 // ✅ PANEL CREAR CITA BLINDADO (ESTRATEGIA ADAPTATIVA)
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables elásticos.
 // 🔥 UI: Diseño Premium original con degradado Fade Out intacto.
+// 🔥 UPDATE: Textos de categorías ajustados (menor tamaño y más padding lateral).
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,6 +17,7 @@ import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
+import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT DEL BANNER
 
 class CrearCitaPanelScreen extends StatelessWidget {
   static const String routeName = 'crear_cita_panel';
@@ -123,7 +125,6 @@ class _CrearCitaContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double alturaCategoria = 112;
     const double radioCategoria = 18;
     const double alturaLugarPopular = 150;
 
@@ -148,31 +149,28 @@ class _CrearCitaContent extends StatelessWidget {
         ),
         const SizedBox(height: 17),
 
-        // GRID CATEGORÍAS
+        // 🔥 GRID CATEGORÍAS (AHORA 1x4 EN UNA SOLA LÍNEA, CUADRADOS PERFECTOS)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(child: _CategoriaCard(titulo: 'RESTAURANTES', imageAsset: 'assets/images/iconorestaurante.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RestaurantesScreen())))),
-                  const SizedBox(width: 12),
-                  Expanded(child: _CategoriaCard(titulo: 'BARES', imageAsset: 'assets/images/iconobares.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BaresScreen())))),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(child: _CategoriaCard(titulo: 'CAFÉS', imageAsset: 'assets/images/iconocafeteria.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CafesScreen())))),
-                  const SizedBox(width: 12),
-                  Expanded(child: _CategoriaCard(titulo: 'ACTIVIDADES', imageAsset: 'assets/images/iconoactividades.png', altura: alturaCategoria, radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActividadesScreen())))),
-                ],
-              ),
+              Expanded(child: _CategoriaCard(titulo: 'RESTAURANTES', imageAsset: 'assets/images/iconorestaurante.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RestaurantesScreen())))),
+              const SizedBox(width: 8),
+              Expanded(child: _CategoriaCard(titulo: 'BARES', imageAsset: 'assets/images/iconobares.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BaresScreen())))),
+              const SizedBox(width: 8),
+              Expanded(child: _CategoriaCard(titulo: 'CAFÉS', imageAsset: 'assets/images/iconocafeteria.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CafesScreen())))),
+              const SizedBox(width: 8),
+              Expanded(child: _CategoriaCard(titulo: 'ACTIVIDADES', imageAsset: 'assets/images/iconoactividades.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActividadesScreen())))),
             ],
           ),
         ),
 
-        const SizedBox(height: 30),
+        const SizedBox(height: 10),
+
+        // 🔥 BANNER PUBLICITARIO INYECTADO AQUÍ
+        const BannerPublicidad(),
+
+        const SizedBox(height: 20),
 
         // TÍTULO SECCIÓN POPULARES (Regla de Oro: 20pt)
         Padding(
@@ -225,19 +223,17 @@ class _CrearCitaContent extends StatelessWidget {
 }
 
 // ===============================================================
-// CATEGORÍA CARD BLINDADA
+// CATEGORÍA CARD BLINDADA (CUADRADA 1:1)
 // ===============================================================
 class _CategoriaCard extends StatelessWidget {
   final String titulo;
   final String imageAsset;
-  final double altura;
   final double radio;
   final VoidCallback onTap;
 
   const _CategoriaCard({
     required this.titulo,
     required this.imageAsset,
-    required this.altura,
     required this.radio,
     required this.onTap,
   });
@@ -246,52 +242,55 @@ class _CategoriaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          Container(
-            height: altura,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radio),
-              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
-              image: DecorationImage(
-                image: AssetImage(imageAsset),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-
-          Container(
-            height: altura,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radio),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-                stops: const [0.5, 1.0],
-              ),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                titulo,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'Poppins',
-                  letterSpacing: 0.5,
-                  shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+      child: AspectRatio(
+        // 🔥 ESTA ES LA MAGIA: Fuerza a que el widget sea un cuadrado perfecto 1:1
+        aspectRatio: 1.0,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radio),
+                boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
+                image: DecorationImage(
+                  image: AssetImage(imageAsset),
+                  fit: BoxFit.cover, // 🔥 Asegura que la foto llene el cuadrado sin deformarse
                 ),
               ),
             ),
-          ),
-        ],
+
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radio),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                  stops: const [0.4, 1.0], // Ajustado para un cuadrado
+                ),
+              ),
+            ),
+
+            // 🔥 UPDATE: Padding aumentado a 6 para separar el texto de los bordes izquierdo y derecho
+            Padding(
+              padding: const EdgeInsets.fromLTRB(7.5, 0, 7, 8),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  titulo,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10, // 🔥 UPDATE: Tamaño reducido para que respire mejor en el cuadrado
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Poppins',
+                    letterSpacing: 0.5,
+                    shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
