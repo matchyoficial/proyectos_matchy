@@ -1,110 +1,185 @@
 // 📂 lib/screens/zona_de_descuentos_screen.dart
-// ✅ ZONA DE DESCUENTOS BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ ZONA DE DESCUENTOS BLINDADA (SMART CACHE + GEOLOCALIZACIÓN)
 // 🔥 BLINDAJE: Título estandarizado a 20pt y protegido con FittedBox.
-// 🔥 UI: Textos informativos intactos para asegurar saltos de línea y legibilidad.
-// 🔥 INTERACCIÓN: Fullscreen con Zoom + Degradado premium respetados.
+// 🔥 DATOS: Filtro estricto por Colección 'descuentos', Ciudad, Activo y Orden.
+// 🔥 UI: Proporción 9:16 (0.56) exacta para imágenes 1080x1920 sin deformación.
+// 🔥 RENDIMIENTO: Motor CachedNetworkImage inyectado. Cero mockups feos.
+// 🔥 FIX DEFINITIVO: Fondo Full Screen garantizado.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
-class ZonaDeDescuentosScreen extends StatelessWidget {
+class ZonaDeDescuentosScreen extends StatefulWidget {
   const ZonaDeDescuentosScreen({super.key});
+
+  @override
+  State<ZonaDeDescuentosScreen> createState() => _ZonaDeDescuentosScreenState();
+}
+
+class _ZonaDeDescuentosScreenState extends State<ZonaDeDescuentosScreen> {
+  String _userCiudad = 'Cali'; // Ciudad por defecto
+  bool _isLoadingCity = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserCity();
+  }
+
+  // 🔥 LECTURA SILENCIOSA DE LA CIUDAD DEL USUARIO ACTUAL
+  Future<void> _fetchUserCity() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (snap.exists && snap.data() != null) {
+          if (mounted) {
+            setState(() {
+              _userCiudad = (snap.data()!['ciudad'] ?? 'Cali').toString();
+              _isLoadingCity = false;
+            });
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() => _isLoadingCity = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand, // 🔥 GARANTÍA 1: El stack ocupa todo el espacio
         children: [
-          // 1. Contenido Principal
-          MatchyPageLayout(
-            backgroundAsset: 'assets/images/fondo.jpg',
-            logoAsset: 'assets/images/logomatchyplano.png',
-            topSpacing: 35,
-            logoHeight: 45,
-            spaceLogoToScroll: 20,
-            scrollContent: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  // 🛡️ BLINDAJE: TÍTULO ESTANDARIZADO A 20pt
-                  const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      "ZONA DE DESCUENTOS",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20, // Estandarizado según regla de oro
-                        fontWeight: FontWeight.w900,
-                        fontFamily: 'Poppins',
-                        letterSpacing: 1.0,
-                        shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+          // 1. 🔥 FONDO ABSOLUTO (Cubre toda la pantalla, ignorando márgenes)
+          Image.asset(
+            'assets/images/fondo.jpg',
+            fit: BoxFit.cover, // 🔥 GARANTÍA 2: La imagen se expande sin deformarse
+            alignment: Alignment.center,
+          ),
+
+          // 2. CONTENIDO PRINCIPAL (Estructura manual limpia)
+          SafeArea(
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                // LOGO
+                Image.asset(
+                  'assets/images/logomatchyplano.png',
+                  height: 45,
+                ),
+                const SizedBox(height: 20),
+
+                // SCROLL Y GRID
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 120),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          // 🛡️ BLINDAJE: TÍTULO ESTANDARIZADO A 20pt
+                          const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              "ZONA DE DESCUENTOS",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'Poppins',
+                                letterSpacing: 1.0,
+                                shadows: [Shadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 4))],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          // 🛡️ TEXTO INFORMATIVO
+                          const Text(
+                            "PROMOCIONES Y DESCUENTOS PARA NUESTROS MATCHYS, ALGUNAS SON EXCLUSIVAS..",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 25),
+
+                          // 🔥 MOTOR DE GRID INTELIGENTE
+                          if (_isLoadingCity)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 50),
+                              child: CircularProgressIndicator(color: Color(0xFFBEB3FF)),
+                            )
+                          else
+                            StreamBuilder<QuerySnapshot>(
+                              // 🔒 FIX: APUNTANDO EXACTAMENTE AL ÍNDICE QUE CREASTE ('descuentos')
+                              stream: FirebaseFirestore.instance
+                                  .collection('descuentos')
+                                  .where('activo', isEqualTo: true)
+                                  .where('ciudad', isEqualTo: _userCiudad)
+                                  .orderBy('orden')
+                                  .snapshots(),
+                              builder: (context, snapshot) {
+                                // 🔥 FIX: Errores silenciosos para no ensuciar la pantalla mientras configuras
+                                if (snapshot.hasError || !snapshot.hasData) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                final validDocs = snapshot.data!.docs.where((doc) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final foto = data['foto']?.toString() ?? '';
+                                  return foto.isNotEmpty;
+                                }).toList();
+
+                                if (validDocs.isEmpty) {
+                                  return const SizedBox.shrink(); // Pantalla limpia si no hay datos
+                                }
+
+                                return GridView.builder(
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: 0.56,
+                                  ),
+                                  itemCount: validDocs.length,
+                                  itemBuilder: (context, index) {
+                                    final data = validDocs[index].data() as Map<String, dynamic>;
+                                    final fotoUrl = data['foto']?.toString() ?? '';
+
+                                    return _DiscountCard(
+                                      fotoUrl: fotoUrl,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                        ],
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 10),
-
-                  // 🛡️ TEXTO INFORMATIVO (INTACTO PARA EVITAR ENCOGIMIENTO)
-                  const Text(
-                    "¡Exclusivo para parejas Matchy! Presenta estos códigos.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 25),
-
-                  // GRID DE 3 COLUMNAS
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('descuentos').snapshots(),
-                    builder: (context, snapshot) {
-                      final List<dynamic> docs = (snapshot.hasData && snapshot.data!.docs.isNotEmpty)
-                          ? snapshot.data!.docs
-                          : [];
-
-                      final itemCount = docs.isEmpty ? 12 : docs.length;
-
-                      return GridView.builder(
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.only(bottom: 100),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 0.7,
-                        ),
-                        itemCount: itemCount,
-                        itemBuilder: (context, index) {
-                          String fotoUrl = '';
-                          String titulo = '';
-
-                          if (docs.isNotEmpty) {
-                            final data = docs[index].data() as Map<String, dynamic>;
-                            fotoUrl = data['fotoUrl'] ?? '';
-                            titulo = data['titulo'] ?? '';
-                          }
-
-                          return _DiscountCard(
-                            fotoUrl: fotoUrl,
-                            titulo: titulo,
-                            index: index,
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
-          // 2. DEGRADADO INFERIOR
+          // 3. DEGRADADO INFERIOR
           Positioned(
             bottom: 0, left: 0, right: 0, height: 90,
             child: IgnorePointer(
@@ -121,7 +196,7 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
             ),
           ),
 
-          // 3. BOTÓN ATRÁS
+          // 4. BOTÓN ATRÁS
           Positioned(
             top: 50, left: 16,
             child: GestureDetector(
@@ -143,15 +218,14 @@ class ZonaDeDescuentosScreen extends StatelessWidget {
   }
 }
 
+// ===============================================================
+// 🛡️ TARJETA DE DESCUENTO BLINDADA
+// ===============================================================
 class _DiscountCard extends StatelessWidget {
   final String fotoUrl;
-  final String titulo;
-  final int index;
 
   const _DiscountCard({
     required this.fotoUrl,
-    this.titulo = '',
-    required this.index,
   });
 
   @override
@@ -167,39 +241,28 @@ class _DiscountCard extends StatelessWidget {
       },
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
           border: Border.all(color: const Color(0xFFFFC107).withOpacity(0.3), width: 1),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              fotoUrl.isNotEmpty
-                  ? Image.network(fotoUrl, fit: BoxFit.cover)
-                  : Container(
-                color: Colors.white10,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.local_offer, color: Colors.white24, size: 30),
-                    const SizedBox(height: 5),
-                    // 🛡️ BLINDAJE: Texto variable elástico
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          "PROMO ${index + 1}",
-                          style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    )
-                  ],
+          borderRadius: BorderRadius.circular(12),
+          child: CachedNetworkImage(
+            imageUrl: fotoUrl,
+            fit: BoxFit.cover,
+            memCacheHeight: 600,
+            placeholder: (context, url) => Container(
+              color: Colors.white10,
+              child: const Center(
+                child: SizedBox(
+                  width: 24, height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFBEB3FF)),
                 ),
               ),
-            ],
+            ),
+            errorWidget: (context, url, error) => Container(
+              color: Colors.white10,
+            ),
           ),
         ),
       ),
@@ -207,6 +270,9 @@ class _DiscountCard extends StatelessWidget {
   }
 }
 
+// ===============================================================
+// 🛡️ PANTALLA DETALLE (FULLSCREEN ZOOM)
+// ===============================================================
 class _DiscountDetailScreen extends StatelessWidget {
   final String fotoUrl;
 
@@ -217,27 +283,23 @@ class _DiscountDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
+          // 1. IMAGEN FULLSCREEN CON ZOOM Y CACHÉ
           Center(
             child: InteractiveViewer(
               minScale: 1.0,
               maxScale: 4.0,
-              child: fotoUrl.isNotEmpty
-                  ? Image.network(
-                fotoUrl,
+              child: CachedNetworkImage(
+                imageUrl: fotoUrl,
                 fit: BoxFit.contain,
                 width: double.infinity,
                 height: double.infinity,
-                errorBuilder: (_,__,___) => const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.broken_image, color: Colors.white54, size: 60),
-                    SizedBox(height: 10),
-                    Text("Imagen no disponible", style: TextStyle(color: Colors.white54))
-                  ],
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(color: Color(0xFFBEB3FF)),
                 ),
-              )
-                  : const Icon(Icons.local_offer, color: Colors.white24, size: 100),
+                errorWidget: (context, url, error) => const SizedBox.shrink(),
+              ),
             ),
           ),
 
@@ -260,7 +322,6 @@ class _DiscountDetailScreen extends StatelessWidget {
                   stops: const [0.0, 0.4, 1.0],
                 ),
               ),
-              // 🛡️ TEXTO INFORMATIVO (INTACTO PARA MANTENER SALTOS DE LÍNEA)
               child: const Text(
                 "Presenta este cupón en el establecimiento para redimir tu beneficio.",
                 textAlign: TextAlign.center,

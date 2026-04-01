@@ -3,6 +3,7 @@
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables protegidos.
 // 🔥 UI: Diseño Premium intacto con fotos inteligentes y lógica de invitación.
 // 🔥 CACHÉ: Fallback _SafeImage actualizado con CachedNetworkImage.
+// 🔥 UPDATE: Grid Categorías 1x4 (Cuadrados 1:1 Cero Deformación) + Banner Inyectado.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
+import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT DEL BANNER
 
 // PANTALLAS DESTINO
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
@@ -116,16 +118,21 @@ class CitaNuevaScreen extends ConsumerWidget {
 
                       const SizedBox(height: 25),
 
-                      // Botón Descuentos Blindado
+                      // Grid Categorías Blindado (1x4, Cuadrados Perfectos)
+                      _GridCategorias(matchyUidInvitado: matchyUidInvitado),
+
+                      const SizedBox(height: 10),
+
+                      // 🔥 BANNER PUBLICITARIO INYECTADO AQUÍ
+                      const BannerPublicidad(),
+
+                      const SizedBox(height: 20),
+
+                      // Botón Descuentos Blindado (Movido abajo del banner)
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: _BotonDescuentosAnimado(),
                       ),
-
-                      const SizedBox(height: 30),
-
-                      // Grid Categorías Blindado
-                      _GridCategorias(matchyUidInvitado: matchyUidInvitado),
 
                       const SizedBox(height: 30),
 
@@ -287,7 +294,7 @@ class _BotonDescuentosAnimadoState extends State<_BotonDescuentosAnimado> with S
 }
 
 // ===============================================================
-// 🛡️ GRID CATEGORÍAS BLINDADO
+// 🛡️ GRID CATEGORÍAS BLINDADO (AHORA 1x4, CUADRADOS 1:1)
 // ===============================================================
 class _GridCategorias extends StatelessWidget {
   final String? matchyUidInvitado;
@@ -295,58 +302,74 @@ class _GridCategorias extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double cardHeight = 110;
-    const double gap = 12;
+    const double radioCategoria = 18;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
+      child: Row(
         children: [
-          Row(children: [
-            Expanded(child: _CatCard("RESTAURANTES", "assets/images/iconorestaurante.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => RestaurantesScreen(matchyUidInvitado: matchyUidInvitado))))),
-            const SizedBox(width: gap),
-            Expanded(child: _CatCard("BARES", "assets/images/iconobares.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => BaresScreen(matchyUidInvitado: matchyUidInvitado))))),
-          ]),
-          const SizedBox(height: gap),
-          Row(children: [
-            Expanded(child: _CatCard("CAFÉS", "assets/images/iconocafeteria.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => CafesScreen(matchyUidInvitado: matchyUidInvitado))))),
-            const SizedBox(width: gap),
-            Expanded(child: _CatCard("ACTIVIDADES", "assets/images/iconoactividades.png", cardHeight, () => Navigator.push(context, MaterialPageRoute(builder: (_) => ActividadesScreen(matchyUidInvitado: matchyUidInvitado))))),
-          ]),
+          Expanded(child: _CatCard("RESTAURANTES", "assets/images/restaurantes_ico.jpg", radioCategoria, () => Navigator.push(context, MaterialPageRoute(builder: (_) => RestaurantesScreen(matchyUidInvitado: matchyUidInvitado))))),
+          const SizedBox(width: 8),
+          Expanded(child: _CatCard("BARES", "assets/images/bares_ico.jpg", radioCategoria, () => Navigator.push(context, MaterialPageRoute(builder: (_) => BaresScreen(matchyUidInvitado: matchyUidInvitado))))),
+          const SizedBox(width: 8),
+          Expanded(child: _CatCard("CAFÉS", "assets/images/cafes_ico.jpg", radioCategoria, () => Navigator.push(context, MaterialPageRoute(builder: (_) => CafesScreen(matchyUidInvitado: matchyUidInvitado))))),
+          const SizedBox(width: 8),
+          Expanded(child: _CatCard("ACTIVIDADES", "assets/images/actividades_ico.jpg", radioCategoria, () => Navigator.push(context, MaterialPageRoute(builder: (_) => ActividadesScreen(matchyUidInvitado: matchyUidInvitado))))),
         ],
       ),
     );
   }
 
-  Widget _CatCard(String title, String asset, double h, VoidCallback onTap) {
+  Widget _CatCard(String title, String asset, double radio, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          Container(
-            height: h,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
-              image: DecorationImage(image: AssetImage(asset), fit: BoxFit.cover),
-            ),
+      child: AspectRatio(
+        aspectRatio: 1.0, // 🔥 Cuadrado perfecto
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black, // Fondo de respaldo
+            borderRadius: BorderRadius.circular(radio),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
           ),
-          Container(
-            height: h,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.7)], stops: const [0.6, 1.0]),
-            ),
+          clipBehavior: Clip.antiAlias, // 🔥 Corta bordes sin estrujar
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                asset,
+                fit: BoxFit.cover, // 🔥 Ajuste exacto, cero deformaciones
+                alignment: Alignment.center,
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                    stops: const [0.4, 1.0],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(7.5, 0, 7, 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.bottomCenter,
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'Poppins',
+                      letterSpacing: 0.5,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            // BLINDAJE: Título de categoría adaptativo
-            child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, shadows: [Shadow(color: Colors.black, blurRadius: 4)]))
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

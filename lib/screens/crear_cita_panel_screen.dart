@@ -3,6 +3,7 @@
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables elásticos.
 // 🔥 UI: Diseño Premium original con degradado Fade Out intacto.
 // 🔥 UPDATE: Textos de categorías ajustados (menor tamaño y más padding lateral).
+// 🔥 UPDATE: Proporciones de imágenes corregidas (Cero deformaciones, centrado absoluto y BoxFit.cover)
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -154,13 +155,13 @@ class _CrearCitaContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             children: [
-              Expanded(child: _CategoriaCard(titulo: 'RESTAURANTES', imageAsset: 'assets/images/iconorestaurante.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RestaurantesScreen())))),
+              Expanded(child: _CategoriaCard(titulo: 'RESTAURANTES', imageAsset: 'assets/images/restaurantes_ico.jpg', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RestaurantesScreen())))),
               const SizedBox(width: 8),
-              Expanded(child: _CategoriaCard(titulo: 'BARES', imageAsset: 'assets/images/iconobares.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BaresScreen())))),
+              Expanded(child: _CategoriaCard(titulo: 'BARES', imageAsset: 'assets/images/bares_ico.jpg', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BaresScreen())))),
               const SizedBox(width: 8),
-              Expanded(child: _CategoriaCard(titulo: 'CAFÉS', imageAsset: 'assets/images/iconocafeteria.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CafesScreen())))),
+              Expanded(child: _CategoriaCard(titulo: 'CAFÉS', imageAsset: 'assets/images/cafes_ico.jpg', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CafesScreen())))),
               const SizedBox(width: 8),
-              Expanded(child: _CategoriaCard(titulo: 'ACTIVIDADES', imageAsset: 'assets/images/iconoactividades.png', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActividadesScreen())))),
+              Expanded(child: _CategoriaCard(titulo: 'ACTIVIDADES', imageAsset: 'assets/images/actividades_ico.jpg', radio: radioCategoria, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ActividadesScreen())))),
             ],
           ),
         ),
@@ -223,7 +224,7 @@ class _CrearCitaContent extends StatelessWidget {
 }
 
 // ===============================================================
-// CATEGORÍA CARD BLINDADA (CUADRADA 1:1)
+// CATEGORÍA CARD BLINDADA (CUADRADA 1:1 - CERO DEFORMACIONES)
 // ===============================================================
 class _CategoriaCard extends StatelessWidget {
   final String titulo;
@@ -243,53 +244,59 @@ class _CategoriaCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AspectRatio(
-        // 🔥 ESTA ES LA MAGIA: Fuerza a que el widget sea un cuadrado perfecto 1:1
+        // 🔥 ESTA ES LA MAGIA: Fuerza a que el widget contenedor sea un cuadrado perfecto 1:1
         aspectRatio: 1.0,
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(radio),
-                boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
-                image: DecorationImage(
-                  image: AssetImage(imageAsset),
-                  fit: BoxFit.cover, // 🔥 Asegura que la foto llene el cuadrado sin deformarse
-                ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black, // 🔥 FONDO SÓLIDO DE RESPALDO
+            borderRadius: BorderRadius.circular(radio),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
+          ),
+          clipBehavior: Clip.antiAlias, // 🔥 BLINDAJE: Corta los bordes de la foto para respetar el radio
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 🔥 IMAGEN NATIVA: Centrada y escalada proporcionalmente (jamás se estruja)
+              Image.asset(
+                imageAsset,
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
               ),
-            ),
 
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(radio),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
-                  stops: const [0.4, 1.0], // Ajustado para un cuadrado
-                ),
-              ),
-            ),
-
-            // 🔥 UPDATE: Padding aumentado a 6 para separar el texto de los bordes izquierdo y derecho
-            Padding(
-              padding: const EdgeInsets.fromLTRB(7.5, 0, 7, 8),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  titulo,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10, // 🔥 UPDATE: Tamaño reducido para que respire mejor en el cuadrado
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Poppins',
-                    letterSpacing: 0.5,
-                    shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+              // 🔥 DEGRADADO: Base oscura para que el texto resalte
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.85)],
+                    stops: const [0.4, 1.0],
                   ),
                 ),
               ),
-            ),
-          ],
+
+              // 🔥 TEXTO: Ajustado para no chocar con los bordes
+              Positioned(
+                bottom: 8,
+                left: 6,
+                right: 6,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    titulo,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      fontFamily: 'Poppins',
+                      letterSpacing: 0.5,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
