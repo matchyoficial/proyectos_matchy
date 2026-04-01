@@ -1,17 +1,17 @@
 // 📂 lib/screens/perfil_usuariox_screen.dart
 // -----------------------------------------------------------
-// PERFIL PÚBLICO DEL USUARIO (SMART CACHE PRO INYECTADO)
-// 🔥 CACHÉ PRO: Renderizado instantáneo y protección de RAM en fotos extra.
-// ✅ UI: Botón Atrás (Chevron) arriba a la izquierda.
-// ✅ UI: Estilo de chips y sombras replicado de "Datos".
-// 🔥 BLINDAJE: Títulos a 20pt, Profesión y Ciudad adaptativos.
-// 📸 FIX: Añadida lógica para pintar hasta la 5ta foto si existe.
+// PERFIL PÚBLICO DEL USUARIO (SMART CACHE PRO + SISTEMA DE REPORTES)
+// 🔥 REPORTES PRO: Botón ghost inyectado al final del perfil.
+// 🔥 UI MATCHY: Burbuja flotante de reporte con fricción inteligente.
+// 🔥 FIX CRÍTICO CORREO: Estructura 'message' ajustada para Trigger Email Extension.
+// 🔥 LIE DETECTOR: Captura nombre y correo real vs. lo que escribe el usuario.
 // -----------------------------------------------------------
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 
@@ -32,7 +32,6 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
   static const String kUsersCollection = 'users';
   static const double altoFotoPrincipal = 450;
 
-  // Sombras Estilo Datos
   static const List<Shadow> kTextShadow = [
     Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))
   ];
@@ -40,7 +39,6 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 3))
   ];
 
-  // Configuración Tags
   static const int maxShortLength = 14;
   static const double gapX = 10;
   static const double chipPadV = 10;
@@ -71,6 +69,87 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     }
   }
 
+  // 🔥 SISTEMA DE NOTIFICACIONES MATCHY STYLE
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
+  // 🔥 LANZADOR DEL REPORTE
+  void _mostrarDialogoReporte(String reportadoNombre, String reportadoUid) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ReportDialog(
+        reportadoNombre: reportadoNombre,
+        reportadoUid: reportadoUid,
+        onSuccess: () {
+          _mostrarBurbuja("Reporte enviado. Nuestro equipo lo revisará pronto.", const Color(0xFF00E676), Icons.check_circle_outline_rounded);
+        },
+        onError: (e) {
+          _mostrarBurbuja("Error al enviar reporte: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+        },
+      ),
+    );
+  }
+
   // -------------------------------------------------------------
   // Helpers UI
   // -------------------------------------------------------------
@@ -84,7 +163,6 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     );
   }
 
-  // 🔥 HELPER DE IMÁGENES BLINDADO CON SMART CACHE
   Widget _buildImage(String? raw) {
     if (raw == null || raw.trim().isEmpty) return _fallback();
     final v = raw.trim();
@@ -94,7 +172,7 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
         imageUrl: v,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
-        memCacheHeight: 1200, // Protege la RAM limitando el tamaño en caché
+        memCacheHeight: 1200,
         placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
         errorWidget: (_, __, ___) => _fallback(),
       );
@@ -113,7 +191,7 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
       decoration: BoxDecoration(
         color: const Color(0x33FFFFFF),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: kChipShadow, // Aplicada sombra a la cápsula
+        boxShadow: kChipShadow,
         border: Border.all(color: Colors.white12),
       ),
       child: Column(
@@ -128,7 +206,7 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
                 fontFamily: 'Poppins',
-                shadows: kTextShadow, // Sombra en título
+                shadows: kTextShadow,
               ),
             ),
           ),
@@ -164,7 +242,7 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
       decoration: BoxDecoration(
         color: const Color(0x66FFFFFF),
         borderRadius: BorderRadius.circular(50),
-        boxShadow: kChipShadow, // Sombra en cada chip estilo Datos
+        boxShadow: kChipShadow,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -366,10 +444,29 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                       if (intereses.isNotEmpty) _cardChips('Intereses y Hobbies', intereses),
                       if (galeriaRaw.length >= 4) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[3])),
                       _cardTexto('Un detalle que me enamora', detalle.isEmpty ? '—' : detalle),
-
-                      // 📸 FIX: 5TA FOTO AÑADIDA AQUÍ
                       if (galeriaRaw.length >= 5) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[4])),
 
+                      const SizedBox(height: 30),
+
+                      // 🔥 BOTÓN GHOST DE REPORTE (Elegante y Sutil)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () => _mostrarDialogoReporte(nombre, widget.uid),
+                          icon: const Icon(Icons.flag_rounded, color: Colors.white54, size: 18),
+                          label: const Text(
+                              "¿Algo no está bien? Reportar perfil",
+                              style: TextStyle(color: Colors.white54, fontFamily: 'Poppins', fontSize: 13, fontWeight: FontWeight.bold)
+                          ),
+                          style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: const BorderSide(color: Colors.white12, width: 1)
+                              ),
+                              backgroundColor: Colors.white.withOpacity(0.05)
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 40),
                     ],
                   ),
@@ -397,6 +494,286 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+// ============================================================================
+// 🛡️ BURBUJA DE REPORTE (MATCHY STYLE) CON DETECTOR DE MENTIRAS
+// ============================================================================
+class _ReportDialog extends StatefulWidget {
+  final String reportadoNombre;
+  final String reportadoUid;
+  final VoidCallback onSuccess;
+  final Function(String) onError;
+
+  const _ReportDialog({
+    required this.reportadoNombre,
+    required this.reportadoUid,
+    required this.onSuccess,
+    required this.onError,
+  });
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _detailsCtrl = TextEditingController();
+
+  String? _selectedCategory;
+  bool _sending = false;
+
+  final List<String> _categorias = [
+    'Fotos falsas o robadas (Catfish).',
+    'Comportamiento inapropiado o acoso.',
+    'Parece ser menor de edad.',
+    'Desnudos o imágenes de violencia y odio.',
+    'Spam, publicidad o estafa.',
+    'Otro.'
+  ];
+
+  // Filtro de Fricción
+  bool get _isFormValid {
+    return _nameCtrl.text.trim().isNotEmpty &&
+        _emailCtrl.text.trim().isNotEmpty &&
+        _selectedCategory != null &&
+        _detailsCtrl.text.trim().length >= 30;
+  }
+
+  Future<void> _enviarReporte() async {
+    if (!_isFormValid || _sending) return;
+
+    setState(() => _sending = true);
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final reporterUid = currentUser?.uid ?? 'Desconocido';
+      final reporterEmailAuth = currentUser?.email ?? 'Sin correo registrado';
+
+      // 🔥 EXTRACCIÓN DE LA VERDAD: Buscar el nombre real del denunciante en la BD
+      String reporterNombreReal = 'Desconocido';
+      try {
+        final docUser = await FirebaseFirestore.instance.collection('users').doc(reporterUid).get();
+        if (docUser.exists) {
+          reporterNombreReal = docUser.data()?['nombre'] ?? 'Sin nombre';
+        }
+      } catch (_) {}
+
+      final textoEstructurado = """
+🚨 REPORTE DE PERFIL (Matchy Security)
+Denunciado: ${widget.reportadoNombre}
+UID Denunciado: ${widget.reportadoUid}
+
+--- FIRMADO POR EL USUARIO (FORMULARIO) ---
+Nombre dado: ${_nameCtrl.text.trim()}
+Correo dado: ${_emailCtrl.text.trim()}
+
+--- DATOS REALES DEL SISTEMA (LIE DETECTOR) ---
+Nombre real en App: $reporterNombreReal
+Correo real de Ingreso: $reporterEmailAuth
+UID Denunciante: $reporterUid
+
+--- EVIDENCIA ---
+Motivo: $_selectedCategory
+Detalles:
+${_detailsCtrl.text.trim()}
+""";
+
+      // 🔥 FIX CRÍTICO: Usar el formato exacto 'message' que exige la extensión de Google
+      await FirebaseFirestore.instance.collection('buzon_soporte').add({
+        'uid': reporterUid,
+        'email_usuario': _emailCtrl.text.trim(),
+        'estado': 'pendiente',
+        'to': 'matchyoficial@gmail.com',
+        'message': { // <- Esto es lo que activa al robot del correo
+          'subject': '🚨 ALERTA MATCHY: Reporte contra ${widget.reportadoNombre}',
+          'text': textoEstructurado,
+        }
+      });
+
+      if (mounted) {
+        Navigator.pop(context); // Cierra el diálogo
+        widget.onSuccess();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        widget.onError(e.toString());
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(25),
+          border: Border.all(color: Colors.white24, width: 1),
+          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, 10))],
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 🛡️ CABECERA
+              const Icon(Icons.shield_outlined, color: Color(0xFFFF5252), size: 40),
+              const SizedBox(height: 10),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  "REPORTAR A ${widget.reportadoNombre.toUpperCase()}",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Poppins'),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // 📝 BLOQUE DE IDENTIDAD (El candado)
+              _buildTextField(_nameCtrl, "Tu Nombre (Obligatorio)", Icons.person_outline),
+              const SizedBox(height: 12),
+              _buildTextField(_emailCtrl, "Tu Correo (Obligatorio)", Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+              const SizedBox(height: 20),
+
+              // 🏷️ BLOQUE DE MOTIVO
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 15),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF2A2A2A),
+                    hint: const Text("Selecciona el motivo...", style: TextStyle(color: Colors.white54, fontSize: 14)),
+                    value: _selectedCategory,
+                    icon: const Icon(Icons.keyboard_arrow_down, color: Colors.white54),
+                    items: _categorias.map((String cat) {
+                      return DropdownMenuItem<String>(
+                        value: cat,
+                        child: Text(cat, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (val) => setState(() => _selectedCategory = val),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ✍️ BLOQUE DE EVIDENCIA (Mínimo 30 letras)
+              TextField(
+                controller: _detailsCtrl,
+                maxLines: 4,
+                maxLength: 500,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: "Cuéntanos qué pasó (Mínimo 30 letras)...",
+                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.all(15),
+                  counterText: '${_detailsCtrl.text.trim().length} / 500',
+                  counterStyle: TextStyle(
+                    color: _detailsCtrl.text.trim().length >= 30 ? const Color(0xFF00E676) : const Color(0xFFFF5252),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              // ⚠️ CANDADO PSICOLÓGICO FINAL
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5252).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFF5252).withOpacity(0.3)),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("⚠️ ", style: TextStyle(fontSize: 16)),
+                    Expanded(
+                      child: Text(
+                        "Aviso de Seguridad: Un moderador humano revisará este caso detalladamente. Usar esta herramienta para dañar a otros por motivos personales, o falsas acusaciones, es una violación de nuestras reglas y causará la suspensión de tu propio perfil.",
+                        style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 25),
+
+              // 🔘 BOTONES DE ACCIÓN
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _sending ? null : () => Navigator.pop(context),
+                      child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _isFormValid && !_sending ? _enviarReporte : null,
+                      child: Container(
+                        height: 45,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: _isFormValid
+                              ? const LinearGradient(colors: [Color(0xFFFF5252), Color(0xFFD50000)])
+                              : LinearGradient(colors: [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.05)]),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: _sending
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : Text(
+                            "ENVIAR",
+                            style: TextStyle(
+                                color: _isFormValid ? Colors.white : Colors.white38,
+                                fontWeight: FontWeight.bold
+                            )
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(TextEditingController ctrl, String hint, IconData icon, {TextInputType? keyboardType}) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: keyboardType,
+      onChanged: (_) => setState(() {}),
+      style: const TextStyle(color: Colors.white, fontSize: 14),
+      decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: Colors.white54, size: 20),
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white38, fontSize: 14),
+        filled: true,
+        fillColor: Colors.white.withOpacity(0.05),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
       ),
     );
   }
