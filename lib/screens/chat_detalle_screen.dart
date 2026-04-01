@@ -1,6 +1,7 @@
 // 📂 lib/screens/chat_detalle_screen.dart
 // ✅ CHAT DETALLE BLINDADO (REACCIONES EXTENDIDAS + LISTA COMPLETA FIX)
-// 🔥 FIX LISTA LARGAAA: Nuevos emojis (🍑, 🍆, 🍌, 💋, 💔) inyectados al inicio del "+".
+// 🔥 FIX CRÍTICO: Vacuna Anti-Nulos inyectada en el 'status' de los mensajes (Adiós pantalla roja).
+// 🔥 FIX LISTA LARGAAA: Nuevos emojis inyectados, incluyendo 😈 y 👿.
 // 🔥 UI FIX: Scrollbar y física de rebote en la lista de emojis para que no se pierdan.
 // 🔥 MODO FANTASMA: Rompe-hechizos funcional al enviar mensaje.
 // 🔥 CACHÉ: Fotos perfectas sin deformación.
@@ -45,11 +46,11 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
   static final Color kBubbleOther = const Color(0xFF333333).withOpacity(0.85);
   static const Color kSendButtonColor = Color(0xFFFFC107);
 
-  // 🔥 LISTA MAESTRA (LOS NUEVOS ESTÁN ARRIBA PARA QUE LOS VEAS DE UNA AL DAR "+")
+  // 🔥 LISTA MAESTRA (DIABLITOS AÑADIDOS JUNTO AL FANTASMA)
   final List<String> kAllEmojis = [
     '🍑', '🍆', '🍌', '💋', '💔', '😘', '🥰', '😍', '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎',
     '😂', '🔥', '👍', '😮', '😢', '💯', '😎', '🤩', '👏', '🙌', '🎉', '🥳', '🤔', '🤫', '🤭', '🥱', '🥺',
-    '😭', '🤬', '🙄', '💀', '👽', '👾', '🤖', '🎃', '👻', '🙏', '🤝', '💪', '👀', '👅', '✨'
+    '😭', '🤬', '🙄', '💀', '👽', '👾', '🤖', '🎃', '👻', '😈', '👿', '🙏', '🤝', '💪', '👀', '👅', '✨'
   ];
 
   List<String> _recentEmojis = ['❤️', '😂', '🔥', '👍', '😮', '😢'];
@@ -295,7 +296,8 @@ class _ChatDetalleScreenState extends State<ChatDetalleScreen> {
                                         ],
                                       ),
                                     ),
-                                    if (isMe) Padding(padding: const EdgeInsets.only(right: 5, top: 15), child: Icon(d['status'] >= 2 ? Icons.done_all : Icons.done, size: 14, color: d['status'] >= 2 ? Colors.blueAccent : Colors.white38)),
+                                    // 🔥 LA VACUNA ESTÁ AQUÍ ( ?? 0)
+                                    if (isMe) Padding(padding: const EdgeInsets.only(right: 5, top: 15), child: Icon((d['status'] ?? 0) >= 2 ? Icons.done_all : Icons.done, size: 14, color: (d['status'] ?? 0) >= 2 ? Colors.blueAccent : Colors.white38)),
                                   ],
                                 ),
                               ),

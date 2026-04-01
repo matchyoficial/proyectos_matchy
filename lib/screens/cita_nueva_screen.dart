@@ -1,24 +1,23 @@
 // 📂 lib/screens/cita_nueva_screen.dart
-// ✅ PANTALLA CITA NUEVA BLINDADA (ESTRATEGIA ADAPTATIVA + SMART CACHE)
+// ✅ PANTALLA CITA NUEVA BLINDADA (ESTRATEGIA ADAPTATIVA + GEOLOCALIZACIÓN)
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables protegidos.
+// 🔥 DATOS: Filtro estricto por Ciudad y País en "Lugares Populares".
 // 🔥 UI: Diseño Premium intacto con fotos inteligentes y lógica de invitación.
 // 🔥 CACHÉ: Fallback _SafeImage actualizado con CachedNetworkImage.
-// 🔥 UPDATE: Grid Categorías 1x4 (Cuadrados 1:1 Cero Deformación) + Banner Inyectado.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
-import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT DEL BANNER
+import 'package:proyectos_matchy/widgets/banner_publicidad.dart';
 
-// PANTALLAS DESTINO
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
 import 'package:proyectos_matchy/screens/cafes_screen.dart';
@@ -118,17 +117,17 @@ class CitaNuevaScreen extends ConsumerWidget {
 
                       const SizedBox(height: 25),
 
-                      // Grid Categorías Blindado (1x4, Cuadrados Perfectos)
+                      // Grid Categorías Blindado (1x4)
                       _GridCategorias(matchyUidInvitado: matchyUidInvitado),
 
                       const SizedBox(height: 10),
 
-                      // 🔥 BANNER PUBLICITARIO INYECTADO AQUÍ
+                      // 🔥 BANNER PUBLICITARIO
                       const BannerPublicidad(),
 
                       const SizedBox(height: 20),
 
-                      // Botón Descuentos Blindado (Movido abajo del banner)
+                      // Botón Descuentos Blindado
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: _BotonDescuentosAnimado(),
@@ -136,7 +135,7 @@ class CitaNuevaScreen extends ConsumerWidget {
 
                       const SizedBox(height: 30),
 
-                      // Lugares Populares Blindado
+                      // Lugares Populares Blindado (AHORA CON GPS)
                       _LugaresPopularesList(matchyUidInvitado: matchyUidInvitado),
                     ],
                   ),
@@ -225,7 +224,6 @@ class _HeaderFotos extends StatelessWidget {
           Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))),
           Positioned(
               bottom: 12, left: 8, right: 8,
-              // BLINDAJE: Nombre en cápsula adaptativo
               child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(nombre, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w800, fontFamily: 'Poppins'))
@@ -269,7 +267,6 @@ class _BotonDescuentosAnimadoState extends State<_BotonDescuentosAnimado> with S
           child: InkWell(
             borderRadius: BorderRadius.circular(20),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ZonaDeDescuentosScreen())),
-            // BLINDAJE: Contenido del botón adaptativo
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: FittedBox(
@@ -294,7 +291,7 @@ class _BotonDescuentosAnimadoState extends State<_BotonDescuentosAnimado> with S
 }
 
 // ===============================================================
-// 🛡️ GRID CATEGORÍAS BLINDADO (AHORA 1x4, CUADRADOS 1:1)
+// 🛡️ GRID CATEGORÍAS BLINDADO
 // ===============================================================
 class _GridCategorias extends StatelessWidget {
   final String? matchyUidInvitado;
@@ -323,20 +320,20 @@ class _GridCategorias extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AspectRatio(
-        aspectRatio: 1.0, // 🔥 Cuadrado perfecto
+        aspectRatio: 1.0,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black, // Fondo de respaldo
+            color: Colors.black,
             borderRadius: BorderRadius.circular(radio),
             boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
           ),
-          clipBehavior: Clip.antiAlias, // 🔥 Corta bordes sin estrujar
+          clipBehavior: Clip.antiAlias,
           child: Stack(
             fit: StackFit.expand,
             children: [
               Image.asset(
                 asset,
-                fit: BoxFit.cover, // 🔥 Ajuste exacto, cero deformaciones
+                fit: BoxFit.cover,
                 alignment: Alignment.center,
               ),
               Container(
@@ -376,11 +373,49 @@ class _GridCategorias extends StatelessWidget {
 }
 
 // ===============================================================
-// 🛡️ LUGARES POPULARES BLINDADO
+// 🛡️ LUGARES POPULARES BLINDADO (CON GEOLOCALIZACIÓN)
 // ===============================================================
-class _LugaresPopularesList extends StatelessWidget {
+class _LugaresPopularesList extends StatefulWidget {
   final String? matchyUidInvitado;
   const _LugaresPopularesList({this.matchyUidInvitado});
+
+  @override
+  State<_LugaresPopularesList> createState() => _LugaresPopularesListState();
+}
+
+class _LugaresPopularesListState extends State<_LugaresPopularesList> {
+  String _userCiudad = 'Cali';
+  String _userPais = 'Colombia';
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserLocation();
+  }
+
+  // 🔥 LECTURA SILENCIOSA DE LA UBICACIÓN DEL USUARIO ACTUAL
+  Future<void> _fetchUserLocation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (snap.exists && snap.data() != null) {
+          if (mounted) {
+            setState(() {
+              _userCiudad = (snap.data()!['ciudad'] ?? 'Cali').toString();
+              _userPais = (snap.data()!['pais'] ?? 'Colombia').toString();
+              _isLoadingLocation = false;
+            });
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() => _isLoadingLocation = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -395,7 +430,7 @@ class _LugaresPopularesList extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child: const Text(
                 "LUGARES MÁS POPULARES",
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, fontFamily: 'Poppins')
             ),
           ),
         ),
@@ -403,18 +438,23 @@ class _LugaresPopularesList extends StatelessWidget {
 
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          child: _isLoadingLocation
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF)))
+              : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            // 🔒 CANDADOS INYECTADOS: País, Ciudad y Orden por Popularidad
             stream: FirebaseFirestore.instance
                 .collection('lugares')
+                .where('pais', isEqualTo: _userPais)
+                .where('ciudad', isEqualTo: _userCiudad)
                 .where('popular', isGreaterThan: 0)
-                .orderBy('popular')
+                .orderBy('popular', descending: true)
                 .snapshots(),
             builder: (context, snap) {
               if (snap.hasError) return const Text("Error cargando populares", style: TextStyle(color: Colors.white54));
               if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
               final docs = snap.data!.docs;
-              if (docs.isEmpty) return const Text("No hay lugares populares activos.", style: TextStyle(color: Colors.white54));
+              if (docs.isEmpty) return const Text("No hay lugares populares activos en tu ciudad.", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins'));
 
               return Column(
                 children: List.generate(docs.length, (index) {
@@ -425,7 +465,7 @@ class _LugaresPopularesList extends StatelessWidget {
                       lugar: lugar,
                       altoTarjeta: alturaLugarPopular,
                       onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaScreen(lugar: lugar, matchyUidInvitado: matchyUidInvitado)));
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaScreen(lugar: lugar, matchyUidInvitado: widget.matchyUidInvitado)));
                       },
                     ),
                   );
@@ -453,7 +493,7 @@ class _SafeImage extends StatelessWidget {
         key: ValueKey(p),
         imageUrl: p,
         fit: BoxFit.cover,
-        memCacheHeight: 450, // Supercargador: 150px de altura * 3
+        memCacheHeight: 450,
         placeholder: (context, url) => Container(
             color: Colors.black26,
             child: const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFBEB3FF))))

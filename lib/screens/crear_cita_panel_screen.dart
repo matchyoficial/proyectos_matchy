@@ -1,12 +1,12 @@
 // 📂 lib/screens/crear_cita_panel_screen.dart
-// ✅ PANEL CREAR CITA BLINDADO (ESTRATEGIA ADAPTATIVA)
+// ✅ PANEL CREAR CITA BLINDADO (ESTRATEGIA ADAPTATIVA + GEOLOCALIZACIÓN)
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables elásticos.
+// 🔥 DATOS: Filtro estricto por Ciudad y País en "Lugares Populares".
 // 🔥 UI: Diseño Premium original con degradado Fade Out intacto.
-// 🔥 UPDATE: Textos de categorías ajustados (menor tamaño y más padding lateral).
-// 🔥 UPDATE: Proporciones de imágenes corregidas (Cero deformaciones, centrado absoluto y BoxFit.cover)
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // 🔥 Import agregado para leer al usuario
 
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
@@ -18,7 +18,7 @@ import 'package:proyectos_matchy/screens/cafes_screen.dart';
 import 'package:proyectos_matchy/screens/actividades_screen.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
-import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT DEL BANNER
+import 'package:proyectos_matchy/widgets/banner_publicidad.dart';
 
 class CrearCitaPanelScreen extends StatelessWidget {
   static const String routeName = 'crear_cita_panel';
@@ -91,17 +91,22 @@ class CrearCitaPanelScreen extends StatelessWidget {
 }
 
 // ===============================================================
-// CONTENIDO BLINDADO
+// CONTENIDO BLINDADO CON GEOLOCALIZACIÓN
 // ===============================================================
-class _CrearCitaContent extends StatelessWidget {
+class _CrearCitaContent extends StatefulWidget {
   final String nombreUsuario;
 
   const _CrearCitaContent({required this.nombreUsuario});
 
+  @override
+  State<_CrearCitaContent> createState() => _CrearCitaContentState();
+}
+
+class _CrearCitaContentState extends State<_CrearCitaContent> {
   // Estilos de texto premium blindados
   static const TextStyle kTitleStyle = TextStyle(
     color: Colors.white,
-    fontSize: 28, // Tamaño original para el saludo grande
+    fontSize: 28,
     fontWeight: FontWeight.w900,
     fontFamily: 'Poppins',
     shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))],
@@ -109,13 +114,12 @@ class _CrearCitaContent extends StatelessWidget {
 
   static const TextStyle kSubtitleStyle = TextStyle(
     color: Colors.white70,
-    fontSize: 15, // Ajustado levemente para consistencia
+    fontSize: 15,
     fontWeight: FontWeight.w600,
     fontFamily: 'Poppins',
     shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 2))],
   );
 
-  // Regla de Oro: Títulos de sección a 20pt
   static const TextStyle kSectionTitleStyle = TextStyle(
     color: Colors.white,
     fontSize: 20,
@@ -123,6 +127,39 @@ class _CrearCitaContent extends StatelessWidget {
     fontFamily: 'Poppins',
     shadows: [Shadow(color: Colors.black, blurRadius: 8, offset: Offset(0, 3))],
   );
+
+  String _userCiudad = 'Cali';
+  String _userPais = 'Colombia';
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserLocation();
+  }
+
+  // 🔥 LECTURA SILENCIOSA DE LA UBICACIÓN DEL USUARIO ACTUAL
+  Future<void> _fetchUserLocation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (snap.exists && snap.data() != null) {
+          if (mounted) {
+            setState(() {
+              _userCiudad = (snap.data()!['ciudad'] ?? 'Cali').toString();
+              _userPais = (snap.data()!['pais'] ?? 'Colombia').toString();
+              _isLoadingLocation = false;
+            });
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() => _isLoadingLocation = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +173,7 @@ class _CrearCitaContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text('HOLA ${nombreUsuario.toUpperCase()}', style: kTitleStyle),
+            child: Text('HOLA ${widget.nombreUsuario.toUpperCase()}', style: kTitleStyle),
           ),
         ),
         const SizedBox(height: 4),
@@ -150,7 +187,7 @@ class _CrearCitaContent extends StatelessWidget {
         ),
         const SizedBox(height: 17),
 
-        // 🔥 GRID CATEGORÍAS (AHORA 1x4 EN UNA SOLA LÍNEA, CUADRADOS PERFECTOS)
+        // 🔥 GRID CATEGORÍAS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
@@ -168,12 +205,12 @@ class _CrearCitaContent extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        // 🔥 BANNER PUBLICITARIO INYECTADO AQUÍ
+        // 🔥 BANNER PUBLICITARIO
         const BannerPublicidad(),
 
         const SizedBox(height: 20),
 
-        // TÍTULO SECCIÓN POPULARES (Regla de Oro: 20pt)
+        // TÍTULO SECCIÓN POPULARES
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: FittedBox(
@@ -187,20 +224,26 @@ class _CrearCitaContent extends StatelessWidget {
 
         const SizedBox(height: 15),
 
-        // LISTA POPULARES (STREAM)
+        // LISTA POPULARES CON CANDADOS
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          child: _isLoadingLocation
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF)))
+              : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            // 🔒 CANDADOS INYECTADOS: País, Ciudad y Orden por Popularidad
             stream: FirebaseFirestore.instance
                 .collection('lugares')
+                .where('pais', isEqualTo: _userPais)
+                .where('ciudad', isEqualTo: _userCiudad)
                 .where('popular', isGreaterThan: 0)
-                .orderBy('popular')
+                .orderBy('popular', descending: true) // Asegura que los más altos salgan primero
                 .snapshots(),
             builder: (context, snap) {
+              if (snap.hasError) return const Center(child: Text("Error de carga", style: TextStyle(color: Colors.white54)));
               if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
 
               final docs = snap.data!.docs;
-              if (docs.isEmpty) return const Text("No hay lugares populares aún.", style: TextStyle(color: Colors.white54));
+              if (docs.isEmpty) return const Text("No hay lugares populares en tu ciudad.", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins'));
 
               return Column(
                 children: List.generate(docs.length, (index) {
@@ -224,7 +267,7 @@ class _CrearCitaContent extends StatelessWidget {
 }
 
 // ===============================================================
-// CATEGORÍA CARD BLINDADA (CUADRADA 1:1 - CERO DEFORMACIONES)
+// CATEGORÍA CARD BLINDADA
 // ===============================================================
 class _CategoriaCard extends StatelessWidget {
   final String titulo;
@@ -244,26 +287,22 @@ class _CategoriaCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AspectRatio(
-        // 🔥 ESTA ES LA MAGIA: Fuerza a que el widget contenedor sea un cuadrado perfecto 1:1
         aspectRatio: 1.0,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black, // 🔥 FONDO SÓLIDO DE RESPALDO
+            color: Colors.black,
             borderRadius: BorderRadius.circular(radio),
             boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 4))],
           ),
-          clipBehavior: Clip.antiAlias, // 🔥 BLINDAJE: Corta los bordes de la foto para respetar el radio
+          clipBehavior: Clip.antiAlias,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // 🔥 IMAGEN NATIVA: Centrada y escalada proporcionalmente (jamás se estruja)
               Image.asset(
                 imageAsset,
                 fit: BoxFit.cover,
                 alignment: Alignment.center,
               ),
-
-              // 🔥 DEGRADADO: Base oscura para que el texto resalte
               Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -274,8 +313,6 @@ class _CategoriaCard extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // 🔥 TEXTO: Ajustado para no chocar con los bordes
               Positioned(
                 bottom: 8,
                 left: 6,

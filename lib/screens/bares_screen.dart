@@ -1,24 +1,64 @@
 // 📂 lib/screens/bares_screen.dart
-// ✅ BARES BLINDADO (ESTRATEGIA ADAPTATIVA)
+// ✅ BARES BLINDADO (ESTRATEGIA ADAPTATIVA + GEOLOCALIZACIÓN)
 // 🔥 BLINDAJE: Texto de cabecera estandarizado a 16pt y protegido con FittedBox.
+// 🔥 DATOS: Filtro estricto por Ciudad y País inyectado.
 // 🔥 UI: Diseño Premium con cápsula azul oscuro y fade out inferior intactos.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // 🔥 Import agregado para leer al usuario
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
-class BaresScreen extends StatelessWidget {
+class BaresScreen extends StatefulWidget {
   final String? matchyUidInvitado; // 🟢 DATO OPCIONAL
   const BaresScreen({super.key, this.matchyUidInvitado});
 
+  @override
+  State<BaresScreen> createState() => _BaresScreenState();
+}
+
+class _BaresScreenState extends State<BaresScreen> {
   // 🛡️ CHINCHES MAESTROS (BLINDADOS)
   static const List<Color> kCapsulaGradient = [Color(0xFF2E2E4D), Color(0xFF1A1A24)];
   static const Color kBorderColor = Colors.white12;
   static const double kCapsulaRadius = 24.0;
   static const double kTitleSize = 16.0; // Estandarizado según instrucción
   static const double kCardGap = 2.0;
+
+  String _userCiudad = 'Cali';
+  String _userPais = 'Colombia';
+  bool _isLoadingLocation = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserLocation();
+  }
+
+  // 🔥 LECTURA SILENCIOSA DE LA UBICACIÓN DEL USUARIO ACTUAL
+  Future<void> _fetchUserLocation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (snap.exists && snap.data() != null) {
+          if (mounted) {
+            setState(() {
+              _userCiudad = (snap.data()!['ciudad'] ?? 'Cali').toString();
+              _userPais = (snap.data()!['pais'] ?? 'Colombia').toString();
+              _isLoadingLocation = false;
+            });
+          }
+          return;
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() => _isLoadingLocation = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,16 +129,28 @@ class BaresScreen extends StatelessWidget {
               const SizedBox(height: 10),
 
               Expanded(
-                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                // 🔥 ESPERA A TENER EL GPS PARA CARGAR
+                child: _isLoadingLocation
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF)))
+                    : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  // 🔒 LOS NUEVOS CANDADOS: Filtro por Ciudad y País inyectado
                   stream: FirebaseFirestore.instance
                       .collection('lugares')
                       .where('tipos', arrayContains: 'bar')
                       .where('activo', isEqualTo: true)
+                      .where('pais', isEqualTo: _userPais)
+                      .where('ciudad', isEqualTo: _userCiudad)
                       .orderBy('orden')
                       .snapshots(),
                   builder: (context, snap) {
+                    if (snap.hasError) return const Center(child: Text("Error de carga", style: TextStyle(color: Colors.white54)));
                     if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+
                     final docs = snap.data!.docs;
+
+                    if (docs.isEmpty) {
+                      return const Center(child: Text("No hay bares en tu ciudad", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins')));
+                    }
 
                     return SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
@@ -116,7 +168,7 @@ class BaresScreen extends StatelessWidget {
                                 Navigator.of(context).push(MaterialPageRoute(
                                     builder: (_) => LugarPlantillaScreen(
                                         lugar: lugar,
-                                        matchyUidInvitado: matchyUidInvitado
+                                        matchyUidInvitado: widget.matchyUidInvitado
                                     )
                                 ));
                               },

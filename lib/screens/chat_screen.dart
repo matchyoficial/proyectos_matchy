@@ -1,18 +1,17 @@
 // 📂 lib/screens/chat_screen.dart
-// ✅ LISTA DE CHATS DEFINITIVA (MODO FANTASMA "ESPEJO" + FIX ASPECT RATIO)
-// 🔥 MODO FANTASMA PRO: Actualización silenciosa (cleared_by) para no dejar mensajes huérfanos.
-// 🔥 FILTRO ZOMBIE: Si tú borraste el chat, no reaparece disfrazado de "Nuevo Match".
-// 🔥 FIX FOTOS: memCacheWidth eliminado. Proporción original restaurada sin deformar.
-// 🔥 UI MODO FANTASMA: La tarjeta se tiñe de rojo oscuro al presionar. Diálogo Matchy Style.
-// 🔥 CACHÉ: CachedNetworkImage con ValueKey inyectado para carga instantánea.
-// 🛠️ FIX OVERFLOW: Texto de último mensaje con puntos suspensivos (...) tipo WhatsApp.
+// ✅ LISTA DE CHATS DEFINITIVA (CAZAFANTASMAS AUTOMÁTICO + MODO ESPEJO)
+// 🔥 CAZAFANTASMAS: Filtra automáticamente perfiles eliminados de la DB.
+// 🔥 MODO FANTASMA PRO: Actualización silenciosa (cleared_by).
+// 🔥 FILTRO ZOMBIE: Si tú borraste el chat, no reaparece disfrazado.
+// 🔥 FIX FOTOS: memCacheWidth eliminado. Proporción original restaurada.
+// 🔥 UI MODO FANTASMA: La tarjeta se tiñe de rojo oscuro al presionar.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // ✅ Motor de caché
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:proyectos_matchy/services/chat_actions.dart';
 import 'package:proyectos_matchy/screens/chat_detalle_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
@@ -59,7 +58,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   static const List<Color> kCardGradient = [Color(0xFF7A43BF), Color(0xFF1A1A24)];
   static const BoxShadow kCardShadow = BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4));
 
-  // Variable de estado para el Modo Fantasma (Resalta de rojo la tarjeta al mantener presionada)
   String? _highlightedThreadId;
 
   Stream<QuerySnapshot> _matchesStream(String uid) {
@@ -77,11 +75,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         .snapshots();
   }
 
-  List<ChatThreadUI> _mergeData(List<QueryDocumentSnapshot> matches, List<QueryDocumentSnapshot> threads, String myUid) {
+  // 🔥 CAMBIO CLAVE: Transformamos el merge síncrono en un Future para verificar los fantasmas
+  Future<List<ChatThreadUI>> _mergeDataWithGhostHunting(List<QueryDocumentSnapshot> matches, List<QueryDocumentSnapshot> threads, String myUid) async {
     final List<ChatThreadUI> result = [];
     final Map<String, QueryDocumentSnapshot> threadMap = {};
-
-    // 🔥 ESPEJO ESPEJISMO: Lista para guardar a los que tú decidiste ocultar
     final Set<String> hiddenOtherUids = {};
 
     for (var t in threads) {
@@ -91,22 +88,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (otherUid.isEmpty) continue;
 
-      // 🔥 LECTURA DEL MODO FANTASMA: ¿Yo lo borré?
       final List clearedBy = (data['cleared_by'] is List) ? data['cleared_by'] : [];
       if (clearedBy.contains(myUid)) {
-        // Lo anoto en la lista negra para no mostrarlo como "Nuevo Match" tampoco
         hiddenOtherUids.add(otherUid);
-        continue; // Salto este chat, no lo agrego al mapa de hilos activos
+        continue;
       }
-
       threadMap[otherUid] = t;
+    }
+
+    // 👻 CAZAFANTASMAS: Cargamos los UIDs vivos en un set para verificar rápido
+    final Set<String> uidsVivos = {};
+    for (var m in matches) {
+      final otherUid = m.id;
+      if (!hiddenOtherUids.contains(otherUid)) {
+        try {
+          final doc = await FirebaseFirestore.instance.collection('users').doc(otherUid).get();
+          if (doc.exists) uidsVivos.add(otherUid);
+        } catch (_) {}
+      }
     }
 
     for (var m in matches) {
       final otherUid = m.id;
 
-      // 🔥 FILTRO ZOMBIE: Si este match está en mi lista de ocultos, lo ignoro por completo.
-      if (hiddenOtherUids.contains(otherUid)) {
+      // 👻 Si no está vivo, no entra a la lista de UI (El Fantasma desaparece)
+      if (hiddenOtherUids.contains(otherUid) || !uidsVivos.contains(otherUid)) {
         continue;
       }
 
@@ -169,7 +175,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return result;
   }
 
-  // 🔥 FUNCIÓN: MODO FANTASMA (ESPEJO ESPEJISMO)
   void _confirmDeleteChat(String threadId, String nombre, String myUid) {
     if (threadId.isEmpty) return;
 
@@ -194,7 +199,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   onPressed: () async {
                     Navigator.pop(ctx);
                     try {
-                      // 🔥 ACTUALIZACIÓN SILENCIOSA: Añadimos mi UID a la lista negra del chat
                       await FirebaseFirestore.instance.collection('chat_threads').doc(threadId).update({
                         'cleared_by': FieldValue.arrayUnion([myUid])
                       });
@@ -266,136 +270,144 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                         final matches = matchSnap.data!.docs;
                         final threads = threadSnap.data!.docs;
-                        final uiList = _mergeData(matches, threads, user.uid);
 
-                        if (uiList.isEmpty) {
-                          return Container(
-                            alignment: Alignment.center,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.chat_bubble_outline, color: Colors.white.withOpacity(0.5), size: 48),
-                                const SizedBox(height: 10),
-                                const Text("Aún no tienes chats activos", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins')),
-                              ],
-                            ),
-                          );
-                        }
+                        // 🔥 INYECCIÓN DE FUTURE BUILDER PARA ESPERAR EL FILTRO ANTI-FANTASMAS
+                        return FutureBuilder<List<ChatThreadUI>>(
+                            future: _mergeDataWithGhostHunting(matches, threads, user.uid),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF)));
+                              }
 
-                        return ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(kPaddingH, 0, kPaddingH, 100),
-                          itemCount: uiList.length,
-                          separatorBuilder: (_,__) => const SizedBox(height: 14),
-                          itemBuilder: (ctx, i) {
-                            final t = uiList[i];
-                            final bool isHighlighted = _highlightedThreadId == t.id;
+                              final uiList = snapshot.data!;
 
-                            return GestureDetector(
-                              // 🔥 ACTIVADOR DE MODO FANTASMA
-                              onLongPress: () {
-                                if (t.id.isNotEmpty) {
-                                  _confirmDeleteChat(t.id, t.nombre, user.uid);
-                                }
-                              },
-                              onTap: () async {
-                                String threadId = t.id;
-                                if (threadId.isEmpty) {
-                                  try {
-                                    threadId = await ChatActions.upsertThread(
-                                        peerUid: t.otherUid,
-                                        peerNombre: t.nombre,
-                                        peerEdad: 0,
-                                        peerFoto: t.foto,
-                                        myNombre: miNombreReal,
-                                        myEdad: 0,
-                                        myFoto: profile.profilePhotoUrl ?? ''
-                                    );
-                                  } catch (e) {
-                                    debugPrint("Error obteniendo thread: $e");
-                                    return;
-                                  }
-                                }
+                              if (uiList.isEmpty) {
+                                return Container(
+                                  alignment: Alignment.center,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.chat_bubble_outline, color: Colors.white.withOpacity(0.5), size: 48),
+                                      const SizedBox(height: 10),
+                                      const Text("Aún no tienes chats activos", style: TextStyle(color: Colors.white54, fontFamily: 'Poppins')),
+                                    ],
+                                  ),
+                                );
+                              }
 
-                                if (context.mounted) {
-                                  Navigator.push(context, MaterialPageRoute(builder: (_) => ChatDetalleScreen(
-                                    id: threadId,
-                                    otherUid: t.otherUid,
-                                    nombre: t.nombre,
-                                    edad: '',
-                                    foto: t.foto,
-                                  )));
-                                }
-                              },
-                              child: Container(
-                                height: kCardHeight,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(kCardRadius),
-                                  // 🔥 CAMBIO DE COLOR DINÁMICO AL DEJAR PRESIONADO (ALERTA ROJA)
-                                  gradient: isHighlighted
-                                      ? const LinearGradient(colors: [Color(0xFF8B0000), Color(0xFF4A0000)]) // Sangre oscuro
-                                      : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kCardGradient),
-                                  boxShadow: const [kCardShadow],
-                                  border: Border.all(color: isHighlighted ? const Color(0xFFFF5252) : Colors.white.withOpacity(0.08), width: 1),
-                                ),
-                                child: Row(
-                                  children: [
-                                    ClipRRect(
-                                        borderRadius: BorderRadius.circular(kAvatarRadius),
-                                        child: SizedBox(
-                                            width: kAvatarSize, height: kAvatarSize,
-                                            // 🔥 BLINDAJE FIX ASPECT RATIO (memCacheWidth ELIMINADO, SOLO HEIGHT)
-                                            child: CachedNetworkImage(
-                                              key: ValueKey(t.otherUid + t.foto),
-                                              imageUrl: t.foto,
-                                              fit: BoxFit.cover, // Mantiene la proporción llenando el espacio cuadrado
-                                              alignment: Alignment.topCenter, // Prioriza el rostro
-                                              memCacheHeight: (kAvatarSize * 3).toInt(), // Liberador de RAM seguro (180px)
-                                              placeholder: (context, url) => Container(color: Colors.white.withOpacity(0.05)),
-                                              errorWidget: (context, url, error) => FotoPerfilUsuario(
-                                                  uid: t.otherUid,
-                                                  fit: BoxFit.cover,
-                                                  alignment: Alignment.topCenter
-                                              ),
-                                            )
-                                        )
-                                    ),
-                                    const SizedBox(width: 15),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                              return ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(kPaddingH, 0, kPaddingH, 100),
+                                itemCount: uiList.length,
+                                separatorBuilder: (_,__) => const SizedBox(height: 14),
+                                itemBuilder: (ctx, i) {
+                                  final t = uiList[i];
+                                  final bool isHighlighted = _highlightedThreadId == t.id;
+
+                                  return GestureDetector(
+                                    onLongPress: () {
+                                      if (t.id.isNotEmpty) {
+                                        _confirmDeleteChat(t.id, t.nombre, user.uid);
+                                      }
+                                    },
+                                    onTap: () async {
+                                      String threadId = t.id;
+                                      if (threadId.isEmpty) {
+                                        try {
+                                          threadId = await ChatActions.upsertThread(
+                                              peerUid: t.otherUid,
+                                              peerNombre: t.nombre,
+                                              peerEdad: 0,
+                                              peerFoto: t.foto,
+                                              myNombre: miNombreReal,
+                                              myEdad: 0,
+                                              myFoto: profile.profilePhotoUrl ?? ''
+                                          );
+                                        } catch (e) {
+                                          debugPrint("Error obteniendo thread: $e");
+                                          return;
+                                        }
+                                      }
+
+                                      if (context.mounted) {
+                                        Navigator.push(context, MaterialPageRoute(builder: (_) => ChatDetalleScreen(
+                                          id: threadId,
+                                          otherUid: t.otherUid,
+                                          nombre: t.nombre,
+                                          edad: '',
+                                          foto: t.foto,
+                                        )));
+                                      }
+                                    },
+                                    child: Container(
+                                      height: kCardHeight,
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(kCardRadius),
+                                        gradient: isHighlighted
+                                            ? const LinearGradient(colors: [Color(0xFF8B0000), Color(0xFF4A0000)])
+                                            : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kCardGradient),
+                                        boxShadow: const [kCardShadow],
+                                        border: Border.all(color: isHighlighted ? const Color(0xFFFF5252) : Colors.white.withOpacity(0.08), width: 1),
+                                      ),
+                                      child: Row(
                                         children: [
-                                          FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerLeft,
-                                            child: Text(
-                                                t.nombre,
-                                                maxLines: 1,
-                                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                              t.lastText,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                  color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
-                                                  fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
-                                                  fontSize: 13,
-                                                  fontFamily: 'Poppins'
+                                          ClipRRect(
+                                              borderRadius: BorderRadius.circular(kAvatarRadius),
+                                              child: SizedBox(
+                                                  width: kAvatarSize, height: kAvatarSize,
+                                                  child: CachedNetworkImage(
+                                                    key: ValueKey(t.otherUid + t.foto),
+                                                    imageUrl: t.foto,
+                                                    fit: BoxFit.cover,
+                                                    alignment: Alignment.topCenter,
+                                                    memCacheHeight: (kAvatarSize * 3).toInt(),
+                                                    placeholder: (context, url) => Container(color: Colors.white.withOpacity(0.05)),
+                                                    errorWidget: (context, url, error) => FotoPerfilUsuario(
+                                                        uid: t.otherUid,
+                                                        fit: BoxFit.cover,
+                                                        alignment: Alignment.topCenter
+                                                    ),
+                                                  )
                                               )
                                           ),
+                                          const SizedBox(width: 15),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  alignment: Alignment.centerLeft,
+                                                  child: Text(
+                                                      t.nombre,
+                                                      maxLines: 1,
+                                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                    t.lastText,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                        color: t.isNew ? Colors.white : Colors.white.withOpacity(0.7),
+                                                        fontWeight: t.isNew ? FontWeight.w600 : FontWeight.normal,
+                                                        fontSize: 13,
+                                                        fontFamily: 'Poppins'
+                                                    )
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.4), size: 28)
                                         ],
                                       ),
                                     ),
-                                    Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.4), size: 28)
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                                  );
+                                },
+                              );
+                            }
                         );
                       },
                     );

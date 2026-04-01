@@ -1,7 +1,8 @@
 // 📂 lib/screens/matchys_screen.dart
-// ✅ MATCHYS SCREEN BLINDADA (ESTRATEGIA ADAPTATIVA)
+// ✅ MATCHYS SCREEN BLINDADA (ESTRATEGIA ADAPTATIVA + CAZAFANTASMAS)
 // 🔥 FIX: Nombres y botones adaptativos que nunca desbordan.
 // 🔥 UI: Títulos estandarizados a 20pt.
+// 👻 ANTI-FANTASMAS: Filtra automáticamente los usuarios que hayan borrado su cuenta.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +16,7 @@ import 'package:proyectos_matchy/screens/matchys_detalle_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 
-// 🔵 MODELO DE DATOS MATCHY (MANTENIDO)
+// 🔵 MODELO DE DATOS MATCHY
 class MatchyData {
   final String uid;
   final String nombre;
@@ -32,7 +33,7 @@ class MatchyData {
   });
 }
 
-// 🔵 PROVIDERS (MANTENIDOS)
+// 🔵 PROVIDERS BLINDADOS (ANTI-FANTASMAS INYECTADO)
 final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return const Stream.empty();
@@ -43,17 +44,39 @@ final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
       .collection('my_matchys')
       .orderBy('lastInteraction', descending: true)
       .snapshots()
-      .map((snapshot) {
-    return snapshot.docs.map((doc) {
+      .asyncMap((snapshot) async { // 🔥 CAMBIO CLAVE: asyncMap para poder verificar uno a uno
+
+    List<MatchyData> matchysVivos = [];
+
+    for (var doc in snapshot.docs) {
       final data = doc.data();
-      return MatchyData(
-        uid: doc.id,
-        nombre: data['nombre'] ?? 'Sin Nombre',
-        edad: (data['edad'] is int) ? data['edad'] : int.tryParse(data['edad'].toString()) ?? 0,
-        fotoUrl: data['fotoUrl'] ?? '',
-        matchId: data['matchId'] ?? '',
-      );
-    }).toList();
+      final targetUid = doc.id;
+
+      // 👻 VERIFICACIÓN ANTI-FANTASMAS
+      // Revisamos si el usuario destino AÚN existe en la colección global
+      try {
+        final targetDoc = await FirebaseFirestore.instance.collection('users').doc(targetUid).get();
+        if (targetDoc.exists) {
+          // El usuario existe, lo agregamos a la lista
+          matchysVivos.add(
+              MatchyData(
+                uid: targetUid,
+                nombre: data['nombre'] ?? 'Sin Nombre',
+                edad: (data['edad'] is int) ? data['edad'] : int.tryParse(data['edad'].toString()) ?? 0,
+                fotoUrl: data['fotoUrl'] ?? '',
+                matchId: data['matchId'] ?? '',
+              )
+          );
+        } else {
+          // Opcional: Podrías poner aquí un comando para borrar el registro huérfano de my_matchys
+          // await doc.reference.delete();
+        }
+      } catch (e) {
+        debugPrint("Error verificando estado de usuario $targetUid: $e");
+      }
+    }
+
+    return matchysVivos;
   });
 });
 
@@ -85,7 +108,7 @@ class MatchysScreen extends ConsumerWidget {
   // ===========================================================================
   static const double kSpacePhotoToButtons = 8.0;
   static const double kSpaceBetweenButtons = 6.0;
-  static const double kButtonFontSize = 13.0; // Reducido 1pt para blindaje preventivo
+  static const double kButtonFontSize = 13.0;
   static const double kButtonHeight = 34.0;
 
   static const List<Color> kBtnNewCitaGradient = [Color(0xFFBEB3FF), Color(0xFF8A80CC)];
@@ -129,7 +152,7 @@ class MatchysScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // BLINDAJE TÍTULO: Adaptativo + Fuente 20pt (Regla de Oro)
+                  // BLINDAJE TÍTULO: Adaptativo + Fuente 20pt
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     child: const Text(
@@ -137,7 +160,7 @@ class MatchysScreen extends ConsumerWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 20, // Estandarizado
+                        fontSize: 20,
                         fontWeight: FontWeight.w900,
                         fontFamily: 'Poppins',
                         letterSpacing: 1.0,
@@ -160,7 +183,7 @@ class MatchysScreen extends ConsumerWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 12, // Ajustado ligeramente para aire
+                        fontSize: 12,
                         fontWeight: FontWeight.w900,
                         height: 1.3,
                         shadows: [Shadow(color: Colors.black, blurRadius: 2, offset: Offset(0, 1))],
@@ -193,7 +216,7 @@ class MatchysScreen extends ConsumerWidget {
                           crossAxisCount: 2,
                           crossAxisSpacing: 15,
                           mainAxisSpacing: 20,
-                          childAspectRatio: 0.52, // Ajustado ligeramente para dar espacio a botones adaptativos
+                          childAspectRatio: 0.52,
                         ),
                         itemCount: matchys.length,
                         itemBuilder: (context, index) {
@@ -323,7 +346,6 @@ class _MatchyCard extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // BLINDAJE NOMBRE: Adaptativo para que no rompa la foto
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
@@ -412,7 +434,6 @@ class _PremiumButton extends StatelessWidget {
         ),
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        // BLINDAJE BOTÓN: Texto adaptativo (Nunca se sale del botón)
         child: FittedBox(
           fit: BoxFit.scaleDown,
           child: Row(

@@ -1,12 +1,13 @@
 // 📂 lib/widgets/banner_publicidad.dart
-// ✅ BANNER PUBLICITARIO INDEPENDIENTE (MATCHY STYLE)
+// ✅ BANNER PUBLICITARIO (MATCHY STYLE + GEOLOCALIZACIÓN)
 // 🔥 LÓGICA: Primer impacto 100% Premium. Intercalado inteligente.
 // 🔥 TIEMPO: Rotación exacta de 3.5 segundos.
-// 🔥 DB: Lee de la colección 'publicidad_banner', campo 'foto'.
+// 🔥 DATOS: Filtro estricto por Ciudad y País inyectado.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // 🔥 Import para leer al usuario
 import 'package:cached_network_image/cached_network_image.dart';
 
 class BannerPublicidad extends StatefulWidget {
@@ -21,19 +22,47 @@ class _BannerPublicidadState extends State<BannerPublicidad> {
   Timer? _timer;
   List<String> _playlist = [];
   bool _isLoading = true;
+  String _userCiudad = 'Cali';
+  String _userPais = 'Colombia';
 
   @override
   void initState() {
     super.initState();
-    _cargarPublicidad();
+    _fetchUserLocation();
+  }
+
+  // 🔥 LECTURA SILENCIOSA DE LA UBICACIÓN
+  Future<void> _fetchUserLocation() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (snap.exists && snap.data() != null) {
+          if (mounted) {
+            setState(() {
+              _userCiudad = (snap.data()!['ciudad'] ?? 'Cali').toString();
+              _userPais = (snap.data()!['pais'] ?? 'Colombia').toString();
+            });
+            _cargarPublicidad(); // Solo carga cuando tiene el GPS
+            return;
+          }
+        }
+      } catch (_) {}
+    }
+    // Si falla o no hay usuario, intenta cargar con los valores por defecto
+    if (mounted) {
+      _cargarPublicidad();
+    }
   }
 
   Future<void> _cargarPublicidad() async {
     try {
-      // 1. Descargamos los anuncios activos desde Firebase (NUEVA COLECCIÓN)
+      // 1. 🔒 CANDADOS INYECTADOS: Activo, País y Ciudad
       final snap = await FirebaseFirestore.instance
-          .collection('publicidad_banner') // 🔥 COLECCIÓN CORRECTA
+          .collection('publicidad_banner')
           .where('activo', isEqualTo: true)
+          .where('pais', isEqualTo: _userPais)
+          .where('ciudad', isEqualTo: _userCiudad)
           .get();
 
       if (snap.docs.isEmpty) {
@@ -46,7 +75,6 @@ class _BannerPublicidadState extends State<BannerPublicidad> {
 
       for (var doc in snap.docs) {
         final data = doc.data();
-        // 🔥 BUSCA EL CAMPO 'foto' EXACTAMENTE COMO LO TIENES EN FIREBASE
         final fotoUrl = (data['foto'] ?? '').toString();
         final tipo = (data['tipo'] ?? 'normal').toString().toLowerCase();
 
@@ -120,7 +148,10 @@ class _BannerPublicidadState extends State<BannerPublicidad> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const SizedBox(height: 100);
+      return const SizedBox(
+        height: 100,
+        child: Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))),
+      );
     }
 
     if (_playlist.isEmpty) return const SizedBox.shrink();
@@ -174,7 +205,6 @@ class _BannerPublicidadState extends State<BannerPublicidad> {
                   ),
                 ),
               ),
-              // Letrero SPONSORED eliminado por orden del CEO.
             ],
           ),
         ),

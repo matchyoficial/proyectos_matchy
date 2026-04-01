@@ -1,11 +1,9 @@
 // 📂 lib/screens/perfil_screen.dart
-// ✅ PERFIL BLINDADO (FIX: CACHÉ FANTASMA ELIMINADO + SMART CACHE PRO)
-// 🔥 ADD: Botón "EDITAR PERFIL" con azul vibrante y separación estratégica.
-// 🔥 FIX: Se aplica 'ref.invalidate' para borrar la memoria RAM al cerrar sesión.
-// 🔥 FIX: Se usa 'disconnect' en Google para forzar la elección de cuenta.
+// ✅ PERFIL BLINDADO (DOBLE CONFIRMACIÓN + BURBUJAS MATCHY)
+// 🔥 FIX CRÍTICO UX: Diálogo de doble confirmación antes de destruir el perfil.
+// 🔥 FIX CRÍTICO UI: Reemplazo total de Snackbars por Burbujas Flotantes Matchy.
+// 🔥 FIX: Spinners de carga aislados (Solo gira el botón que presionas).
 // 🔥 CACHÉ PRO: CachedNetworkImage aplicado a las fotos 2, 3, 4 y 5 de la galería.
-// 🌍 UPDATE: Lógica inteligente de ubicación en la foto principal (Extranjero/Nómada/Local).
-// 🛠️ FIX: Chips de raíces integrados a "Sobre Mí" y botones de carga (spinners) independientes.
 
 import 'dart:io';
 
@@ -17,7 +15,7 @@ import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/screens/citas_screen.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/chat_screen.dart';
-import 'package:proyectos_matchy/screens/datos_screen.dart'; // 🔥 Import para Editar Perfil
+import 'package:proyectos_matchy/screens/datos_screen.dart';
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 
@@ -31,7 +29,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
+import 'package:cached_network_image/cached_network_image.dart';
 
 class PerfilScreen extends ConsumerStatefulWidget {
   static const String routeName = 'perfil';
@@ -48,8 +46,6 @@ class PerfilScreen extends ConsumerStatefulWidget {
 
 class _PerfilScreenState extends ConsumerState<PerfilScreen> {
   bool _bootstrapped = false;
-
-  // ✅ FIX: Control individual para los botones en vez de un bool general
   String? _activeAction;
 
   static const String _kProfileDraftKey = 'matchy_profile_draft_v1';
@@ -57,8 +53,8 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
   static const String _kOnboardingCompletedKey = 'matchy_onboarding_completed_v1';
   static const String _kUsersCollection = 'users';
 
-  // 🛡️ CHINCHES MAESTROS (ESTILO DATOS Y BOTONES)
-  static const List<Color> kBtnEditProfileGradient = [Color(0xFF00B4DB), Color(0xFF0083B0)]; // 🔥 Azul Alegre
+  // 🛡️ CHINCHES MAESTROS
+  static const List<Color> kBtnEditProfileGradient = [Color(0xFF00B4DB), Color(0xFF0083B0)];
   static const List<Color> kBtnLogoutGradient = [Color(0xFF0B1F3A), Color(0xFF050F1E)];
   static const List<Color> kBtnDeleteGradient = [Color(0xFFB00020), Color(0xFF600010)];
   static const List<Color> kBtnSoporteGradient = [Color(0xFF6B4EE6), Color(0xFF4527A0)];
@@ -82,21 +78,76 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     );
   }
 
-  // ✅ FIX: Método centralizado para manejar logout sin chocar con otros botones
-  Future<void> _logoutCore(String actionStr) async {
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE INYECTADO
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
+  // 🚪 FUNCIÓN CERRAR SESIÓN
+  Future<void> _logout() async {
     if (_activeAction != null) return;
-    setState(() => _activeAction = actionStr);
+    setState(() => _activeAction = 'logout');
     try {
-      // 1. 🔥 LOBOTOMÍA DE MEMORIA: Borramos la caché de Riverpod
       ref.invalidate(profileFormProvider);
-
-      // 2. 🔥 Desconectar Google (Fuerza selector de cuentas)
-      try {
-        await GoogleSignIn().disconnect();
-      } catch (_) {
-        await GoogleSignIn().signOut();
-      }
-
+      try { await GoogleSignIn().disconnect(); } catch (_) { await GoogleSignIn().signOut(); }
       await FirebaseAuth.instance.signOut();
 
       final prefs = await SharedPreferences.getInstance();
@@ -109,23 +160,107 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
       if (!mounted) return;
       _goSplash();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Error: $e')));
+      if (mounted) _mostrarBurbuja('Error al cerrar sesión: $e', const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
       if (mounted) setState(() => _activeAction = null);
     }
   }
 
-  Future<void> _logout() async => _logoutCore('logout');
-
-  Future<void> _deleteProfile() async {
+  // 🛡️ DOBLE CONFIRMACIÓN PARA BORRAR PERFIL (NUEVO BLINDAJE)
+  void _confirmarBorrarPerfil() {
     if (_activeAction != null) return;
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) { if (!mounted) return; _goSplash(); return; }
-    // Dejamos que _logoutCore maneje el estado de carga con su propio ID
-    await _logoutCore('delete');
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: const Color(0xFFB00020), width: 2),
+            boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20, offset: Offset(0, 10))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_rounded, color: Color(0xFFB00020), size: 50),
+              const SizedBox(height: 15),
+              const Text(
+                "¿ELIMINAR TU CUENTA?",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Poppins'),
+              ),
+              const SizedBox(height: 15),
+              const Text(
+                "Esta acción es irreversible. Perderás todos tus matches, mensajes y configuración de perfil para siempre.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              const SizedBox(height: 25),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context); // Cierra el diálogo
+                        _deleteProfile(); // Inicia el proceso real de borrado con spinner
+                      },
+                      child: Container(
+                        height: 45,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: kBtnDeleteGradient),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: const Text("SÍ, BORRAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  // 🔥 DIÁLOGO DE CONTACTO (CON MANEJO DE ERRORES)
+  // 💀 FUNCIÓN DESTRUIR PERFIL
+  Future<void> _deleteProfile() async {
+    if (_activeAction != null) return;
+    setState(() => _activeAction = 'delete');
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection(_kUsersCollection).doc(user.uid).delete();
+        await user.delete();
+      }
+
+      ref.invalidate(profileFormProvider);
+      try { await GoogleSignIn().disconnect(); } catch (_) { await GoogleSignIn().signOut(); }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      if (!mounted) return;
+      _goSplash();
+    } catch (e) {
+      if (mounted) {
+        _mostrarBurbuja('Por tu seguridad, debes cerrar sesión y volver a entrar antes de borrar tu cuenta.', const Color(0xFFB00020), Icons.security_rounded);
+      }
+    } finally {
+      if (mounted) setState(() => _activeAction = null);
+    }
+  }
+
+  // ✉️ DIÁLOGO DE CONTACTO
   void _mostrarDialogoContacto() {
     if (_activeAction != null) return;
     showDialog(
@@ -146,20 +281,10 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
             });
 
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("¡Mensaje enviado! Te responderemos pronto."),
-                  backgroundColor: Color(0xFF00E676),
-                ),
-              );
+              _mostrarBurbuja("¡Mensaje enviado! Te responderemos pronto.", const Color(0xFF00E676), Icons.check_circle_outline_rounded);
             }
           } catch (e) {
-            debugPrint("Error enviando soporte: $e");
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Error al enviar: $e"), backgroundColor: Colors.red),
-              );
-            }
+            if (mounted) _mostrarBurbuja("Error al enviar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
             rethrow;
           }
         },
@@ -194,9 +319,9 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
             scrollContent: _PerfilContent(
               textTheme: textTheme,
               state: state,
-              activeAction: _activeAction, // Pasamos la acción activa
+              activeAction: _activeAction,
               onLogout: _logout,
-              onDeleteProfile: _deleteProfile,
+              onDeleteProfile: _confirmarBorrarPerfil, // 🔥 Ahora llama a la confirmación
               onContact: _mostrarDialogoContacto,
             ),
             topSpacing: 35,
@@ -228,9 +353,9 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
 class _PerfilContent extends StatelessWidget {
   final TextTheme textTheme;
   final ProfileFormState state;
-  final String? activeAction; // Recibe la acción activa
+  final String? activeAction;
   final Future<void> Function() onLogout;
-  final Future<void> Function() onDeleteProfile;
+  final VoidCallback onDeleteProfile; // 🔥 Cambiado a VoidCallback para la confirmación
   final VoidCallback onContact;
 
   const _PerfilContent({
@@ -247,7 +372,6 @@ class _PerfilContent extends StatelessWidget {
     final paisOrigen = (state.paisOrigen ?? '').trim();
     final ciudadOrigen = (state.ciudadOrigen ?? '').trim();
 
-    // 🚀 CHIPS CON ORÍGENES REINTEGRADOS
     final sobreMi = [
       if (state.estatura.trim().isNotEmpty) '📏 ${state.estatura.trim()}',
       if (paisOrigen.isNotEmpty) '🌍 País de origen: $paisOrigen',
@@ -289,7 +413,6 @@ class _PerfilContent extends StatelessWidget {
 
         _CardTexto(titulo: 'Un detalle que me enamora', texto: state.detalle.isEmpty ? 'Aún no has agregado este detalle.' : state.detalle, textTheme: textTheme),
 
-        // 📸 FOTOS ADICIONALES (4 Y 5)
         if (state.photoUrls.length >= 4 || state.fotosCargadas.length >= 4)
           _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 4) ? state.photoUrls[3] : state.fotosCargadas[3], height: 400),
 
@@ -309,9 +432,7 @@ class _PerfilContent extends StatelessWidget {
             icon: Icons.edit_rounded,
           ),
         ),
-
         const SizedBox(height: 35),
-
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: _PremiumButton(
@@ -339,7 +460,7 @@ class _PerfilContent extends StatelessWidget {
           child: _PremiumButton(
             text: 'CONTÁCTANOS',
             gradient: _PerfilScreenState.kBtnSoporteGradient,
-            busy: false, // El diálogo tiene su propio loading
+            busy: false,
             onTap: onContact,
             icon: Icons.support_agent_rounded,
           ),
@@ -350,7 +471,7 @@ class _PerfilContent extends StatelessWidget {
   }
 }
 
-// 🔹 DIÁLOGO DE CONTACTO (CON TRY-CATCH INTERNO)
+// 🔹 DIÁLOGO DE CONTACTO
 class _ContactDialog extends StatefulWidget {
   final Function(String) onSend;
   const _ContactDialog({required this.onSend});
@@ -476,7 +597,6 @@ class _ProfileOverlay extends StatelessWidget {
         const SizedBox(height: 4),
         FittedBox(fit: BoxFit.scaleDown, child: Text(state.profesion.isEmpty ? '—' : state.profesion, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontSize: 16, shadows: _PerfilScreenState.kTextShadow))),
         const SizedBox(height: 2),
-        // ✅ FIX: Obligado a maxLines: 1 para que NUNCA salte a un segundo renglón
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
@@ -546,7 +666,6 @@ class _FotoTarjeta extends StatelessWidget {
       background = FotoPerfilUsuario(uid: smartUid!, fit: BoxFit.cover, alignment: Alignment.topCenter);
     } else if (raw.isNotEmpty) {
       if (raw.startsWith('http')) {
-        // 🔥 SMART CACHE APLICADO A LA GALERÍA DE FOTOS
         background = CachedNetworkImage(
           key: ValueKey(raw),
           imageUrl: raw,
@@ -580,7 +699,7 @@ class _BarraPuntualidadLive extends StatelessWidget {
 class _PremiumButton extends StatelessWidget {
   final String text; final List<Color> gradient; final bool busy; final VoidCallback onTap; final IconData? icon;
   const _PremiumButton({required this.text, required this.gradient, required this.busy, required this.onTap, this.icon});
-  @override Widget build(BuildContext context) { return GestureDetector(onTap: busy ? null : onTap, child: Container(height: 50, decoration: BoxDecoration(gradient: LinearGradient(colors: gradient), borderRadius: BorderRadius.circular(_PerfilScreenState.kButtonRadius), boxShadow: _PerfilScreenState.kButtonShadow, border: Border.all(color: Colors.white24)), alignment: Alignment.center, child: busy ? const CircularProgressIndicator(color: Colors.white) : Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 8)], Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))]))); }
+  @override Widget build(BuildContext context) { return GestureDetector(onTap: busy ? null : onTap, child: Container(height: 50, decoration: BoxDecoration(gradient: LinearGradient(colors: gradient), borderRadius: BorderRadius.circular(_PerfilScreenState.kButtonRadius), boxShadow: _PerfilScreenState.kButtonShadow, border: Border.all(color: Colors.white24)), alignment: Alignment.center, child: busy ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, color: Colors.white, size: 20), const SizedBox(width: 8)], Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14))]))); }
 }
 
 class _MatchyBottomNav extends StatelessWidget {
