@@ -6,7 +6,7 @@ const { RekognitionClient, DetectModerationLabelsCommand } = require("@aws-sdk/c
 admin.initializeApp();
 
 exports.analizarFoto = functions
-  .region("southamerica-east1") // El celador sigue en Brasil
+  .region("southamerica-east1") // Sede en Brasil
   .runWith({
     secrets: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
     memory: "512MB"
@@ -18,24 +18,23 @@ exports.analizarFoto = functions
     const filePath = object.name;
     const contentType = object.contentType;
 
-    // 1. Si no es imagen, lo ignoramos de inmediato
-    if (!contentType || !contentType.startsWith("image/")) {
-      return null;
-    }
+    if (!contentType || !contentType.startsWith("image/")) return null;
 
-    // 2. 🛡️ ESCUDO DE FORMATO: Amazon solo lee JPG y PNG.
-    // Rechazamos webp, gif, heic, etc., para no colapsar ni gastar saldo.
     if (!contentType.includes("jpeg") && !contentType.includes("png")) {
-      console.log(`⚠️ ALERTA FORMATO: El archivo ${filePath} es un formato no soportado (${contentType}). Procediendo a eliminar...`);
-
-      // ✅ Línea de ejecución activada. El robot DESTRUYE formatos raros.
+      console.log(`⚠️ FORMATO INVÁLIDO (${contentType}). Eliminando...`);
       await admin.storage().bucket(object.bucket).file(filePath).delete();
-      console.log(`🗑️ Archivo de formato inválido eliminado exitosamente.`);
-
       return null;
     }
 
-    // 3. Conectamos el cerebro directo a la sede central de EE. UU.
+    // 🔍 EXTRAER EL ID DEL USUARIO DESDE LA RUTA (Ej: users/{uid}/photos/photo.png)
+    const pathParts = filePath.split("/");
+    if (pathParts.length < 3 || pathParts[0] !== "users") {
+       console.log("Ruta no estándar (no pertenece a un perfil de usuario). Ignorando BD.");
+       return null;
+    }
+    const uid = pathParts[1];
+    const db = admin.firestore();
+
     const rekognition = new RekognitionClient({
       region: "us-east-1",
       credentials: {
@@ -44,11 +43,9 @@ exports.analizarFoto = functions
       },
     });
 
-    const bucket = admin.storage().bucket(object.bucket);
-    const file = bucket.file(filePath);
+    const file = admin.storage().bucket(object.bucket).file(filePath);
 
     try {
-      console.log("📥 Paso 2: Descargando imagen para inspección...");
       const [buffer] = await file.download();
 
       const command = new DetectModerationLabelsCommand({
@@ -56,23 +53,18 @@ exports.analizarFoto = functions
         MinConfidence: 55,
       });
 
-      console.log("📡 Paso 3: Consultando a la Inteligencia Artificial de Amazon (Virginia)...");
       const response = await rekognition.send(command);
       const labels = response.ModerationLabels;
 
-      console.log("🏷️ Etiquetas encontradas por Amazon:", JSON.stringify(labels));
+      console.log("🏷️ Etiquetas detectadas:", JSON.stringify(labels));
 
-      // 🛡️ ESCUDO TOTAL: Desnudos + Violencia (Actualizada) + Gore + Odio
       const esInapropiada = labels.some(label =>
-        // Bloque 1: Desnudos y Sexo
         label.Name === "Explicit Nudity" ||
         label.Name === "Nudity" ||
         label.Name === "Suggestive" ||
         label.Name === "Sexual Activity" ||
         label.ParentName === "Explicit Nudity" ||
         label.ParentName === "Nudity" ||
-
-        // Bloque 2: Violencia, Muerte y Gore (Con el diccionario actualizado de AWS)
         label.Name === "Corpse" ||
         label.Name === "Graphic Violence Or Gore" ||
         label.Name === "Physical Violence" ||
@@ -81,22 +73,40 @@ exports.analizarFoto = functions
         label.Name === "Graphic Violence" ||
         label.Name === "Blood & Gore" ||
         label.ParentName === "Violence" ||
-
-        // Bloque 3: Símbolos de Odio y Extremismo
         label.Name === "Hate Symbols"
       );
 
       if (esInapropiada) {
-        console.log(`🚨 ¡ESCÁNDALO/VIOLENCIA DETECTADA! Borrando archivo prohibido: ${filePath}`);
+        console.log(`🚨 INFRACCIÓN DETECTADA. Borrando archivo de Storage...`);
         await file.delete();
-        console.log(`🗑️ ELIMINACIÓN EXITOSA. Matchy está a salvo.`);
+
+        // Determinar el motivo exacto para la burbuja en la app
+        let motivoStr = "Contenido no permitido por las normas de comunidad.";
+        if (labels.some(l => l.Name.includes("Nudity") || l.Name.includes("Suggestive"))) {
+            motivoStr = "Desnudez o contenido sugerente detectado.";
+        } else if (labels.some(l => l.Name.includes("Violence") || l.Name.includes("Gore"))) {
+            motivoStr = "Violencia, armas o material sensible detectado.";
+        } else if (labels.some(l => l.Name === "Hate Symbols")) {
+            motivoStr = "Símbolos de odio o extremismo detectados.";
+        }
+
+        // 📝 ENVIAR BILLETE DE INFRACCIÓN A LA BASE DE DATOS
+        await db.collection("users").doc(uid).update({
+          foto_estado: "rechazada",
+          foto_motivo: motivoStr
+        });
+
       } else {
-        console.log(`🟢 FOTO LIMPIA: El usuario puede usar ${filePath}`);
+        console.log(`🟢 FOTO LIMPIA. Aprobando en la Base de Datos...`);
+
+        // 📝 ENVIAR SELLO DE APROBACIÓN A LA BASE DE DATOS
+        await db.collection("users").doc(uid).update({
+          foto_estado: "aprobada"
+        });
       }
 
     } catch (error) {
-      console.error("❌ ERROR CRÍTICO EN EL PROCESO:", error.message);
-      console.error("🔍 Detalle oculto del error de Amazon:", JSON.stringify(error, null, 2));
+      console.error("❌ ERROR CRÍTICO:", error.message);
     }
     return null;
   });

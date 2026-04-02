@@ -4,6 +4,7 @@
 // 🔥 FIX CRÍTICO UI: Reemplazo total de Snackbars por Burbujas Flotantes Matchy.
 // 🔥 FIX: Spinners de carga aislados (Solo gira el botón que presionas).
 // 🔥 CACHÉ PRO: CachedNetworkImage aplicado a las fotos 2, 3, 4 y 5 de la galería.
+// 🛡️ FIX CORREOS: Texto plano simple con datos clave del usuario.
 
 import 'dart:io';
 
@@ -166,7 +167,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     }
   }
 
-  // 🛡️ DOBLE CONFIRMACIÓN PARA BORRAR PERFIL (NUEVO BLINDAJE)
+  // 🛡️ DOBLE CONFIRMACIÓN PARA BORRAR PERFIL
   void _confirmarBorrarPerfil() {
     if (_activeAction != null) return;
 
@@ -210,8 +211,8 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
-                        Navigator.pop(context); // Cierra el diálogo
-                        _deleteProfile(); // Inicia el proceso real de borrado con spinner
+                        Navigator.pop(context);
+                        _deleteProfile();
                       },
                       child: Container(
                         height: 45,
@@ -260,9 +261,13 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
     }
   }
 
-  // ✉️ DIÁLOGO DE CONTACTO
+  // ✉️ DIÁLOGO DE CONTACTO (TEXTO PLANO)
   void _mostrarDialogoContacto() {
     if (_activeAction != null) return;
+
+    // Obtenemos los datos de Riverpod
+    final perfilData = ref.read(profileFormProvider);
+
     showDialog(
       context: context,
       builder: (context) => _ContactDialog(
@@ -278,6 +283,12 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
               'fecha': FieldValue.serverTimestamp(),
               'estado': 'pendiente',
               'to': 'matchyoficial@gmail.com',
+
+              // 🔥 CAJA MESSAGE EN TEXTO PLANO
+              'message': {
+                'subject': 'SOPORTE MATCHY - Nuevo mensaje de ${perfilData.nombre}',
+                'text': 'DATOS DEL USUARIO:\nNombre: ${perfilData.nombre}\nEmail: ${user.email ?? 'Sin correo'}\nUID: ${user.uid}\n\nMENSAJE ENVIADO:\n$mensaje',
+              }
             });
 
             if (mounted) {
@@ -321,7 +332,7 @@ class _PerfilScreenState extends ConsumerState<PerfilScreen> {
               state: state,
               activeAction: _activeAction,
               onLogout: _logout,
-              onDeleteProfile: _confirmarBorrarPerfil, // 🔥 Ahora llama a la confirmación
+              onDeleteProfile: _confirmarBorrarPerfil,
               onContact: _mostrarDialogoContacto,
             ),
             topSpacing: 35,
@@ -355,7 +366,7 @@ class _PerfilContent extends StatelessWidget {
   final ProfileFormState state;
   final String? activeAction;
   final Future<void> Function() onLogout;
-  final VoidCallback onDeleteProfile; // 🔥 Cambiado a VoidCallback para la confirmación
+  final VoidCallback onDeleteProfile;
   final VoidCallback onContact;
 
   const _PerfilContent({

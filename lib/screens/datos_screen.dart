@@ -1,27 +1,15 @@
 // 📂 lib/screens/datos_screen.dart
-// ✅ DATOSSCREEN BLINDADO - FLUJO DE SINCRONIZACIÓN EN VIVO
-// 🔥 FIX DEFINITIVO: Las fotos se suben y se guardan en Firebase apenas se recortan.
-// 🔥 PERFIL: Al reordenar y poner una foto en el slot 0, se actualiza el perfil en Firestore de inmediato.
-// 🛡️ DESIGN: Blindaje de sombras, chinches maestros, listas completas y burbujas de notificación.
-// 🚀 NEW: Chips dinámicos de cantidad de hijos (👧/👦) y sección de Signos Zodiacales (♈-♓).
-// 🌍 NEW: Sección "MIS RAÍCES" Obligatoria con Checkbox inteligente para residencia local.
-// 🛠️ FIX: Sincronización inicial del Dropdown (Se leen las raíces del estado apenas carga la pantalla).
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
-
-// 🔥 Importamos la nueva pantalla Custom
-import 'package:proyectos_matchy/screens/custom_cropper_screen.dart';
+import 'package:proyectos_matchy/widgets/gestor_fotos_widget.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 class DatosScreen extends ConsumerStatefulWidget {
   static const String routeName = 'datos';
@@ -32,12 +20,10 @@ class DatosScreen extends ConsumerStatefulWidget {
 }
 
 class _DatosScreenState extends ConsumerState<DatosScreen> {
-  // 🛡️ ZONA DE CHINCHES MAESTROS (DISEÑO BLINDADO)
   static const double kChincheTituloSeccion = 18.0;
   static const double kChincheLabelInput = 16.0;
   static const double kChincheTextoInput = 15.0;
 
-  // Sombras y Blindaje
   static const List<Shadow> kTextShadow = [
     Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 4))
   ];
@@ -56,14 +42,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   bool _saving = false;
   bool _isLoadingCloudData = true;
 
-  final ImagePicker _picker = ImagePicker();
   String _preferenciaCitas = 'Ambos';
   String _genero = '';
 
-  // 🔥 Variables de Estado para el Origen (Ahora son la base de la identidad)
   String? _paisOrigen;
   String? _ciudadOrigen;
-  bool _vivoEnMiOrigen = false; // Checkbox inteligente
+  bool _vivoEnMiOrigen = false;
 
   final List<String> _estaturas = List.generate(76, (i) {
     final v = 1.40 + (i * 0.01);
@@ -81,7 +65,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _detalleCtrl = TextEditingController(text: s.detalle);
     _estaturaCtrl = TextEditingController(text: s.estatura);
 
-    // ✅ FIX: Sincronizar origen inicial desde el State para evitar Dropdowns vacíos
     _paisOrigen = s.paisOrigen;
     _ciudadOrigen = s.ciudadOrigen;
 
@@ -110,7 +93,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         _preferenciaCitas = finalState.preferenciaCitas.trim().isEmpty ? 'Ambos' : finalState.preferenciaCitas.trim();
         _genero = finalState.genero.trim();
 
-        // ✅ FIX: Volver a sincronizar tras cargar para mostrar selecciones previas
         _paisOrigen = finalState.paisOrigen;
         _ciudadOrigen = finalState.ciudadOrigen;
         _vivoEnMiOrigen = (_paisOrigen == finalState.paisSeleccionado && _ciudadOrigen == finalState.ciudadSeleccionada && _paisOrigen != null && _paisOrigen!.isNotEmpty);
@@ -127,7 +109,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     _estaturaCtrl.addListener(() => ref.read(profileFormProvider.notifier).setEstatura(_estaturaCtrl.text));
   }
 
-  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
   void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
     if (!mounted) return;
     final overlayState = Overlay.of(context);
@@ -204,28 +185,24 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
         ctrl.setDetalle(data['detalle'] ?? '');
         ctrl.setEstatura(data['estatura'] ?? '');
 
-        // 🛡️ BLINDAJE PARA TESTERS ANTIGUOS: Fallback inteligente
         if (mounted) {
           setState(() {
             if (data['paisOrigen'] != null && data['paisOrigen'].toString().isNotEmpty) {
-              // Usuario nuevo/actualizado: Carga sus raíces reales
               _paisOrigen = data['paisOrigen'];
               _ciudadOrigen = data['ciudadOrigen'];
               ctrl.setPaisOrigen(_paisOrigen);
               ctrl.setCiudadOrigen(_ciudadOrigen);
               ctrl.setPais(data['pais']);
               ctrl.setCiudad(data['ciudad']);
-              // Verifica si su residencia coincide con su origen para marcar el checkbox
               _vivoEnMiOrigen = (_paisOrigen == data['pais'] && _ciudadOrigen == data['ciudad']);
             } else {
-              // Tester Antiguo: No tiene raíces. Tomamos su residencia y la convertimos en su origen.
               _paisOrigen = data['pais'];
               _ciudadOrigen = data['ciudad'];
               ctrl.setPaisOrigen(_paisOrigen);
               ctrl.setCiudadOrigen(_ciudadOrigen);
               ctrl.setPais(data['pais']);
               ctrl.setCiudad(data['ciudad']);
-              _vivoEnMiOrigen = true; // Por defecto asumimos que el tester vive donde nació para no romper la UX
+              _vivoEnMiOrigen = true;
             }
           });
         }
@@ -256,63 +233,19 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     super.dispose();
   }
 
-  // VALIDACIONES ACTUALIZADAS
   bool _nombreOk(ProfileFormState s) => s.nombre.trim().isNotEmpty;
   bool _edadOk(ProfileFormState s) {
     final edadInt = int.tryParse(s.edad.trim());
     return edadInt != null && edadInt >= 18 && edadInt <= 99;
   }
-  // Raíces Obligatorias
   bool _origenOk() => (_paisOrigen ?? '').isNotEmpty && (_ciudadOrigen ?? '').isNotEmpty;
-  // Residencia condicionada al checkbox
   bool _residenciaOk(ProfileFormState s) => _vivoEnMiOrigen ? true : (s.paisSeleccionado ?? '').trim().isNotEmpty && (s.ciudadSeleccionada ?? '').trim().isNotEmpty;
-
   bool _generoOk() => _genero.trim().isNotEmpty;
   bool _preferenciaOk() => _preferenciaCitas.trim().isNotEmpty;
   bool _fotosOk(ProfileFormState s) => s.photoUrls.isNotEmpty || s.fotosCargadas.isNotEmpty;
 
   bool _formularioValido(ProfileFormState s) {
     return _nombreOk(s) && _edadOk(s) && _origenOk() && _residenciaOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
-  }
-
-  List<String> _buildDisplayFotos(ProfileFormState s) {
-    final out = <String>[];
-    for (final raw in s.fotosCargadas) {
-      final v = raw.trim();
-      if (v.isEmpty) continue;
-      out.add(v);
-    }
-    return out;
-  }
-
-  // 🔥 SUBIDA UNITARIA E INMEDIATA A FIREBASE
-  Future<String?> _uploadSinglePhotoToStorage(String path) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
-    try {
-      final file = File(path);
-      if (!file.existsSync()) return null;
-      final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final ref = FirebaseStorage.instance.ref().child('users/${user.uid}/photos/$fileName');
-      final task = await ref.putFile(file);
-      return await task.ref.getDownloadURL();
-    } catch (e) {
-      debugPrint("Error subiendo foto unitaria: $e");
-      return null;
-    }
-  }
-
-  // 🔥 ACTUALIZACIÓN ATÓMICA DE FOTOS EN FIRESTORE
-  Future<void> _updatePhotosInFirestore(List<String> urls) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-        'photoUrls': urls,
-        'profilePhotoUrl': urls.isNotEmpty ? urls.first : null,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) { debugPrint("Error actualizando Firestore: $e"); }
   }
 
   Future<void> _syncProfileToFirestore(ProfileFormState s) async {
@@ -332,7 +265,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'estatura': s.estatura.trim(),
       'paisOrigen': _paisOrigen,
       'ciudadOrigen': _ciudadOrigen,
-      // Si el checkbox está marcado, guardamos el origen como residencia también.
       'pais': _vivoEnMiOrigen ? _paisOrigen : (s.paisSeleccionado ?? '').trim(),
       'ciudad': _vivoEnMiOrigen ? _ciudadOrigen : (s.ciudadSeleccionada ?? '').trim(),
       'genero': _genero,
@@ -360,46 +292,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     if (selected != null) _estaturaCtrl.text = selected;
   }
 
-  Future<void> _mostrarPicker(BuildContext context, ProfileFormController ctrl, ProfileFormState state) async {
-    final display = _buildDisplayFotos(state);
-    if (display.length >= 5) return;
-    await showModalBottomSheet(
-        context: context, backgroundColor: Colors.black87,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
-        builder: (_) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SizedBox(height: 10), Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20))),
-          const SizedBox(height: 14), const Text('Cargar foto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 12),
-          ListTile(leading: const Icon(Icons.photo_library, color: Colors.white), title: const Text('Galería', style: TextStyle(color: Colors.white)), onTap: () async { Navigator.pop(context); await _pickFrom(ImageSource.gallery, ctrl); }),
-          ListTile(leading: const Icon(Icons.photo_camera, color: Colors.white), title: const Text('Cámara', style: TextStyle(color: Colors.white)), onTap: () async { Navigator.pop(context); await _pickFrom(ImageSource.camera, ctrl); }),
-        ]))
-    );
-  }
-
-  Future<void> _pickFrom(ImageSource source, ProfileFormController ctrl) async {
-    try {
-      final XFile? file = await _picker.pickImage(source: source, imageQuality: 85);
-      if (file != null) {
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => CustomCropperScreen(imagePath: file.path)),
-        );
-
-        if (result != null && result is String) {
-          setState(() => _saving = true);
-          final fireUrl = await _uploadSinglePhotoToStorage(result);
-          if (fireUrl != null) {
-            ctrl.addFoto(fireUrl);
-            final updatedList = _buildDisplayFotos(ref.read(profileFormProvider));
-            await _updatePhotosInFirestore(updatedList);
-          }
-          setState(() => _saving = false);
-        }
-      }
-    } catch (e) { debugPrint("Error al seleccionar foto: $e"); }
-  }
-
-  // 🔥 LÓGICA DINÁMICA DE CHIPS DE HIJOS
   String _obtenerTextoChipDinamico(String base, List<String> seleccionActual) {
     if (base == '👧 Tengo hija') {
       final found = seleccionActual.where((e) => e.startsWith('👧')).toList();
@@ -457,7 +349,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
             const SizedBox(height: 24),
             if (currentSelected != null)
               TextButton(
-                onPressed: () => Navigator.pop(context, 0), // 0 indica remover
+                onPressed: () => Navigator.pop(context, 0),
                 child: const Text('Quitar selección', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
               ),
             const SizedBox(height: 10),
@@ -467,106 +359,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     );
 
     if (result != null) {
-      if (currentSelected != null) ctrl.toggleSobreMi(currentSelected); // Remueve el anterior
+      if (currentSelected != null) ctrl.toggleSobreMi(currentSelected);
       if (result > 0) {
         final newText = '$baseEmoji Tengo $result ${result == 1 ? baseTextSingular : baseTextPlural}';
-        ctrl.toggleSobreMi(newText); // Agrega el nuevo
+        ctrl.toggleSobreMi(newText);
       }
     }
-  }
-
-  Widget _buildFotoReorderArea({required BuildContext context, required ProfileFormState state, required ProfileFormController ctrl}) {
-    final displayFotos = _buildDisplayFotos(state);
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 15),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white12),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.touch_app_rounded, color: Color(0xFFBEB3FF), size: 16),
-                  SizedBox(width: 8),
-                  Text("Arrastra para reordenar tus fotos.", style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 1, child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 0, displayFotos: displayFotos, ctrl: ctrl, isProfile: true))),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 1,
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 1, displayFotos: displayFotos, ctrl: ctrl))),
-                        const SizedBox(width: 8),
-                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 2, displayFotos: displayFotos, ctrl: ctrl))),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 3, displayFotos: displayFotos, ctrl: ctrl))),
-                        const SizedBox(width: 8),
-                        Expanded(child: AspectRatio(aspectRatio: 1.0, child: _buildDraggablePhotoSlot(index: 4, displayFotos: displayFotos, ctrl: ctrl))),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDraggablePhotoSlot({required int index, required List<String> displayFotos, required ProfileFormController ctrl, bool isProfile = false}) {
-    if (index >= displayFotos.length) {
-      return Container(
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
-        child: const Icon(Icons.add_photo_alternate, color: Colors.white12, size: 20),
-      );
-    }
-    final pathOrAsset = displayFotos[index];
-    return DragTarget<int>(
-      onWillAccept: (from) => from != null && from != index,
-      onAccept: (from) async {
-        final current = List<String>.from(displayFotos);
-        final item = current.removeAt(from);
-        current.insert(index, item);
-        ctrl.setFotos(current);
-        if (index == 0 || from == 0) await _updatePhotosInFirestore(current);
-      },
-      builder: (context, _, __) => LongPressDraggable<int>(
-        data: index,
-        feedback: Opacity(opacity: 0.85, child: SizedBox(width: 80, height: 80, child: _FotoThumb(pathOrAsset: pathOrAsset, size: 80, esPerfil: isProfile, isGhost: true, onRemove: () {}, isInteractive: false))),
-        childWhenDragging: Container(decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16))),
-        child: _FotoThumb(pathOrAsset: pathOrAsset, size: double.infinity, esPerfil: isProfile, isGhost: false, isInteractive: isProfile, onRemove: () async {
-          final current = List<String>.from(displayFotos);
-          current.removeAt(index);
-          ctrl.setFotos(current);
-          await _updatePhotosInFirestore(current);
-        }),
-      ),
-    );
   }
 
   void _setPreferenciaCitas(ProfileFormController ctrl, String v) { setState(() => _preferenciaCitas = v); ctrl.setPreferenciaCitas(v); }
@@ -577,9 +375,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final state = ref.watch(profileFormProvider);
     final ctrl = ref.read(profileFormProvider.notifier);
 
-    // 🔥 MEGA-CATÁLOGO DE PAÍSES Y CIUDADES (LatAm, NA, Europa)
     const Map<String, List<String>> grandesCiudadesPorPais = {
-      // 🌎 Sudamérica
       'Colombia': ['Cali', 'Bogotá', 'Medellín', 'Barranquilla', 'Cartagena', 'Bucaramanga', 'Pereira', 'Manizales', 'Armenia', 'Cúcuta', 'Ibagué', 'Santa Marta', 'Villavicencio', 'Pasto', 'Montería', 'Neiva'],
       'Argentina': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'Tucumán', 'La Plata', 'Mar del Plata', 'Salta'],
       'Bolivia': ['La Paz', 'Santa Cruz de la Sierra', 'Cochabamba', 'Sucre'],
@@ -590,8 +386,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'Perú': ['Lima', 'Arequipa', 'Trujillo', 'Chiclayo', 'Piura', 'Iquitos', 'Cusco', 'Huancayo'],
       'Uruguay': ['Montevideo', 'Punta del Este', 'Salto'],
       'Venezuela': ['Caracas', 'Maracaibo', 'Valencia', 'Barquisimeto', 'Maracay', 'San Cristóbal', 'Mérida'],
-
-      // 🌎 Centroamérica y Norteamérica Latina
       'México': ['Ciudad de México', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana', 'Toluca', 'Cancún', 'Mérida', 'Querétaro', 'León'],
       'Costa Rica': ['San José', 'Alajuela', 'Cartago', 'Heredia', 'Puntarenas'],
       'Cuba': ['La Habana', 'Santiago de Cuba', 'Camagüey'],
@@ -602,12 +396,8 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       'Panamá': ['Ciudad de Panamá', 'San Miguelito', 'David', 'Colón'],
       'Puerto Rico': ['San Juan', 'Bayamón', 'Ponce', 'Carolina'],
       'República Dominicana': ['Santo Domingo', 'Santiago de los Caballeros', 'Punta Cana'],
-
-      // 🌎 Norteamérica Anglosajona
       'Estados Unidos': ['Miami', 'Nueva York', 'Los Ángeles', 'Chicago', 'Houston', 'Phoenix', 'San Antonio', 'San Diego', 'Dallas', 'Orlando', 'Las Vegas', 'San Francisco', 'Seattle'],
       'Canadá': ['Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton', 'Quebec'],
-
-      // 🌍 Europa
       'España': ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Zaragoza', 'Málaga', 'Murcia', 'Palma', 'Las Palmas', 'Bilbao'],
       'Alemania': ['Berlín', 'Múnich', 'Fráncfort', 'Hamburgo', 'Colonia'],
       'Francia': ['París', 'Marsella', 'Lyon', 'Toulouse', 'Niza'],
@@ -621,14 +411,12 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     final List<String> todosLosPaises = grandesCiudadesPorPais.keys.toList();
     todosLosPaises.sort();
 
-    // 📌 Lógica para Origen (AHORA ES OBLIGATORIO)
     final List<String> ciudadesOrigen = _paisOrigen != null ? List<String>.from(grandesCiudadesPorPais[_paisOrigen!] ?? []) : [];
     if (ciudadesOrigen.isNotEmpty) ciudadesOrigen.sort();
 
     final String? paisOrigenSafe = todosLosPaises.contains(_paisOrigen) ? _paisOrigen : null;
     final String? ciudadOrigenSafe = ciudadesOrigen.contains(_ciudadOrigen) ? _ciudadOrigen : null;
 
-    // 📌 Lógica para Residencia (Condicional)
     final List<String> ciudades = state.paisSeleccionado != null ? List<String>.from(grandesCiudadesPorPais[state.paisSeleccionado!] ?? []) : [];
     if (ciudades.isNotEmpty) ciudades.sort();
 
@@ -685,7 +473,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       GestureDetector(onTap: () => _seleccionarEstatura(context), child: AbsorbPointer(child: _buildTextField(label: 'Estatura (selección)', controller: _estaturaCtrl, suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.white)))),
                       const SizedBox(height: 25),
 
-                      // 🌍 SECCIÓN PRINCIPAL: MIS RAÍCES (OBLIGATORIO)
                       Text('MIS RAÍCES (De dónde soy) *', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 15),
                       _buildPaisCiudadOrigenSection(
@@ -716,7 +503,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       ),
                       const SizedBox(height: 10),
 
-                      // 📍 CHECKBOX INTELIGENTE
                       Theme(
                         data: ThemeData(unselectedWidgetColor: Colors.white54),
                         child: CheckboxListTile(
@@ -729,7 +515,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                             setState(() {
                               _vivoEnMiOrigen = value ?? false;
                               if (_vivoEnMiOrigen) {
-                                // Clonar origen a residencia en tiempo real para el StateProvider
                                 ctrl.setPais(_paisOrigen);
                                 ctrl.setCiudad(_ciudadOrigen);
                               }
@@ -740,7 +525,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       ),
                       const SizedBox(height: 15),
 
-                      // 🏠 SECCIÓN RESIDENCIA ACTUAL (SE OCULTA SI VIVE EN ORIGEN)
                       if (!_vivoEnMiOrigen) ...[
                         Text('¿DÓNDE ESTÁS AHORA? *', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                         const SizedBox(height: 15),
@@ -765,18 +549,16 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 10),
                       _PreferenciaCitasSelector(value: _preferenciaCitas, onChanged: _saving ? null : (v) => _setPreferenciaCitas(ctrl, v)),
                       const SizedBox(height: 30),
+
+                      // 🔥 ZONA DE FOTOS: Módulo Independiente Integrado
                       FittedBox(fit: BoxFit.scaleDown, child: Text('TUS FOTOS (MÁX 5) *', style: TextStyle(color: _mostrarErrores && !_fotosOk(state) ? Colors.redAccent : Colors.white, fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900))),
                       const SizedBox(height: 15),
-                      GestureDetector(
-                        onTap: _saving ? null : () => _mostrarPicker(context, ctrl, state),
-                        child: Container(width: MediaQuery.of(context).size.width * 0.6, height: 50, decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFBEB3FF), Color(0xFF8A80CC)]), borderRadius: BorderRadius.circular(25), boxShadow: kChipShadow), alignment: Alignment.center, child: const Text('CARGAR FOTO', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 14))),
-                      ),
-                      _buildFotoReorderArea(context: context, state: state, ctrl: ctrl),
+                      const GestorFotosWidget(),
                       const SizedBox(height: 24),
+
                       Text('SOBRE MÍ', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 10),
 
-                      // 🔥 RENDERIZADO DINÁMICO "SOBRE MÍ"
                       Column(
                         children: sobreMiOpciones.map((grupo) => Padding(
                             padding: const EdgeInsets.only(bottom: 10),
@@ -810,7 +592,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       _SeccionBotonesChipsSimetricos(titulo: 'BUSCO...', opciones: buscoOpciones, seleccionActual: state.buscoSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleBusco(op)),
                       const SizedBox(height: 45),
 
-                      // 🔥 NUEVA SECCIÓN: SIGNO ZODIACAL
                       _SeccionBotonesChipsSimetricos(titulo: 'SIGNO ZODIACAL', opciones: signosOpciones, seleccionActual: state.sobreMiSeleccion, onToggle: (op) => _saving ? null : ctrl.toggleSobreMi(op)),
                       const SizedBox(height: 45),
 
@@ -939,28 +720,5 @@ class _SeccionBotonesChipsSimetricos extends StatelessWidget {
       const SizedBox(height: 12),
       Column(children: chunks.map((fila) => Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(children: fila.map((opcion) { final sel = seleccionActual.contains(opcion); return Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: GestureDetector(onTap: () => onToggle(opcion), child: Container(padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8), decoration: BoxDecoration(color: sel ? const Color(0xFFBEB3FF) : const Color(0x1FFFFFFF), borderRadius: BorderRadius.circular(20), boxShadow: _DatosScreenState.kChipShadow, border: Border.all(color: sel ? Colors.transparent : Colors.white12)), child: Center(child: Text(opcion, textAlign: TextAlign.center, softWrap: true, style: TextStyle(color: sel ? Colors.black : Colors.white, fontSize: 12, fontWeight: FontWeight.w600))))))); }).toList()))).toList())
     ]);
-  }
-}
-
-class _FotoThumb extends StatelessWidget {
-  final String pathOrAsset; final double size; final bool esPerfil; final bool isGhost; final VoidCallback onRemove; final bool isInteractive;
-  const _FotoThumb({required this.pathOrAsset, required this.size, required this.esPerfil, required this.isGhost, required this.onRemove, required this.isInteractive});
-
-  @override
-  Widget build(BuildContext context) {
-    final v = pathOrAsset.trim();
-    if (v.isEmpty) return Container(width: size, height: size, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16)), child: const Icon(Icons.broken_image, color: Colors.white24));
-    ImageProvider provider = v.startsWith('http') ? NetworkImage(v) : (v.startsWith('assets/') ? AssetImage(v) as ImageProvider : FileImage(File(v)));
-
-    return Opacity(
-      opacity: isGhost ? 0.4 : 1.0,
-      child: Stack(
-        children: [
-          ClipRRect(borderRadius: BorderRadius.circular(16), child: Container(width: size, height: size, color: Colors.black, child: Image(image: provider, fit: BoxFit.cover))),
-          Positioned(top: 5, right: 5, child: GestureDetector(onTap: onRemove, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle), child: const Icon(Icons.close, size: 14, color: Colors.white)))),
-          if (esPerfil) Positioned(bottom: 0, left: 0, right: 0, child: Container(padding: const EdgeInsets.symmetric(vertical: 4), decoration: BoxDecoration(color: const Color(0xFFBEB3FF).withOpacity(0.9), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))), child: const Text('PERFIL', textAlign: TextAlign.center, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10)))),
-        ],
-      ),
-    );
   }
 }

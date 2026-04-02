@@ -47,7 +47,7 @@ class CrearCitaPanelScreen extends StatelessWidget {
           ),
 
           // 2. Botón Atrás
-          const MatchyBackButton(top: 10, left: 16),
+          const MatchyBackButton(top: 1, left: 16),
 
           // 3. Contenido
           Column(

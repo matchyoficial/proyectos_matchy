@@ -955,6 +955,7 @@ class _InfoSheet extends StatelessWidget {
                       content: [
                         _buildBullet("Lugar Público: Mantén tu primera cita siempre en sitios concurridos."),
                         _buildBullet("Comparte: Avísale a un amigo o familiar dónde estarás."),
+                        _buildBullet("Acompañantes: Por respeto a tu cita, no vayas con acompañantes o invitados extras."),
                         _buildBullet("El Código: Nunca des tu 'Código de Cita' por chat. Solo entrégalo en persona."),
                         _buildBullet("Instinto: Si algo no se siente bien, puedes irte, ponerte en contacto con el personal de seguridad del sitio o comunicarte a la linea de emergencia #123. No estás obligado a quedarte."),
                       ]

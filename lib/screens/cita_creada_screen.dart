@@ -1,9 +1,10 @@
 // 📂 lib/screens/cita_creada_screen.dart
 // ✅ CITA CREADA BLINDADA (SMART CACHE PRO INYECTADO)
 // 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) de la foto del lugar.
-// 🔥 BLINDAJE: Textos protegidos con FittedBox y Justificación Profesional.
+// 🔥 BLINDAJE: Textos protegidos con FittedBox y Justificación Profesional (Anti-Deformación).
 // 🔥 REORDEN: Botón de borrado al final con nota aclaratoria de penalidad.
 // 🔥 LÓGICA: Borrado físico de la cita (delete) sin penalidad.
+// 🛡️ UX LEGAL: Burbuja estática azul premium con texto y título 100% justificados y centrados en bloque.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -153,7 +154,7 @@ class CitaCreadaScreen extends StatelessWidget {
                                 color: Colors.white.withOpacity(0.08),
                                 borderRadius: BorderRadius.circular(24),
                                 border: Border.all(color: Colors.white12),
-                                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)]
+                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)]
                             ),
                             child: Column(
                               children: [
@@ -171,36 +172,84 @@ class CitaCreadaScreen extends StatelessWidget {
 
                           const SizedBox(height: 25),
 
+                          // 🛡️ BURBUJA DE ADVERTENCIA (100% CENTRADA, AZUL Y JUSTIFICADA)
                           Container(
-                            padding: const EdgeInsets.all(18),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(color: const Color(0xFF050000).withOpacity(0.3)),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: kButtonGradientBack, // 🔥 El mismo azul del botón
+                                ),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(color: Colors.white24, width: 1.0),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 4))
+                                ]
                             ),
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                const Text(
-                                  "CANCELAR ESTA CITA TE GENERARÁ UNA PENALIDAD DE -20 PUNTOS Y UN BLOQUEO TEMPORAL DE TU CUENTA. RECUERDA: LA OPCIÓN DE REPROGRAMAR SOLO ESTÁ DISPONIBLE HASTA 12 HORAS ANTES DE LA CITA. SI YA PASÓ ESE TIEMPO, CANCELAR ES TU ÚNICA OPCIÓN SI NO PUEDES ASISTIR.",
-                                  textAlign: TextAlign.justify,
-                                  style: TextStyle(
-                                      color: Color(0xFFF80719),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.4,
-                                      letterSpacing: -0.1 // Ajuste para evitar deformación en justificación
-                                  ),
+                                // Título + Icono Centrados (Ya corregido anteriormente)
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      "REGLAS DE LA CITA",
+                                      style: TextStyle(
+                                        color: Colors.orangeAccent,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                        letterSpacing: 1.0,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(height: 12),
-                                FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: const Text(
-                                    "RECUERDA QUE EN MATCHY EL QUE INVITA PAGA.",
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                // 🔥 PÁRRAFO 1: Justificado perfectamente, sin cortes raros ni centrado de letras
+                                const Text(
+                                  "Una vez concretada la cita con tu Matchy, cancelarla generará una penalidad de -20 puntos y un bloqueo temporal de tu cuenta.",
+                                  textAlign: TextAlign.justify, // ✅ YA NO ES CENTER, ES JUSTIFY
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                // 🔥 PÁRRAFO 2: Justificado perfectamente
+                                const Text(
+                                  "RECUERDA: La opción de reprogramar solo está disponible hasta 12 horas antes. Si ya pasó ese tiempo y no puedes asistir, cancelar es tu única opción.",
+                                  textAlign: TextAlign.justify, // ✅ YA NO ES CENTER, ES JUSTIFY
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                // Etiqueta Cyan Centrada (Corregida anteriormente con FittedBox)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.4),
+                                      borderRadius: BorderRadius.circular(8)
+                                  ),
+                                  child: const FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      "EN MATCHY, EL QUE INVITA PAGA.",
+                                      style: TextStyle(
+                                          color: Colors.cyanAccent,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.5
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -331,6 +380,7 @@ class CitaCreadaScreen extends StatelessWidget {
           ),
         ],
       ),
+
     );
   }
 }
