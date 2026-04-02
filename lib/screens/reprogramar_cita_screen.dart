@@ -1,11 +1,11 @@
 // 📂 lib/screens/reprogramar_cita_screen.dart
 // ✅ PANTALLA REPROGRAMAR BLINDADA (ESTRATEGIA ADAPTATIVA + SMART CACHE PRO)
+// 🔥 FIX: Radar Múltiple de 3 horas (Bloquea choques en cualquiera de las 3 opciones).
+// 🔥 LÓGICA: Blacklist de estados (Ignora 'finished' y 'cancelled').
 // 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) en la foto del banner del lugar.
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables protegidos.
-// 🔥 UI: Bloques informativos (Yellow/Red) intactos.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 // 🔔 NOTIFICACIÓN: Personalizada con Nombre de Lugar y Remitente.
-// 💄 UI: Botón Back Chevron ubicado en la esquina superior izquierda (fuera de la foto).
 
 import 'dart:ui'; // 🔥 Para el efecto de desenfoque
 import 'package:flutter/material.dart';
@@ -255,6 +255,45 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
 
     try {
       final db = FirebaseFirestore.instance;
+
+      // 🔥 FASE 1: RADAR DE 3 HORAS CON "BLACKLIST" PARA LAS 3 OPCIONES
+      final ownerSnap = await db.collection('citas').where('ownerUid', isEqualTo: user.uid).get();
+      final matchySnap = await db.collection('citas').where('matchyUid', isEqualTo: user.uid).get();
+
+      final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
+      final deadStatuses = ['finished', 'cancelled']; // Ignoramos estas citas
+
+      // Revisamos las 3 opciones seleccionadas por el usuario
+      for (int i = 0; i < _opciones.length; i++) {
+        final DateTime optionDate = _opciones[i]!;
+
+        for (var doc in allDocs) {
+          // Ignoramos la cita actual que estamos reprogramando para que no choque consigo misma
+          if (doc.id == widget.citaId) continue;
+
+          final data = doc.data();
+          final status = data['status'] ?? '';
+
+          // Si la cita de la agenda no está terminada/cancelada, asume que está viva
+          if (!deadStatuses.contains(status) && data['scheduledAt'] != null) {
+            final existingTime = (data['scheduledAt'] as Timestamp).toDate();
+            final diffMinutes = optionDate.difference(existingTime).inMinutes.abs();
+
+            if (diffMinutes < 180) { // Escudo de 3 horas (180 mins)
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text("¡Choque de horarios! La Opción ${i + 1} choca con otra cita de tu agenda. Debes dejar 3 horas libres entre citas.", style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: const Color(0xFFD32F2F),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 4),
+              ));
+              setState(() => _sending = false);
+              return; // Bloqueamos el envío instantáneamente
+            }
+          }
+        }
+      }
+
+      // 🔥 FASE 2: EL RADAR PASÓ LIMPIO, EJECUTAMOS EL GUARDADO
       final batch = db.batch();
 
       final String myUid = user.uid;
@@ -262,7 +301,7 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
       final String candidatoUid = (_citaData?['candidatoUid'] ?? _citaData?['matchyUid'] ?? '').toString();
       final String peerUid = (myUid == ownerUid) ? candidatoUid : ownerUid;
 
-      // 🔥 DATOS PARA NOTIFICACIÓN PERSONALIZADA
+      // DATOS PARA NOTIFICACIÓN PERSONALIZADA
       final String ownerName = (_citaData?['ownerNombre'] ?? 'Owner').toString();
       final String matchyName = (_citaData?['matchyNombre'] ?? (_citaData?['candidatoNombre'] ?? 'Matchy')).toString();
       final String myName = (myUid == ownerUid) ? ownerName : matchyName;

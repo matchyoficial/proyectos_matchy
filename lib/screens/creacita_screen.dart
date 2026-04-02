@@ -1,8 +1,9 @@
 // 📂 lib/screens/creacita_screen.dart
 // ✅ CREAR CITA BLINDADA (VERSIÓN PRO FINAL)
-// 🔥 FIX: Bloqueo inteligente de 2 horas entre citas (Revisa todo el calendario del usuario).
+// 🔥 FIX: Bloqueo inteligente de 3 horas (Lógica Invertida: Bloquea todo menos finished/cancelled).
 // 🔥 UI FIX: Notificaciones nativas reemplazadas por "Burbujas Matchy" flotantes.
-// 🔥 FIX: Generador alfanumérico de 8 dígitos y selector de hora 12h intactos.
+// 🔥 FIX: Generador alfanumérico seguro (Random.secure) sin letras confusas (I, O).
+// 🔥 UI FIX: Selector de hora 12h intacto.
 
 import 'dart:ui';
 import 'dart:math';
@@ -218,9 +219,11 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     );
   }
 
+  // 🔥 GENERADOR CRIPTOGRÁFICO SEGURO
+  // Sin las letras 'O' ni 'I' para evitar confusiones al leer.
   String _generarCodigoRandom8D() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    final rnd = Random();
+    final rnd = Random.secure(); // 🔥 Generación criptográfica fuerte
     return String.fromCharCodes(Iterable.generate(
       8, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
     ));
@@ -236,7 +239,6 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     return '';
   }
 
-  // 🔥 RECIBE EL SCHEDULED AT PARA NO RECALCULAR
   Future<String> _crearCitaEnFirestore(DateTime scheduledAt) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('No hay sesión iniciada');
@@ -326,7 +328,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
     return docRef.id;
   }
 
-  // 🔥 VALIDACIÓN MAESTRA DE 2 HORAS E INYECCIÓN DE CITA
+  // 🔥 LÓGICA DE LISTA NEGRA: BARRERA DE 3 HORAS
   Future<void> _onCrearCitaPressed() async {
     if (_creating) return;
     if (_pickedDate == null || _pickedTime == null) {
@@ -349,25 +351,26 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
         return;
       }
 
-      // 2. REGLA MAESTRA: RASTREO DE 2 HORAS
-      // Obtenemos todas las citas donde soy creador
+      // 2. REGLA MAESTRA: RADAR DE 3 HORAS CON "BLACKLIST"
       final ownerSnap = await FirebaseFirestore.instance.collection('citas').where('ownerUid', isEqualTo: user.uid).get();
-      // Obtenemos todas las citas donde soy invitado
       final matchySnap = await FirebaseFirestore.instance.collection('citas').where('matchyUid', isEqualTo: user.uid).get();
 
       final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
-      final activeStatuses = ['online', 'pending', 'scheduled', 'aceptada'];
+
+      // 🔥 Lógica invertida: Estos son los únicos estados que permiten agendar en ese horario
+      final deadStatuses = ['finished', 'cancelled'];
 
       for (var doc in allDocs) {
         final data = doc.data();
         final status = data['status'] ?? '';
 
-        if (activeStatuses.contains(status) && data['scheduledAt'] != null) {
+        // Si el estado NO está en la lista de "muertos", asumimos que la cita está viva y ocupa lugar
+        if (!deadStatuses.contains(status) && data['scheduledAt'] != null) {
           final existingTime = (data['scheduledAt'] as Timestamp).toDate();
           final diffMinutes = scheduledAt.difference(existingTime).inMinutes.abs();
 
-          if (diffMinutes < 120) {
-            _showMatchyBubble('Ya tienes una cita muy cerca a esta hora. Debes dejar al menos 2 horas de espacio libre en tu calendario.');
+          if (diffMinutes < 180) {
+            _showMatchyBubble('¡Choque de horarios! Ya tienes una cita muy cerca. Debes dejar un espacio de 3 horas entre cada encuentro.');
             setState(() => _creating = false);
             return; // Bloquea la creación instantáneamente
           }
@@ -535,7 +538,7 @@ class _CreaCitaScreenState extends State<CreaCitaScreen> {
                       const SizedBox(height: 30),
                       _BotonPremium(text: "CREAR TU CITA", width: width * 0.85, isAction: true, isLoading: _creating, fontSize: kSizeTextoBoton, height: kAlturaBoton, onTap: _creating ? null : _onCrearCitaPressed),
                       const SizedBox(height: 20),
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 36), child: Text('Recuerda: La cita debe programarse con mínimo 12 horas de anticipación.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kSizeNotaPie, fontWeight: FontWeight.w400))),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 36), child: Text('Recuerda: La cita debe programarse con mínimo 12 horas de anticipación y dejar 3 horas de espacio libre entre encuentros.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: kSizeNotaPie, fontWeight: FontWeight.w400))),
                     ],
                   ),
                 ),

@@ -3,6 +3,7 @@
 // 🛡️ FIX UX: Lienzo en BoxFit.contain (Fotos horizontales completas con fondo negro).
 // 🚀 FIX PESO: pixelRatio reducido a 1.5 para garantizar peso < 5MB (Para Amazon).
 // 🛠️ LÓGICA: Libertad total de paneo y zoom desde la vista original.
+// 📐 FIX UI: Instrucciones bloqueadas a 4 líneas exactas, sin espacios muertos.
 
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -83,7 +84,7 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
         ),
         body: Column(
           children: [
-            // ℹ️ INSTRUCCIONES PREMIUM (Con texto destacado en Naranja/Amarillo)
+            // ℹ️ INSTRUCCIONES PREMIUM (Ingeniería de 4 líneas exactas)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Container(
@@ -102,17 +103,21 @@ class _CustomCropperScreenState extends State<CustomCropperScreen> {
                         TextSpan(
                           children: const [
                             TextSpan(
-                              text: "Usa tus dedos para hacer zoom y mover la foto. Lo que quede dentro del marco es tu foto final.\n\n",
+                              text: "Usa tus dedos para hacer zoom y mover la foto. Lo que quede dentro del marco es tu foto final.\n",
                               style: TextStyle(color: Colors.white),
                             ),
                             TextSpan(
                               text: "AJUSTA LA FOTO HASTA QUE DESAPAREZCAN LOS BORDES VERDES PARA QUE TU FOTO SE ACOMODE PERFECTO.",
-                              style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: Colors.orangeAccent,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.3, // Compresión milimétrica para caber en 2 renglones
+                              ),
                             ),
                           ],
                         ),
-                        style: const TextStyle(fontSize: 10, height: 1.3),
-                        maxLines: 5,
+                        style: const TextStyle(fontSize: 10, height: 1.2),
+                        maxLines: 4, // Bloqueo estricto
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
