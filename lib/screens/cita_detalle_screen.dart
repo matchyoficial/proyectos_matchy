@@ -4,6 +4,7 @@
 // 🔥 FIX: Burbujas Flotantes "Matchy Style" reemplazan SnackBars y Alertas de error.
 // 🔥 GPS: Implementado sistema de validación de 200m con Master Switch.
 // 🔒 FIX CORRECTO: Reprogramar se bloquea <12h. Cancelar SIEMPRE ACTIVO.
+// 🔒 FIX ANTI-TRAMPAS: Campo de código y botón de confirmar bloqueados hasta el día exacto de la cita.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -182,6 +183,27 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     return widget.citaDateTime!.difference(ahora).inHours >= 12;
   }
 
+  // 🔥 CANDADO TEMPORAL: Verifica si HOY es el día de la cita (Ignora la hora)
+  bool get _esElDiaDeLaCita {
+    try {
+      DateTime fechaReal;
+      if (widget.citaDateTime != null) {
+        fechaReal = widget.citaDateTime!;
+      } else {
+        final partes = widget.fecha.trim().split(RegExp(r'[/ -]'));
+        if (partes.length >= 3) {
+          fechaReal = DateTime(int.parse(partes[2]), int.parse(partes[1]), int.parse(partes[0]));
+        } else {
+          return false;
+        }
+      }
+      final hoy = DateTime.now();
+      return fechaReal.year == hoy.year && fechaReal.month == hoy.month && fechaReal.day == hoy.day;
+    } catch (e) {
+      return false;
+    }
+  }
+
   String _getFechaAmigable() {
     try {
       DateTime fechaReal;
@@ -221,6 +243,13 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   // 🔥 LÓGICA DE VALIDACIÓN BLINDADA (CÓDIGO + GPS OPCIONAL)
   Future<void> _validarYConfirmar() async {
     if (_procesandoValidacion || _navegandoExito) return;
+
+    // 🔒 Candado Temporal: Protege también el botón
+    if (!_esElDiaDeLaCita) {
+      _mostrarBurbuja("Aún no es el día de tu cita. Debes esperar a la fecha programada.", Colors.orangeAccent, Icons.lock_clock);
+      return;
+    }
+
     final codigoIngresado = _codigoMatchyController.text.trim().toUpperCase();
     final codigoCorrecto = widget.codigoDelOtro.trim().toUpperCase();
 
@@ -302,7 +331,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
             title: const Text("⏳ TIEMPO AGOTADO", style: TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.w900)),
             content: const Text(
-              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DE পাশে ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
+              "YA NO ES POSIBLE REPROGRAMAR PORQUE FALTAN MENOS DE 12 HORAS PARA TU CITA.\n\nPOR RESPETO A TU MATCHY, DEBES ASISTIR O CANCELAR ASUMIENDO LA PENALIDAD.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, height: 1.4, fontSize: 14),
             ),
@@ -384,27 +413,41 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   Widget _buildVividCapsule(IconData icon, String text, {double fontSize = 18.0}) { return Container(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.1))), child: Column(children: [Icon(icon, color: Colors.white, size: 28), const SizedBox(height: 8), FittedBox(fit: BoxFit.scaleDown, child: Text(text.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)))])); }
   Widget _buildDisplayCode(String code) { return Container(width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 18), decoration: BoxDecoration(color: const Color(0xFF6B4EE6), borderRadius: BorderRadius.circular(15)), child: Column(children: [const Text("MI CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 15, letterSpacing: 1.5)), FittedBox(fit: BoxFit.scaleDown, child: Text(code.isEmpty ? "---" : code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: kCodeFontSize, letterSpacing: 2.0)))])); }
 
+  // 🔥 CANDADO TEMPORAL APLICADO AL INPUT
   Widget _buildInputCode() {
-    return Container(
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: SizedBox(
-            width: 380,
-            child: TextField(
-                controller: _codigoMatchyController,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0),
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                    hintText: "PON EL CÓDIGO DE TU MATCHY",
-                    hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 12)
-                )
-            ),
-          ),
-        )
+    final bool esHoy = _esElDiaDeLaCita;
+
+    return GestureDetector(
+      onTap: () {
+        if (!esHoy) {
+          _mostrarBurbuja("Solo puedes ingresar el código el día de tu cita. ¡Nos vemos pronto!", Colors.orangeAccent, Icons.lock_clock);
+        }
+      },
+      child: AbsorbPointer(
+        absorbing: !esHoy, // Si no es hoy, absorbe el toque para que el TextField no suba el teclado
+        child: Container(
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.white24)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SizedBox(
+                width: 380,
+                child: TextField(
+                    controller: _codigoMatchyController,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: 2.0),
+                    textCapitalization: TextCapitalization.characters,
+                    readOnly: !esHoy, // Protección extra nativa
+                    decoration: const InputDecoration(
+                        hintText: "PON EL CÓDIGO DE TU MATCHY",
+                        hintStyle: TextStyle(color: Colors.white24, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 12)
+                    )
+                ),
+              ),
+            )
+        ),
+      ),
     );
   }
 }

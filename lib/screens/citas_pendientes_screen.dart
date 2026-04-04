@@ -1,9 +1,10 @@
 // 📂 lib/screens/citas_pendientes_screen.dart
 // ✅ CITAS PUBLICADAS BLINDADA (SMART CACHE PRO + NUBE INFORMATIVA)
+// 🔥 FIX: Tractor Matemático Agresivo para citas viejas sin scheduledAt.
+// 🔥 FIX: Ordenamiento cronológico perfecto y renderizado forzado (state = [...list]).
 // 🔥 ADD: Nube informativa debajo del título para explicar la función de la pantalla.
 // 🔥 CACHÉ PRO: Renderizado inteligente en ListView para scroll fluido.
 // 🔥 BLINDAJE: Textos protegidos con FittedBox manteniendo tamaños originales.
-// 🔥 LÓGICA: Riverpod y Firestore intactos.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -126,20 +127,46 @@ class CitasPendientesNotifier extends StateNotifier<List<CitaPendiente>> {
         final fecha = (data[kFechaField] ?? '').toString();
         final hora = (data[kHoraField] ?? '').toString();
 
-        DateTime fechaHoraCita = DateTime(2100);
-        try {
-          final f = fecha.split('/');
-          final h = hora.split(':');
-          if (f.length == 3 && h.length >= 2) {
-            fechaHoraCita = DateTime(
-              int.parse(f[2]),
-              int.parse(f[1]),
-              int.parse(f[0]),
-              int.parse(h[0]),
-              int.parse(h[1]),
-            );
+        DateTime fechaHoraCita;
+
+        // 🔥 TRACTOR MATEMÁTICO AGRESIVO
+        if (data['scheduledAt'] != null) {
+          fechaHoraCita = (data['scheduledAt'] as Timestamp).toDate();
+        } else {
+          // Salvavidas matemático forzado para citas viejas/sucias
+          fechaHoraCita = DateTime(2100); // Valor por defecto si todo falla
+          try {
+            // 1. Limpiar fecha quitando todos los espacios
+            final cleanFecha = fecha.replaceAll(' ', '').trim();
+            final f = cleanFecha.split(RegExp(r'[/ -]'));
+
+            // 2. Extraer AM/PM antes de limpiar los números
+            String upperHora = hora.toUpperCase();
+            bool isPM = upperHora.contains('PM');
+            bool isAM = upperHora.contains('AM');
+
+            // 3. Destruir cualquier letra o símbolo que no sea número o dos puntos
+            String cleanHora = hora.replaceAll(RegExp(r'[^0-9:]'), '').trim();
+            final h = cleanHora.split(':');
+
+            if (f.length >= 3 && h.isNotEmpty) {
+              int day = int.parse(f[0]);
+              int month = int.parse(f[1]);
+              int year = int.parse(f[2]);
+              if (year < 100) year += 2000; // Por si guardaron '26' en vez de '2026'
+
+              int hour = int.parse(h[0]);
+              int minute = h.length > 1 ? int.parse(h[1]) : 0;
+
+              if (isPM && hour != 12) hour += 12;
+              if (isAM && hour == 12) hour = 0;
+
+              fechaHoraCita = DateTime(year, month, day, hour, minute);
+            }
+          } catch (e) {
+            debugPrint("Matchy OS - Error forzando fecha en cita ${d.id}: $e");
           }
-        } catch (_) {}
+        }
 
         if (fechaHoraCita.isBefore(now)) {
           FirebaseFirestore.instance
@@ -165,8 +192,9 @@ class CitasPendientesNotifier extends StateNotifier<List<CitaPendiente>> {
         );
       }
 
+      // 🔥 ORDENAMIENTO CRONOLÓGICO Y RENDERIZADO FORZADO
       list.sort((a, b) => a.fechaHoraCita.compareTo(b.fechaHoraCita));
-      state = list;
+      state = [...list]; // El spread operator [...] obliga a Riverpod a repintar la UI
     });
   }
 }

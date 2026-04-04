@@ -410,25 +410,29 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       final creador = _readCreador(data);
       String creadorNombre = _s(creador['nombre']).trim(); final creadorEdadRaw = creador['edad']; String creadorFoto = _s(creador['foto']).trim(); final creadorUidFromObj = _s(creador['uid']).trim(); final legacyNombre = _s(data['creadorNombre']).trim(); final legacyEdadRaw = data['creadorEdad']; final legacyFoto = _s(data['creadorFoto']).trim();
       final ownerFinal = ownerUid.isNotEmpty ? ownerUid : (creadorUidFromObj.isNotEmpty ? creadorUidFromObj : 'unknown');
-      int edadFinal = 0; int puntajeFinal = 100;
+      int edadFinal = 0; int puntajeFinal = 100; bool userIsVerified = false; // 🔥 NUEVO CAMPO
+
       if (creadorEdadRaw is int) { edadFinal = creadorEdadRaw; } else { edadFinal = int.tryParse(creadorEdadRaw?.toString() ?? '') ?? 0; }
       if (edadFinal <= 0) { if (legacyEdadRaw is int) { edadFinal = legacyEdadRaw; } else { edadFinal = int.tryParse(legacyEdadRaw?.toString() ?? '') ?? 0; } }
       if (creadorNombre.isEmpty) creadorNombre = legacyNombre;
       String fotoFinal = creadorFoto.isNotEmpty ? creadorFoto : legacyFoto;
+
       if (ownerFinal.isNotEmpty && ownerFinal != 'unknown') {
         final u = await _getUserDocCached(ownerFinal);
         if (creadorNombre.isEmpty) { final n = _pickNombreFromUserDoc(u); if (n.isNotEmpty) creadorNombre = n; }
         if (edadFinal <= 0) { final e = _pickEdadFromUserDoc(u); if (e > 0) edadFinal = e; }
         if (fotoFinal.isEmpty || fotoFinal == 'assets/images/perfil1.jpg') { final f = _pickFotoFromUserDoc(u); if (f.isNotEmpty) fotoFinal = f; }
         puntajeFinal = _pickPuntualidadFromUserDoc(u);
+        userIsVerified = u['isVerified'] == true; // 🔥 EXTRACCIÓN DE FIRESTORE
       }
       if (creadorNombre.isEmpty) creadorNombre = 'Usuario';
       if (fotoFinal.isEmpty) fotoFinal = 'assets/images/perfil1.jpg';
+
       out.add(_CitaCardModel(
         citaId: d.id, ownerUid: ownerFinal, creatorName: creadorNombre, creatorAge: edadFinal, creatorPhoto: fotoFinal,
         placePhotos: placePhotos, placeName: nombreLugar, placeAddress: direccionLugar,
         fecha: fechaRaw.isEmpty ? 'Fecha pendiente' : fechaRaw, hora: horaRaw.isEmpty ? 'Hora pendiente' : horaRaw,
-        intencion: intencion, preferencia: prefCita, puntualidad: puntajeFinal,
+        intencion: intencion, preferencia: prefCita, puntualidad: puntajeFinal, isVerified: userIsVerified, // 🔥 INYECTADO
       ));
     }
     return out;
@@ -616,8 +620,64 @@ class _SwipeBundleSolid extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   imgWidget,
-                  if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 100, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.85)])))),
-                  if (isProfile) Positioned(left: 20, right: 20, bottom: 16, child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: RichText(text: TextSpan(children: [TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900)), TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900))])))),
+                  if (isProfile) Positioned(bottom: 0, left: 0, right: 0, child: Container(height: 120, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)])))),
+                  if (isProfile)
+                    Positioned(
+                        left: 16, right: 16, bottom: 12,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 🔥 INYECCIÓN: Check Azul Neón para la tarjeta
+                            if (model.isVerified)
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00B4DB).withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFF00B4DB), width: 1),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.verified, color: Color(0xFF00B4DB), size: 12),
+                                      SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          "PERFIL VERIFICADO",
+                                          style: TextStyle(
+                                              color: Color(0xFF00B4DB),
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 0.5,
+                                              fontFamily: 'Poppins'
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: RichText(
+                                    text: TextSpan(
+                                        children: [
+                                          TextSpan(text: model.creatorName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                                          TextSpan(text: ', ${model.creatorAge}', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))
+                                        ]
+                                    )
+                                )
+                            ),
+                          ],
+                        )
+                    ),
+
                   if (!isProfile) Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)], stops: const [0.3, 1.0]))),
                   if (!isProfile) Positioned(left: 14, right: 14, bottom: 12, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
                     FittedBox(fit: BoxFit.scaleDown, child: Text(model.placeName.toUpperCase(), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 0.9))),
@@ -818,6 +878,7 @@ class _CitaCardModel {
   final String intencion;
   final String preferencia;
   final int puntualidad;
+  final bool isVerified; // 🔥 NUEVO: Atributo de Élite
 
   const _CitaCardModel({
     this.isAd = false,
@@ -834,17 +895,18 @@ class _CitaCardModel {
     required this.hora,
     required this.intencion,
     required this.preferencia,
-    this.puntualidad = 100
+    this.puntualidad = 100,
+    this.isVerified = false, // 🔥 Por defecto no está verificado
   });
 
   factory _CitaCardModel.ad(String url, String idRealFirebase) {
     return _CitaCardModel(
-      isAd: true,
-      adUrl: url,
-      citaId: idRealFirebase,
-      ownerUid: '', creatorName: '', creatorAge: 0, creatorPhoto: '',
-      placePhotos: [], placeName: '', placeAddress: '',
-      fecha: '', hora: '', intencion: '', preferencia: '',
+        isAd: true,
+        adUrl: url,
+        citaId: idRealFirebase,
+        ownerUid: '', creatorName: '', creatorAge: 0, creatorPhoto: '',
+        placePhotos: [], placeName: '', placeAddress: '',
+        fecha: '', hora: '', intencion: '', preferencia: '', isVerified: false
     );
   }
 }

@@ -5,6 +5,7 @@
 // 🔥 FILTRO ZOMBIE: Si tú borraste el chat, no reaparece disfrazado.
 // 🔥 FIX FOTOS: memCacheWidth eliminado. Proporción original restaurada.
 // 🔥 UI MODO FANTASMA: La tarjeta se tiñe de rojo oscuro al presionar.
+// 🔄 ACTUALIZACIÓN EN TIEMPO REAL: Extrae el nombre fresco del usuario.
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -96,14 +97,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       threadMap[otherUid] = t;
     }
 
-    // 👻 CAZAFANTASMAS: Cargamos los UIDs vivos en un set para verificar rápido
-    final Set<String> uidsVivos = {};
+    // 👻 CAZAFANTASMAS Y TIEMPO REAL: Cargamos los UIDs vivos y sus datos frescos
+    final Map<String, Map<String, dynamic>> uidsVivosData = {};
     for (var m in matches) {
       final otherUid = m.id;
       if (!hiddenOtherUids.contains(otherUid)) {
         try {
           final doc = await FirebaseFirestore.instance.collection('users').doc(otherUid).get();
-          if (doc.exists) uidsVivos.add(otherUid);
+          if (doc.exists) {
+            uidsVivosData[otherUid] = doc.data() ?? {}; // 🔥 Guardamos la data fresca
+          }
         } catch (_) {}
       }
     }
@@ -112,12 +115,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final otherUid = m.id;
 
       // 👻 Si no está vivo, no entra a la lista de UI (El Fantasma desaparece)
-      if (hiddenOtherUids.contains(otherUid) || !uidsVivos.contains(otherUid)) {
+      if (hiddenOtherUids.contains(otherUid) || !uidsVivosData.containsKey(otherUid)) {
         continue;
       }
 
       final mData = m.data() as Map<String, dynamic>;
-      String nombreMatch = (mData['nombre'] ?? 'Matchy').toString();
+      final realData = uidsVivosData[otherUid]!; // Datos frescos extraídos del perfil
+
+      // 🔥 Extraemos el nombre fresco, si no existe usamos el histórico
+      String nombreMatch = (realData['nombre'] ?? mData['nombre'] ?? 'Matchy').toString();
       String foto = (mData['fotoUrl'] ?? mData['foto'] ?? '').toString();
       DateTime? matchDate;
 
@@ -137,10 +143,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         DateTime? lastAt;
         if (tData['lastAt'] is Timestamp) lastAt = (tData['lastAt'] as Timestamp).toDate();
 
+        // 🔥 Ignoramos el metaNombre si tenemos un nombre fresco válido
+        nombreFinal = nombreMatch;
+
         final meta = tData['meta'];
         if (meta is Map && meta.containsKey(otherUid)) {
-          final String metaNombre = (meta[otherUid]['nombre'] ?? '').toString();
-          nombreFinal = (metaNombre.isEmpty || metaNombre == 'Yo') ? nombreMatch : metaNombre;
           foto = meta[otherUid]['foto'] ?? foto;
         }
 

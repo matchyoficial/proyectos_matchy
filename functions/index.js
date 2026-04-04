@@ -110,3 +110,101 @@ exports.analizarFoto = functions
     }
     return null;
   });
+
+// ============================================================================
+// 🔥 NUEVO MÓDULO: CHECK AZUL (VERIFICACIÓN BIOMÉTRICA)
+// ============================================================================
+const { CompareFacesCommand } = require("@aws-sdk/client-rekognition");
+const axios = require("axios");
+
+exports.verificarIdentidad = functions
+  .region("southamerica-east1") // Mantenemos la misma región por eficiencia
+  .runWith({
+    secrets: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+    memory: "512MB"
+  })
+  .https.onCall(async (data, context) => {
+    // 1. Barrera de Seguridad
+    if (!context.auth) {
+      throw new functions.https.HttpsError("unauthenticated", "Acceso denegado. Usuario no autenticado.");
+    }
+
+    const uid = context.auth.uid;
+    const selfieBase64 = data.selfieBase64;
+
+    if (!selfieBase64) {
+      throw new functions.https.HttpsError("invalid-argument", "No se recibió el escaneo facial (Selfie).");
+    }
+
+    const db = admin.firestore();
+
+    try {
+      // 2. Extraer foto de perfil de Firestore
+      const userRef = db.collection("users").doc(uid);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Usuario no encontrado en la matriz.");
+      }
+
+      const profilePhotoUrl = userDoc.data().profilePhotoUrl;
+      if (!profilePhotoUrl) {
+        throw new functions.https.HttpsError("failed-precondition", "No tienes una foto de perfil principal para comparar.");
+      }
+
+      // 3. Descargar la foto de perfil en memoria RAM (Buffer)
+      const response = await axios.get(profilePhotoUrl, { responseType: "arraybuffer" });
+      const profilePhotoBuffer = Buffer.from(response.data, "binary");
+
+      // 4. Convertir la Selfie en vivo a memoria RAM (Buffer)
+      const selfieBuffer = Buffer.from(selfieBase64, "base64");
+
+      // 5. Instanciar AWS con los secretos encriptados
+      const rekognition = new RekognitionClient({
+        region: "us-east-1",
+        credentials: {
+          accessKeyId: (process.env.AWS_ACCESS_KEY_ID || "").trim(),
+          secretAccessKey: (process.env.AWS_SECRET_ACCESS_KEY || "").trim(),
+        },
+      });
+
+      // 6. Lanzar comando de comparación facial
+      const command = new CompareFacesCommand({
+        SourceImage: { Bytes: selfieBuffer },
+        TargetImage: { Bytes: profilePhotoBuffer },
+        SimilarityThreshold: 90.0, // Solo pasa si es 90% o más similar
+      });
+
+      const awsResponse = await rekognition.send(command);
+
+      // 7. Evaluar el veredicto
+      if (awsResponse.FaceMatches && awsResponse.FaceMatches.length > 0) {
+        const similarity = awsResponse.FaceMatches[0].Similarity;
+
+        if (similarity >= 90.0) {
+          // 🟢 MATCH EXITOSO: Inyectar Check Azul en Firebase
+          await userRef.update({
+            isVerified: true,
+            verifiedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          return {
+            success: true,
+            similarity: similarity,
+            message: "IDENTIDAD CONFIRMADA. Bienvenido a la élite, Matchy."
+          };
+        }
+      }
+
+      // 🔴 MATCH FALLIDO: Catfish detectado
+      return {
+        success: false,
+        similarity: awsResponse.FaceMatches && awsResponse.FaceMatches.length > 0 ? awsResponse.FaceMatches[0].Similarity : 0,
+        message: "ACCESO DENEGADO. El rostro no coincide con tu foto de perfil."
+      };
+
+    } catch (error) {
+      console.error("❌ ERROR EN BIOMETRÍA:", error.message);
+      throw new functions.https.HttpsError("internal", "El motor biométrico falló: " + error.message);
+    }
+  });

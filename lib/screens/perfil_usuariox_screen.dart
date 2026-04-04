@@ -5,6 +5,7 @@
 // 🔥 UI MATCHY: Burbuja flotante de reporte con fricción inteligente.
 // 🔥 FIX CRÍTICO CORREO: Estructura 'message' ajustada para Trigger Email Extension.
 // 🔥 LIE DETECTOR: Captura nombre y correo real vs. lo que escribe el usuario.
+// 💎 NUEVO: Inyección del Check Azul y Tarjeta de Biometría (Seguridad Anti-Fakes).
 // -----------------------------------------------------------
 
 import 'dart:io';
@@ -343,6 +344,9 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     final bio = (_data!['biografia'] ?? '').toString().trim();
     final detalle = (_data!['detalle'] ?? '').toString().trim();
 
+    // 🔥 EXTRACCIÓN DEL CHECK AZUL
+    final isVerified = _data!['isVerified'] == true;
+
     final sobreMi = (_data!['sobreMiSeleccion'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
     final busco = (_data!['buscoSeleccion'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
     final intereses = (_data!['interesesSeleccion'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
@@ -400,6 +404,41 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // 🔥 INYECCIÓN: Etiqueta "PERFIL VERIFICADO" blindada con FittedBox
+                                  if (isVerified)
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF00B4DB).withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: const Color(0xFF00B4DB), width: 1),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: const [
+                                            Icon(Icons.verified, color: Color(0xFF00B4DB), size: 14),
+                                            SizedBox(width: 4),
+                                            Flexible(
+                                              child: Text(
+                                                "PERFIL VERIFICADO",
+                                                style: TextStyle(
+                                                    color: Color(0xFF00B4DB),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    letterSpacing: 0.6,
+                                                    fontFamily: 'Poppins'
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
                                   FittedBox(
                                     fit: BoxFit.scaleDown,
                                     alignment: Alignment.centerLeft,
@@ -435,6 +474,10 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                       const SizedBox(height: 16),
                       TermometroConfiabilidad(puntaje: puntaje, fechaDesbloqueo: fechaTermometro, mostrarReloj: false),
                       const SizedBox(height: 6),
+
+                      // 🔥 INYECCIÓN: Tarjeta de Biometría Anti-Falsificación
+                      if (isVerified)
+                        const _CardVerificacionBiometrica(),
 
                       _cardTexto('Biografía', bio.isEmpty ? '—' : bio),
                       if (sobreMi.isNotEmpty) _cardChips('Sobre mí', sobreMi),
@@ -499,6 +542,51 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
   }
 }
 
+// ============================================================================
+// 🔥 WIDGET EXTRA: TARJETA DE VERIFICACIÓN BIOMÉTRICA (ANTI-FAKE)
+// ============================================================================
+class _CardVerificacionBiometrica extends StatelessWidget {
+  const _CardVerificacionBiometrica({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x33FFFFFF), // Mismo fondo gris translúcido
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 3))],
+        border: Border.all(color: const Color(0xFF00B4DB).withOpacity(0.5), width: 1.5), // Borde neón sutil
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00B4DB).withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.verified, color: Color(0xFF00B4DB), size: 28),
+          ),
+          const SizedBox(width: 15),
+          const Expanded(
+            child: Text(
+              "Este perfil fue verificado con biometría facial ✔️",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.3,
+                  fontFamily: 'Poppins'
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ============================================================================
 // 🛡️ BURBUJA DE REPORTE (MATCHY STYLE) CON DETECTOR DE MENTIRAS

@@ -1,4 +1,8 @@
 // 📂 lib/screens/datos_screen.dart
+// ✅ PANTALLA DE EDICIÓN DE PERFIL BLINDADA (MATCHY OS)
+// 🔥 ADD: Módulo de Verificación Biométrica (Check Azul) con Nube Persuasiva.
+// 🔥 FIX: Escucha en tiempo real de 'isVerified' desde Firestore.
+// 🔥 UI FIX: Títulos y secciones estandarizados.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +11,7 @@ import 'package:proyectos_matchy/widgets/matchy_back_button.dart';
 import 'package:proyectos_matchy/screens/panel_screen.dart';
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/widgets/gestor_fotos_widget.dart';
+import 'package:proyectos_matchy/screens/verificacion_screen.dart'; // 👈 Importación de la cámara
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,6 +46,9 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
   bool _mostrarErrores = false;
   bool _saving = false;
   bool _isLoadingCloudData = true;
+
+  // 🔥 Variable de estado del Check Azul
+  bool _isVerified = false;
 
   String _preferenciaCitas = 'Ambos';
   String _genero = '';
@@ -178,6 +186,10 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
+
+        // 🔥 Extraemos el estado de verificación
+        if (mounted) setState(() => _isVerified = data['isVerified'] ?? false);
+
         ctrl.setNombre(data['nombre'] ?? '');
         if (data['edad'] != null) ctrl.setEdad(data['edad'].toString());
         ctrl.setProfesion(data['profesion'] ?? '');
@@ -555,6 +567,85 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                       const SizedBox(height: 15),
                       const GestorFotosWidget(),
                       const SizedBox(height: 24),
+
+                      // =======================================================
+                      // 🔥 MÓDULO CHECK AZUL (VERIFICACIÓN BIOMÉTRICA)
+                      // =======================================================
+                      if (!_isVerified) ...[
+                        // Nube Persuasiva
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Icon(Icons.verified, color: Color(0xFF00B4DB), size: 28),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  "¡Destaca en el radar! Los perfiles con Check Azul generan confianza instantánea y al demostrar que eres 100% real multiplica tus citas exitosas.Se comparará con tu foto de perfil actual. ",
+                                  style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins', height: 1.3, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        // Botón de Verificación
+                        GestureDetector(
+                          onTap: () async {
+                            if (!state.photoUrls.isNotEmpty && !state.fotosCargadas.isNotEmpty) {
+                              _mostrarBurbuja("Sube tu foto de perfil principal antes de verificar tu identidad.", Colors.orangeAccent, Icons.photo_camera_front_rounded);
+                              return;
+                            }
+
+                            // Navegar al escáner y esperar resultado
+                            final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const VerificacionScreen()));
+
+                            // Si regresó con éxito (true), actualizamos el UI
+                            if (result == true && mounted) {
+                              setState(() => _isVerified = true);
+                            }
+                          },
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.85,
+                            height: 55,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(colors: [Color(0xFF00B4DB), Color(0xFF0083B0)]),
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: kChipShadow,
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('OBTENER CHECK AZUL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1.0)),
+                          ),
+                        ),
+                      ] else ...[
+                        // 🟢 Sello Permanente de Verificación
+                        Container(
+                          width: MediaQuery.of(context).size.width * 0.85,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF040E1B).withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: const Color(0xFF07013E).withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(Icons.verified, color: Color(0xFF1664DA), size: 22),
+                              SizedBox(width: 8),
+                              Text('IDENTIDAD VERIFICADA', style: TextStyle(color: Color(
+                                  0xFFFFFFFF), fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1.0)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 40),
+                      // =======================================================
 
                       Text('SOBRE MÍ', style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: kChincheTituloSeccion, fontWeight: FontWeight.w900, shadows: kTextShadow)),
                       const SizedBox(height: 10),

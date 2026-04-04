@@ -3,9 +3,11 @@
 // 🔥 CACHÉ PRO: Renderizado instantáneo (0ms) sincronizado con la pantalla anterior.
 // 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
+// 🔥 FIX DE SEGURIDAD: Generador criptográfico estandarizado de 8 caracteres (Random.secure).
 
 import 'dart:io';
 import 'dart:ui'; // 🔥 Para el efecto de desenfoque
+import 'dart:math'; // 🔥 Para el generador de códigos seguro
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart'; // 🔥 Para los rodillos modernos
 import 'package:firebase_auth/firebase_auth.dart';
@@ -171,10 +173,13 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
     );
   }
 
-  String _generarCodigoUnico(String uid, String tipo) {
-    final seed = '${DateTime.now().millisecondsSinceEpoch}-$uid-$tipo';
-    final h = seed.codeUnits.fold<int>(0, (p, c) => (p + c) % 999999);
-    return 'PVT${h.toString().padLeft(6, '0')}';
+  // 🔥 NUEVO GENERADOR CRIPTOGRÁFICO SEGURO ESTANDARIZADO
+  String _generarCodigoRandom8D() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rnd = Random.secure();
+    return String.fromCharCodes(Iterable.generate(
+      8, (_) => chars.codeUnitAt(rnd.nextInt(chars.length)),
+    ));
   }
 
   String _pickFotoLugar(LugarData lugar) {
@@ -244,8 +249,12 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       }
     }
 
-    final codigoOwner = _generarCodigoUnico(user.uid, 'HOST');
-    final codigoMatchy = _generarCodigoUnico(widget.matchyUidInvitado, 'GUEST');
+    // 🔥 GENERACIÓN DE CÓDIGOS CRIPTOGRÁFICOS Y ÚNICOS
+    final codigoOwner = _generarCodigoRandom8D();
+    String codigoMatchy = _generarCodigoRandom8D();
+    while (codigoMatchy == codigoOwner) {
+      codigoMatchy = _generarCodigoRandom8D();
+    }
 
     final lugar = widget.lugar;
 

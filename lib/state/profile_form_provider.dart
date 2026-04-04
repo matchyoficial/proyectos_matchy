@@ -28,8 +28,7 @@
 //    - preferenciaCitas: 'Hombres' | 'Mujeres' | 'Ambos'
 //
 // 🌍 NUEVO (2026): Integración nativa de "Mis Raíces" (paisOrigen y ciudadOrigen)
-//    - Estado global actualizado.
-//    - Hydrate y Sync adaptados para estas nuevas variables obligatorias.
+// 🔥 NUEVO (CHECK AZUL): Integración de 'isVerified' en el estado global.
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -88,6 +87,9 @@ class ProfileFormState {
   // ✅ NUEVO: Preferencia global de citas
   final String preferenciaCitas; // 'Hombres' | 'Mujeres' | 'Ambos'
 
+  // 🔥 NUEVO: Check Azul de Verificación
+  final bool isVerified;
+
   // Chips
   final List<String> sobreMiSeleccion;
   final List<String> buscoSeleccion;
@@ -121,6 +123,7 @@ class ProfileFormState {
     this.ciudadOrigen,     // 🌍 Add Origens
     this.genero = '',
     this.preferenciaCitas = 'Ambos',
+    this.isVerified = false, // 🔥 Por defecto falso
     this.sobreMiSeleccion = const [],
     this.buscoSeleccion = const [],
     this.interesesSeleccion = const [],
@@ -146,6 +149,7 @@ class ProfileFormState {
     String? ciudadOrigen,  // 🌍 Add Origens
     String? genero,
     String? preferenciaCitas,
+    bool? isVerified,      // 🔥 Copy Check Azul
     List<String>? sobreMiSeleccion,
     List<String>? buscoSeleccion,
     List<String>? interesesSeleccion,
@@ -166,10 +170,11 @@ class ProfileFormState {
       estatura: estatura ?? this.estatura,
       paisSeleccionado: paisSeleccionado ?? this.paisSeleccionado,
       ciudadSeleccionada: ciudadSeleccionada ?? this.ciudadSeleccionada,
-      paisOrigen: paisOrigen ?? this.paisOrigen,       // 🌍 Assign Origens
-      ciudadOrigen: ciudadOrigen ?? this.ciudadOrigen, // 🌍 Assign Origens
+      paisOrigen: paisOrigen ?? this.paisOrigen,
+      ciudadOrigen: ciudadOrigen ?? this.ciudadOrigen,
       genero: genero ?? this.genero,
       preferenciaCitas: preferenciaCitas ?? this.preferenciaCitas,
+      isVerified: isVerified ?? this.isVerified, // 🔥 Inyectado
       sobreMiSeleccion: sobreMiSeleccion ?? this.sobreMiSeleccion,
       buscoSeleccion: buscoSeleccion ?? this.buscoSeleccion,
       interesesSeleccion: interesesSeleccion ?? this.interesesSeleccion,
@@ -192,10 +197,11 @@ class ProfileFormState {
     'estatura': estatura,
     'paisSeleccionado': paisSeleccionado,
     'ciudadSeleccionada': ciudadSeleccionada,
-    'paisOrigen': paisOrigen,     // 🌍 Serialize Origens
-    'ciudadOrigen': ciudadOrigen, // 🌍 Serialize Origens
+    'paisOrigen': paisOrigen,
+    'ciudadOrigen': ciudadOrigen,
     'genero': genero,
     'preferenciaCitas': preferenciaCitas,
+    'isVerified': isVerified, // 🔥 Se guarda en caché local
     'sobreMiSeleccion': sobreMiSeleccion,
     'buscoSeleccion': buscoSeleccion,
     'interesesSeleccion': interesesSeleccion,
@@ -233,10 +239,11 @@ class ProfileFormState {
       estatura: (json['estatura'] ?? '').toString(),
       paisSeleccionado: json['paisSeleccionado'] as String?,
       ciudadSeleccionada: json['ciudadSeleccionada'] as String?,
-      paisOrigen: json['paisOrigen'] as String?,       // 🌍 Deserialize Origens
-      ciudadOrigen: json['ciudadOrigen'] as String?,   // 🌍 Deserialize Origens
+      paisOrigen: json['paisOrigen'] as String?,
+      ciudadOrigen: json['ciudadOrigen'] as String?,
       genero: generoRaw,
       preferenciaCitas: prefRaw.isEmpty ? 'Ambos' : prefRaw,
+      isVerified: json['isVerified'] == true, // 🔥 Se lee del caché local
       sobreMiSeleccion: safeList(json['sobreMiSeleccion']),
       buscoSeleccion: safeList(json['buscoSeleccion']),
       interesesSeleccion: safeList(json['interesesSeleccion']),
@@ -597,6 +604,8 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     final safeLocal = _safeLocalForFirestore(state.fotosCargadas);
     final urls = List<String>.from(state.photoUrls);
 
+    // 🔥 OJO: No guardamos 'isVerified' aquí.
+    // Solo el motor de biometría en el backend puede alterarlo.
     return <String, dynamic>{
       'uid': uid,
       'nombre': state.nombre.trim(),
@@ -654,6 +663,7 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
         payload['createdAt'] = FieldValue.serverTimestamp();
       }
 
+      // Merge: true asegura que no sobreescribamos 'isVerified'
       await ref.set(payload, SetOptions(merge: true));
     } catch (e) {
       state = state.copyWith(error: 'No se pudo guardar en Firestore: $e');
@@ -730,10 +740,12 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
         estatura: s(data['estatura']),
         paisSeleccionado: pais,
         ciudadSeleccionada: ciudad,
-        paisOrigen: paisOrigen,       // 🌍 Inject
-        ciudadOrigen: ciudadOrigen,   // 🌍 Inject
+        paisOrigen: paisOrigen,
+        ciudadOrigen: ciudadOrigen,
         genero: genero,
         preferenciaCitas: prefCitas,
+
+        isVerified: data['isVerified'] == true, // 🔥 SE EXTRAE DEL SERVIDOR EN TIEMPO REAL
 
         sobreMiSeleccion: listStr(data['sobreMiSeleccion']),
         buscoSeleccion: listStr(data['buscoSeleccion']),

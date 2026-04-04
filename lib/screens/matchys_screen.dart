@@ -3,6 +3,7 @@
 // 🔥 FIX: Nombres y botones adaptativos que nunca desbordan.
 // 🔥 UI: Títulos estandarizados a 20pt.
 // 👻 ANTI-FANTASMAS: Filtra automáticamente los usuarios que hayan borrado su cuenta.
+// 🔄 ACTUALIZACIÓN EN TIEMPO REAL: Extrae nombre y edad del perfil actual, no del historial.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,18 +53,20 @@ final myMatchysProvider = StreamProvider<List<MatchyData>>((ref) {
       final data = doc.data();
       final targetUid = doc.id;
 
-      // 👻 VERIFICACIÓN ANTI-FANTASMAS
-      // Revisamos si el usuario destino AÚN existe en la colección global
+      // 👻 VERIFICACIÓN ANTI-FANTASMAS Y ACTUALIZACIÓN EN TIEMPO REAL
+      // Revisamos si el usuario destino AÚN existe en la colección global y robamos sus datos frescos
       try {
         final targetDoc = await FirebaseFirestore.instance.collection('users').doc(targetUid).get();
         if (targetDoc.exists) {
-          // El usuario existe, lo agregamos a la lista
+          final realData = targetDoc.data() ?? {}; // Datos frescos de hoy
+
+          // El usuario existe, lo agregamos a la lista con la data actual
           matchysVivos.add(
               MatchyData(
                 uid: targetUid,
-                nombre: data['nombre'] ?? 'Sin Nombre',
-                edad: (data['edad'] is int) ? data['edad'] : int.tryParse(data['edad'].toString()) ?? 0,
-                fotoUrl: data['fotoUrl'] ?? '',
+                nombre: realData['nombre'] ?? data['nombre'] ?? 'Sin Nombre', // Prioridad al nombre fresco
+                edad: (realData['edad'] is int) ? realData['edad'] : int.tryParse(realData['edad']?.toString() ?? '') ?? int.tryParse(data['edad']?.toString() ?? '') ?? 0, // Prioridad a la edad fresca
+                fotoUrl: realData['profilePhotoUrl'] ?? data['fotoUrl'] ?? '',
                 matchId: data['matchId'] ?? '',
               )
           );
@@ -292,7 +295,7 @@ class _MatchyCard extends StatelessWidget {
             nombreUsuario: 'YO',
             nombreMatch: data.nombre,
             fotoUsuario: '',
-            fotoMatch: data.fotoUrl,
+            fotoMatch: data.fotoUrl, // Este ahora enviaría el fotoUrl original por compatibilidad de la pantalla de cita
             matchyUidInvitado: data.uid,
           ),
         ),

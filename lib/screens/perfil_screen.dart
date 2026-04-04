@@ -5,6 +5,8 @@
 // 🔥 FIX: Spinners de carga aislados (Solo gira el botón que presionas).
 // 🔥 CACHÉ PRO: CachedNetworkImage aplicado a las fotos 2, 3, 4 y 5 de la galería.
 // 🛡️ FIX CORREOS: Texto plano simple con datos clave del usuario.
+// 💎 NUEVO: Inyección del Check Azul y Tarjeta de Biometría (Seguridad Anti-Fakes)
+// 📐 FIX UI: Etiqueta "PERFIL VERIFICADO" blindada contra desbordamiento (Overflow).
 
 import 'dart:io';
 
@@ -408,6 +410,10 @@ class _PerfilContent extends StatelessWidget {
         if (myUid != null) _BarraPuntualidadLive(uid: myUid),
         const SizedBox(height: 6),
 
+        // 🔥 INYECCIÓN: Tarjeta de Biometría Anti-Falsificación
+        if (state.isVerified)
+          _CardVerificacionBiometrica(textTheme: textTheme),
+
         _CardTexto(titulo: 'Biografía', texto: state.biografia.isEmpty ? 'Aún no has escrito tu biografía.' : state.biografia, textTheme: textTheme),
 
         if (sobreMi.isNotEmpty) _CardChips(titulo: 'Sobre mí', items: sobreMi, textTheme: textTheme),
@@ -604,6 +610,40 @@ class _ProfileOverlay extends StatelessWidget {
     return Stack(children: [
       Positioned.fill(child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)])))),
       Positioned(left: 30, bottom: 30, right: 30, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+        // 🔥 FIX UI: Etiqueta "PERFIL VERIFICADO" blindada con FittedBox
+        if (state.isVerified)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00B4DB).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF00B4DB), width: 1),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.verified, color: Color(0xFF00B4DB), size: 14),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      "PERFIL VERIFICADO",
+                      style: textTheme.labelSmall?.copyWith(
+                        color: const Color(0xFF00B4DB),
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.6,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
         FittedBox(fit: BoxFit.scaleDown, child: Row(children: [Text(state.nombre, style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, shadows: _PerfilScreenState.kTextShadow)), Text(', ${state.edad}', style: textTheme.titleLarge?.copyWith(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, shadows: _PerfilScreenState.kTextShadow))])),
         const SizedBox(height: 4),
         FittedBox(fit: BoxFit.scaleDown, child: Text(state.profesion.isEmpty ? '—' : state.profesion, style: textTheme.bodyMedium?.copyWith(color: Colors.white, fontSize: 16, shadows: _PerfilScreenState.kTextShadow))),
@@ -622,6 +662,50 @@ class _ProfileOverlay extends StatelessWidget {
         ),
       ])),
     ]);
+  }
+}
+
+// 🔥 INYECCIÓN: Tarjeta exclusiva para Biometría Facial
+class _CardVerificacionBiometrica extends StatelessWidget {
+  final TextTheme textTheme;
+  const _CardVerificacionBiometrica({required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0x33FFFFFF), // Mismo fondo gris translúcido de las otras tarjetas
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: _PerfilScreenState.kChipShadow,
+        border: Border.all(color: const Color(0xFF00B4DB).withOpacity(0.5), width: 1.5), // Borde neón sutil
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00B4DB).withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.verified, color: Color(0xFF00B4DB), size: 28),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Text(
+              "Este perfil fue verificado con biometría facial ✔️",
+              style: textTheme.bodyMedium?.copyWith(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
