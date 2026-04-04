@@ -6,6 +6,8 @@
 // 🔥 BLINDAJE: Título estandarizado a 20pt. Textos variables protegidos.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 // 🔔 NOTIFICACIÓN: Personalizada con Nombre de Lugar y Remitente.
+// 🔄 ACTUALIZACIÓN EN TIEMPO REAL: El nombre del Matchy se extrae de su perfil fresco.
+// 🧠 FIX LÓGICO (NOTIFICACIONES): El nombre del remitente se extrae en vivo para evitar cruces.
 
 import 'dart:ui'; // 🔥 Para el efecto de desenfoque
 import 'package:flutter/material.dart';
@@ -301,10 +303,15 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
       final String candidatoUid = (_citaData?['candidatoUid'] ?? _citaData?['matchyUid'] ?? '').toString();
       final String peerUid = (myUid == ownerUid) ? candidatoUid : ownerUid;
 
-      // DATOS PARA NOTIFICACIÓN PERSONALIZADA
-      final String ownerName = (_citaData?['ownerNombre'] ?? 'Owner').toString();
-      final String matchyName = (_citaData?['matchyNombre'] ?? (_citaData?['candidatoNombre'] ?? 'Matchy')).toString();
-      final String myName = (myUid == ownerUid) ? ownerName : matchyName;
+      // 🔥 FIX LÓGICO: Obtenemos el nombre REAL y actual del usuario que está solicitando la reprogramación
+      String myNameFresco = 'Usuario';
+      try {
+        final myDoc = await db.collection('users').doc(myUid).get();
+        if (myDoc.exists) {
+          myNameFresco = (myDoc.data()?['nombre'] ?? 'Usuario').toString();
+        }
+      } catch (_) {}
+
       final String placeName = (_citaData?['lugarNombre'] ?? 'CITA').toString();
 
       final List<Timestamp> optionsTimestamps = _opciones
@@ -326,9 +333,9 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
         batch.set(notifRef, {
           'type': 'repro_request',
           'citaId': widget.citaId,
-          // 🔔 TÍTULO Y CUERPO PERSONALIZADOS
+          // 🔔 TÍTULO Y CUERPO PERSONALIZADOS (Nombre corregido con myNameFresco)
           'title': 'REPROGRAMACIÓN: ${placeName.toUpperCase()} 🕒',
-          'body': '$myName propone 3 nuevos horarios. Ve y elige el que más te sirva.',
+          'body': '$myNameFresco propone 3 nuevos horarios. Ve y elige el que más te sirva.',
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
           'fromUid': myUid,
@@ -479,7 +486,19 @@ class _ReprogramarCitaScreenState extends State<ReprogramarCitaScreen> {
                     decoration: BoxDecoration(color: kGlassColor, borderRadius: BorderRadius.circular(20)),
                     child: Column(
                       children: [
-                        _buildInfoRow(Icons.person, matchyNombre.toUpperCase()),
+                        // 🔥 ACTUALIZACIÓN EN TIEMPO REAL INYECTADA AQUÍ
+                        StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance.collection('users').doc(uidToShow).snapshots(),
+                            builder: (context, snapshot) {
+                              String nombreFresco = matchyNombre;
+                              if (snapshot.hasData && snapshot.data!.exists) {
+                                final data = snapshot.data!.data() as Map<String, dynamic>;
+                                nombreFresco = (data['nombre'] ?? matchyNombre).toString();
+                              }
+                              return _buildInfoRow(Icons.person, nombreFresco.toUpperCase());
+                            }
+                        ),
+
                         const SizedBox(height: 10),
                         _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
                         const SizedBox(height: 10),

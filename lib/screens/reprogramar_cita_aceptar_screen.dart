@@ -5,6 +5,9 @@
 // 🔥 UI: FotoPerfilUsuario y lógica de WriteBatch intactas.
 // 💄 UI: Botón Back Chevron (Arriba-Izquierda) y Fadeout Inferior.
 // 🔔 NOTIFICACIÓN: Actualizada con Nombre de Lugar y Usuario (Formato Campana).
+// 🧠 FIX LÓGICO (EFECTO ESPEJO): "Solicitado por" ahora extrae en tiempo real el nombre del verdadero dueño del 'repro_by_uid'.
+// 🛡️ RADAR DE CHOQUES: Bloqueo inteligente de 3 horas inyectado al aceptar.
+// 💬 FIX UI: Burbujas flotantes Matchy reemplazan a los SnackBars.
 
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -75,6 +78,69 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
     }
   }
 
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 20, left: 25, right: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+    });
+  }
+
   // Helper para formatear fecha manual (evita problemas de locale)
   String _formatearFechaEspanol(DateTime date) {
     const dias = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
@@ -88,42 +154,78 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
   Future<void> _confirmarHorario() async {
     if (_seleccionIndex == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("⚠️ DEBES SELECCIONAR UN HORARIO PARA CONFIRMAR"),
-        backgroundColor: Colors.orange,
-      ));
+      _mostrarBurbuja("DEBES SELECCIONAR UN HORARIO PARA CONFIRMAR", Colors.orangeAccent, Icons.warning_amber_rounded);
       return;
     }
+
+    final String myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (myUid.isEmpty) return;
 
     setState(() => _saving = true);
 
     try {
       final db = FirebaseFirestore.instance;
+      final DateTime nuevaFecha = _opcionesRecibidas[_seleccionIndex!];
+
+      // 🔥 FASE 1: RADAR DE 3 HORAS (ANTI-CHOQUES DE AGENDA)
+      final ownerSnap = await db.collection('citas').where('ownerUid', isEqualTo: myUid).get();
+      final matchySnap = await db.collection('citas').where('matchyUid', isEqualTo: myUid).get();
+
+      final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
+      final deadStatuses = ['finished', 'cancelled']; // Ignoramos las citas muertas
+
+      for (var doc in allDocs) {
+        if (doc.id == widget.citaId) continue; // Ignoramos la cita actual
+
+        final data = doc.data();
+        final status = data['status'] ?? '';
+
+        if (!deadStatuses.contains(status) && data['scheduledAt'] != null) {
+          final existingTime = (data['scheduledAt'] as Timestamp).toDate();
+          final diffMinutes = nuevaFecha.difference(existingTime).inMinutes.abs();
+
+          if (diffMinutes < 180) { // Escudo de 3 horas (180 mins)
+            setState(() => _saving = false);
+            _mostrarBurbuja(
+                "¡Choque de horarios! Esta opción choca con otra cita de tu agenda. Deja 3 horas de espacio o negocia por el chat.",
+                const Color(0xFFFF5252),
+                Icons.event_busy_rounded
+            );
+            return; // 🛑 Bloqueamos la confirmación
+          }
+        }
+      }
+
+      // 🔥 FASE 2: GUARDADO EN BASE DE DATOS
       final batch = db.batch();
 
-      final DateTime nuevaFecha = _opcionesRecibidas[_seleccionIndex!];
       // Formato para guardar en Firestore (strings simples)
       final String fechaStr = DateFormat('dd/MM/yyyy').format(nuevaFecha);
       final String horaStr = DateFormat('hh:mm a').format(nuevaFecha);
 
       final citaRef = db.collection('citas').doc(widget.citaId);
       final String requesterUid = (_citaData?['repro_by_uid'] ?? '').toString();
-      final String myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       batch.update(citaRef, {
         'status': 'matched', // Vuelve a estado normal
         'fecha': fechaStr,
         'hora': horaStr,
+        'scheduledAt': Timestamp.fromDate(nuevaFecha), // 🔥 CRÍTICO: Actualizamos el Timestamp para el radar del futuro
         'repro_accepted_at': FieldValue.serverTimestamp(),
       });
 
       // Notificar al solicitante
       if (requesterUid.isNotEmpty && requesterUid != myUid) {
-        // 🔥 Lógica inyectada para capturar nombres y lugar
-        final String ownerUid = (_citaData?['ownerUid'] ?? '').toString();
-        final String ownerName = (_citaData?['ownerNombre'] ?? 'Usuario').toString();
-        final String matchyName = (_citaData?['matchyNombre'] ?? _citaData?['candidatoNombre'] ?? 'Usuario').toString();
-        final String myName = (myUid == ownerUid) ? ownerName : matchyName;
+
+        // 🔥 LÓGICA DE NOTIFICACIÓN BLINDADA: Obtenemos TÚ nombre real desde Firestore.
+        String myNameFresco = 'Usuario';
+        try {
+          final myDoc = await db.collection('users').doc(myUid).get();
+          if (myDoc.exists) {
+            myNameFresco = (myDoc.data()?['nombre'] ?? 'Usuario').toString();
+          }
+        } catch (_) {}
+
         final String placeName = (_citaData?['lugarNombre'] ?? 'CITA').toString();
 
         final notifRef = db.collection('users').doc(requesterUid).collection('notifications').doc();
@@ -132,7 +234,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
           'citaId': widget.citaId,
           // 🔔 NOTIFICACIÓN BLINDADA CON LUGAR Y NOMBRE
           'title': 'CAMBIO ACEPTADO: ${placeName.toUpperCase()} 📅',
-          'body': '$myName confirmó el nuevo horario para el $fechaStr a las $horaStr.',
+          'body': '$myNameFresco confirmó el nuevo horario para el $fechaStr a las $horaStr.',
           'read': false,
           'createdAt': FieldValue.serverTimestamp(),
           'fromUid': myUid,
@@ -149,7 +251,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: kSelectionColor, width: 2)),
           title: const FittedBox(fit: BoxFit.scaleDown, child: Text("¡CITA REPROGRAMADA!", style: TextStyle(color: kSelectionColor, fontWeight: FontWeight.w900))),
           content: Text("TU CITA HA SIDO ACTUALIZADA PARA EL\n$fechaStr A LAS $horaStr", style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
           actions: [
@@ -169,7 +271,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
     } catch (e) {
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     }
   }
 
@@ -180,7 +282,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
     final String lugarFoto = _citaData!['lugarFotoPortada'] ?? _citaData!['lugarFoto'] ?? '';
     final String lugarNombre = _citaData!['lugarNombre'] ?? 'LUGAR';
-    final String matchyNombre = _citaData!['matchyNombre'] ?? _citaData!['candidatoNombre'] ?? 'MATCHY';
+
     final String fechaVieja = _citaData!['fecha'] ?? '--/--';
     final String horaVieja = _citaData!['hora'] ?? '--:--';
     final String reproByUid = (_citaData!['repro_by_uid'] ?? '').toString();
@@ -232,7 +334,7 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
                             ),
                           ),
 
-                          // FOTO PERFIL (SOLICITANTE)
+                          // FOTO PERFIL (SOLICITANTE) - Siempre usa la foto del que reprogramó (reproByUid)
                           Positioned(
                             bottom: kUserPhotoMargin,
                             right: kUserPhotoMargin,
@@ -277,14 +379,27 @@ class _ReprogramarCitaAceptarScreenState extends State<ReprogramarCitaAceptarScr
 
                   const SizedBox(height: 15),
 
-                  // 🛡️ CÁPSULA INFO BLINDADA
+                  // 🛡️ CÁPSULA INFO BLINDADA (CON EXTRACCIÓN EN TIEMPO REAL DEL NOMBRE)
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: kCardMarginH),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(color: kGlassColor, borderRadius: BorderRadius.circular(20)),
                     child: Column(
                       children: [
-                        _buildInfoRow(Icons.person, "SOLICITADO POR: ${matchyNombre.toUpperCase()}"),
+
+                        // 🔥 ACTUALIZACIÓN EN TIEMPO REAL INYECTADA AQUÍ
+                        StreamBuilder<DocumentSnapshot>(
+                            stream: FirebaseFirestore.instance.collection('users').doc(reproByUid).snapshots(), // Vamos al UID del solicitante real
+                            builder: (context, snapshot) {
+                              String nombreSolicitanteFresco = 'USUARIO'; // Fallback
+                              if (snapshot.hasData && snapshot.data!.exists) {
+                                final data = snapshot.data!.data() as Map<String, dynamic>;
+                                nombreSolicitanteFresco = (data['nombre'] ?? 'USUARIO').toString();
+                              }
+                              return _buildInfoRow(Icons.person, "SOLICITADO POR: ${nombreSolicitanteFresco.toUpperCase()}");
+                            }
+                        ),
+
                         const SizedBox(height: 10),
                         _buildInfoRow(Icons.store_mall_directory_rounded, lugarNombre.toUpperCase()),
                         const SizedBox(height: 10),

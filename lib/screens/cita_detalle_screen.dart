@@ -5,6 +5,7 @@
 // 🔥 GPS: Implementado sistema de validación de 200m con Master Switch.
 // 🔒 FIX CORRECTO: Reprogramar se bloquea <12h. Cancelar SIEMPRE ACTIVO.
 // 🔒 FIX ANTI-TRAMPAS: Campo de código y botón de confirmar bloqueados hasta el día exacto de la cita.
+// 🔄 ACTUALIZACIÓN EN TIEMPO REAL: Nombre y edad del Matchy se refrescan automáticamente.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -387,7 +388,34 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
             ),
             const SizedBox(height: 20),
 
-            _buildPanelStyleCard(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))), image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter), title: widget.matchyNombre, extraTitle: "${widget.matchyEdad}", subtitle: "Ver perfil completo", footerText: ""),
+            // 🔥 TARJETA DEL MATCHY (TIEMPO REAL INYECTADO)
+            StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance.collection('users').doc(widget.matchyUid).snapshots(),
+                builder: (context, snapshot) {
+                  String nombreFresco = widget.matchyNombre;
+                  String edadFresca = "${widget.matchyEdad}";
+
+                  if (snapshot.hasData && snapshot.data!.exists) {
+                    final data = snapshot.data!.data() as Map<String, dynamic>;
+                    nombreFresco = (data['nombre'] ?? widget.matchyNombre).toString();
+
+                    final e = data['edad'];
+                    if (e != null) {
+                      edadFresca = e.toString();
+                    }
+                  }
+
+                  return _buildPanelStyleCard(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
+                      image: FotoPerfilUsuario(uid: widget.matchyUid, fit: BoxFit.cover, alignment: Alignment.topCenter),
+                      title: nombreFresco,
+                      extraTitle: edadFresca,
+                      subtitle: "Ver perfil completo",
+                      footerText: ""
+                  );
+                }
+            ),
+
             const SizedBox(height: 20),
             Column(children: [Row(children: [Expanded(child: _buildVividCapsule(Icons.calendar_month, _getFechaAmigable(), fontSize: kDateFontSize)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.access_time_filled, widget.hora))]), const SizedBox(height: 12), Row(children: [Expanded(child: _buildVividCapsule(Icons.star, widget.intencion)), const SizedBox(width: 12), Expanded(child: _buildVividCapsule(Icons.favorite, widget.preferencia))])]),
             const SizedBox(height: 25),

@@ -9,6 +9,7 @@
 // 🎫 STATUS: Destino oficial de Notificaciones Golden Ticket.
 // 🧹 FIX: Limpieza automática de notificaciones al hacer Matchy.
 // 🛠️ FIX FECHA: Cálculo dinámico del día de la semana para evitar "Jueves" fijo.
+// 🔄 ACTUALIZACIÓN EN TIEMPO REAL: Nombre y edad del candidato extraídos directamente de su perfil actual.
 
 import 'dart:async';
 import 'dart:ui';
@@ -611,7 +612,39 @@ class _CardCandidatoGoldPremium extends StatelessWidget {
                               children: [
                                 FotoPerfilUsuario(uid: c.uid, fit: BoxFit.cover),
                                 Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)], stops: const [0.6, 1.0]))),
-                                Positioned(bottom: 8, left: 5, right: 5, child: Text("${c.nombre}, ${c.edad}", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, shadows: [Shadow(color: Colors.black, blurRadius: 2)]))),
+
+                                // 🔥 ACTUALIZACIÓN EN TIEMPO REAL INYECTADA AQUÍ
+                                Positioned(
+                                    bottom: 8, left: 5, right: 5,
+                                    child: StreamBuilder<DocumentSnapshot>(
+                                        stream: FirebaseFirestore.instance.collection('users').doc(c.uid).snapshots(),
+                                        builder: (context, snapshot) {
+                                          String nombreFresco = c.nombre;
+                                          String edadFresca = "${c.edad}";
+
+                                          if (snapshot.hasData && snapshot.data!.exists) {
+                                            final data = snapshot.data!.data() as Map<String, dynamic>;
+                                            nombreFresco = (data['nombre'] ?? c.nombre).toString();
+
+                                            final e = data['edad'];
+                                            if (e != null) {
+                                              edadFresca = e.toString();
+                                            }
+                                          }
+
+                                          return Text(
+                                              "$nombreFresco, $edadFresca",
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w900,
+                                                  shadows: [Shadow(color: Colors.black, blurRadius: 2)]
+                                              )
+                                          );
+                                        }
+                                    )
+                                ),
 
                                 // 🔥 OVERLAY MÁGICO "¡ES TU MATCHY!"
                                 if (isSelected)
