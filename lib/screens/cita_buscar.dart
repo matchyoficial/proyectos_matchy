@@ -1,4 +1,8 @@
 // 📂 lib/screens/cita_buscar.dart
+// ✅ PANTALLA RADAR TINDER-STYLE (BLINDADA CON CACHÉ Y ANTI-FANTASMAS)
+// 🔥 INYECCIÓN DE ÉLITE: Check Azul visible en las tarjetas de perfil.
+// 🛡️ RADAR OMNIDIRECCIONAL: Bloquea Likes manuales y de botón si hay choque de 3 horas.
+// 💬 FIX UI: Burbujas flotantes Matchy advierten del choque de horarios.
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -96,6 +100,69 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       });
 
     _initMatchySpeed();
+  }
+
+  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE INYECTADO
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    final overlayState = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 20, left: 25, right: 25),
+            child: Material(
+              color: Colors.transparent,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: Opacity(opacity: value.clamp(0.0, 1.0), child: child),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: color.withOpacity(0.7), width: 2),
+                    boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 5))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+                        child: Icon(icono, color: color, size: 28),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                          child: Text(
+                            mensaje,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
+                          )
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlayState.insert(entry);
+    Future.delayed(const Duration(seconds: 4), () {
+      if (entry.mounted) entry.remove();
+    });
   }
 
   Future<void> _initMatchySpeed() async {
@@ -291,11 +358,101 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
 
   void _onPanUpdate(DragUpdateDetails d) { if (_isAnimating) return; setState(() => _dx += d.delta.dx); }
 
+  // 🔥 NUEVO: HELPER RADAR DE 3 HORAS (OMNIDIRECCIONAL)
+  Future<bool> _checkRadarCollision(_CitaCardModel model, String uid) async {
+    if (model.isAd) return false;
+
+    try {
+      final db = FirebaseFirestore.instance;
+      final ownerSnap = await db.collection('citas').where('ownerUid', isEqualTo: uid).get();
+      final matchySnap = await db.collection('citas').where('matchyUid', isEqualTo: uid).get();
+
+      final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
+      final deadStatuses = ['finished', 'cancelled'];
+
+      DateTime? cardDate;
+      try {
+        final parts = model.fecha.trim().split(RegExp(r'[/ -]'));
+        if (parts.length >= 3) {
+          int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+          String rawHora = model.hora.toUpperCase().replaceAll('.', '').trim();
+          bool esPM = rawHora.contains("PM");
+          final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+          int hh = int.parse(tP[0]), mm = int.parse(tP[1]);
+          if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
+          cardDate = DateTime(y, m, d, hh, mm);
+        }
+      } catch (_) {}
+
+      if (cardDate != null) {
+        for (var doc in allDocs) {
+          if (doc.id == model.citaId) continue;
+
+          final data = doc.data();
+          final status = data['status'] ?? '';
+
+          if (!deadStatuses.contains(status)) {
+            DateTime? existingTime;
+
+            if (data['scheduledAt'] != null) {
+              existingTime = (data['scheduledAt'] as Timestamp).toDate();
+            } else {
+              // Backward Compatibility: Leer el string si no hay scheduledAt
+              try {
+                final fTexto = (data['fecha'] ?? '').toString();
+                final hTexto = (data['hora'] ?? '').toString();
+                final parts = fTexto.trim().split(RegExp(r'[/ -]'));
+                if (parts.length >= 3) {
+                  int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+                  String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
+                  bool esPM = rawHora.contains("PM");
+                  final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+                  int hh = int.parse(tP[0]), mm = int.parse(tP[1]);
+                  if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
+                  existingTime = DateTime(y, m, d, hh, mm);
+                }
+              } catch (_) {}
+            }
+
+            if (existingTime != null) {
+              final diffMinutes = cardDate.difference(existingTime).inMinutes.abs();
+              if (diffMinutes < 180) { // Menos de 3 horas
+                _mostrarBurbuja(
+                    "¡Choque de horarios! Ya tienes un compromiso a menos de 3 horas de esta cita.",
+                    const Color(0xFFFF5252),
+                    Icons.event_busy_rounded
+                );
+                return true; // 🚨 Hay Colisión
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error en radar de búsqueda: $e");
+    }
+    return false; // Vía Libre
+  }
+
+  // 🔥 INTERCEPTOR 1: CUANDO EL USUARIO DESLIZA LA TARJETA
   Future<void> _onPanEnd(DragEndDetails d, Size size, String uid) async {
     if (_isAnimating) return;
     if (_dx.abs() < decisionThresholdPx) { await _resetCard(); return; }
     if (_topIndex >= _deck.length) return;
     final model = _deck[_topIndex];
+
+    // Si va a la derecha (LIKE)
+    if (_dx > 0) {
+      setState(() => _isAnimating = true); // Pausamos interacción
+      bool collision = await _checkRadarCollision(model, uid);
+      if (collision) {
+        setState(() => _isAnimating = false);
+        await _resetCard(); // Rebota al centro
+        return;
+      }
+      _isAnimating = true; // Restauramos flag por si acaso
+    }
+
     await _flingOut(right: _dx > 0, size: size, model: model, uid: uid, durationMs: flingDurationMs);
   }
 
@@ -307,12 +464,23 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     await _flingOut(right: false, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
 
+  // 🔥 INTERCEPTOR 2: CUANDO EL USUARIO TOCA EL BOTÓN DEL CORAZÓN
   Future<void> _onLike(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
+
+    final model = _deck[_topIndex];
+    setState(() => _isAnimating = true); // Pausamos
+
+    bool collision = await _checkRadarCollision(model, uid);
+    if (collision) {
+      setState(() => _isAnimating = false);
+      return; // No lanzamos la tarjeta, la dejamos ahí con el error rojo
+    }
+
     _isAnimating = true;
-    final isAd = _deck[_topIndex].isAd;
+    final isAd = model.isAd;
     await _animateTo(isAd ? 40 : decisionThresholdPx + 60, const Duration(milliseconds: 300));
-    await _flingOut(right: true, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
+    await _flingOut(right: true, size: size, model: model, uid: uid, durationMs: 450);
   }
 
   Future<void> _writeDescartado({required String citaId, required String uid}) async {
@@ -410,7 +578,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       final creador = _readCreador(data);
       String creadorNombre = _s(creador['nombre']).trim(); final creadorEdadRaw = creador['edad']; String creadorFoto = _s(creador['foto']).trim(); final creadorUidFromObj = _s(creador['uid']).trim(); final legacyNombre = _s(data['creadorNombre']).trim(); final legacyEdadRaw = data['creadorEdad']; final legacyFoto = _s(data['creadorFoto']).trim();
       final ownerFinal = ownerUid.isNotEmpty ? ownerUid : (creadorUidFromObj.isNotEmpty ? creadorUidFromObj : 'unknown');
-      int edadFinal = 0; int puntajeFinal = 100; bool userIsVerified = false; // 🔥 NUEVO CAMPO
+      int edadFinal = 0; int puntajeFinal = 100; bool userIsVerified = false;
 
       if (creadorEdadRaw is int) { edadFinal = creadorEdadRaw; } else { edadFinal = int.tryParse(creadorEdadRaw?.toString() ?? '') ?? 0; }
       if (edadFinal <= 0) { if (legacyEdadRaw is int) { edadFinal = legacyEdadRaw; } else { edadFinal = int.tryParse(legacyEdadRaw?.toString() ?? '') ?? 0; } }
@@ -423,7 +591,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
         if (edadFinal <= 0) { final e = _pickEdadFromUserDoc(u); if (e > 0) edadFinal = e; }
         if (fotoFinal.isEmpty || fotoFinal == 'assets/images/perfil1.jpg') { final f = _pickFotoFromUserDoc(u); if (f.isNotEmpty) fotoFinal = f; }
         puntajeFinal = _pickPuntualidadFromUserDoc(u);
-        userIsVerified = u['isVerified'] == true; // 🔥 EXTRACCIÓN DE FIRESTORE
+        userIsVerified = u['isVerified'] == true;
       }
       if (creadorNombre.isEmpty) creadorNombre = 'Usuario';
       if (fotoFinal.isEmpty) fotoFinal = 'assets/images/perfil1.jpg';
@@ -432,7 +600,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
         citaId: d.id, ownerUid: ownerFinal, creatorName: creadorNombre, creatorAge: edadFinal, creatorPhoto: fotoFinal,
         placePhotos: placePhotos, placeName: nombreLugar, placeAddress: direccionLugar,
         fecha: fechaRaw.isEmpty ? 'Fecha pendiente' : fechaRaw, hora: horaRaw.isEmpty ? 'Hora pendiente' : horaRaw,
-        intencion: intencion, preferencia: prefCita, puntualidad: puntajeFinal, isVerified: userIsVerified, // 🔥 INYECTADO
+        intencion: intencion, preferencia: prefCita, puntualidad: puntajeFinal, isVerified: userIsVerified,
       ));
     }
     return out;
@@ -627,7 +795,6 @@ class _SwipeBundleSolid extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 🔥 INYECCIÓN: Check Azul Neón para la tarjeta
                             if (model.isVerified)
                               FittedBox(
                                 fit: BoxFit.scaleDown,
@@ -878,7 +1045,7 @@ class _CitaCardModel {
   final String intencion;
   final String preferencia;
   final int puntualidad;
-  final bool isVerified; // 🔥 NUEVO: Atributo de Élite
+  final bool isVerified;
 
   const _CitaCardModel({
     this.isAd = false,
@@ -896,7 +1063,7 @@ class _CitaCardModel {
     required this.intencion,
     required this.preferencia,
     this.puntualidad = 100,
-    this.isVerified = false, // 🔥 Por defecto no está verificado
+    this.isVerified = false,
   });
 
   factory _CitaCardModel.ad(String url, String idRealFirebase) {
