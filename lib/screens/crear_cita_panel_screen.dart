@@ -3,6 +3,7 @@
 // 🔥 BLINDAJE: Títulos estandarizados a 20pt y textos variables elásticos.
 // 🔥 DATOS: Filtro estricto por Ciudad y País en "Lugares Populares".
 // 🔥 UI: Diseño Premium original con degradado Fade Out intacto.
+// 🧠 FIX LÓGICO (RANKING): Ordenamiento ajustado al campo 'popular' (ascendente: menor a mayor), compatible con doubles e ints.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -230,13 +231,13 @@ class _CrearCitaContentState extends State<_CrearCitaContent> {
           child: _isLoadingLocation
               ? const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF)))
               : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            // 🔒 CANDADOS INYECTADOS: País, Ciudad y Orden por Popularidad
+            // 🔒 LÓGICA VIP INYECTADA: Se ordena estrictamente por 'popular' de menor a mayor.
             stream: FirebaseFirestore.instance
                 .collection('lugares')
                 .where('pais', isEqualTo: _userPais)
                 .where('ciudad', isEqualTo: _userCiudad)
-                .where('popular', isGreaterThan: 0)
-                .orderBy('popular', descending: true) // Asegura que los más altos salgan primero
+                .where('popular', isGreaterThan: 0) // 🔥 Filtramos basura
+                .orderBy('popular', descending: false) // 🔥 El número más bajo (ej. 10) saldrá primero
                 .snapshots(),
             builder: (context, snap) {
               if (snap.hasError) return const Center(child: Text("Error de carga", style: TextStyle(color: Colors.white54)));
