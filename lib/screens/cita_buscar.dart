@@ -1,9 +1,9 @@
 // 📂 lib/screens/cita_buscar.dart
 // ✅ PANTALLA RADAR TINDER-STYLE (BLINDADA CON CACHÉ Y ANTI-FANTASMAS)
 // 🔥 INYECCIÓN DE ÉLITE: Check Azul visible en las tarjetas de perfil.
-// 🛡️ RADAR OMNIDIRECCIONAL: Bloquea Likes manuales y de botón si hay choque de 3 horas.
-// 💬 FIX UI: Burbujas flotantes Matchy advierten del choque de horarios.
+// 🛡️ RADAR INVISIBLE: Filtro omnidireccional en tiempo real (<3h) sin bloquear animaciones.
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -86,6 +86,10 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   String _userPais = 'Colombia';
   String _userCiudad = 'Cali';
 
+  // 🔥 RADAR INVISIBLE: Variables
+  StreamSubscription<QuerySnapshot>? _agendaSub;
+  List<DateTime> _misHorariosOcupados = [];
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +106,13 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     _initMatchySpeed();
   }
 
-  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE INYECTADO
+  @override
+  void dispose() {
+    _agendaSub?.cancel(); // 🔥 Apagamos el Radar al salir
+    _controller.dispose();
+    super.dispose();
+  }
+
   void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
     if (!mounted) return;
     final overlayState = Overlay.of(context);
@@ -165,6 +175,60 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     });
   }
 
+  // 🔥 RADAR INVISIBLE: Conexión en tiempo real
+  void _initRadarRealTime() {
+    final db = FirebaseFirestore.instance;
+    _agendaSub = db.collection(kCitasCol)
+        .where(Filter.or(Filter('ownerUid', isEqualTo: _uid), Filter('matchyUid', isEqualTo: _uid)))
+        .snapshots().listen((snap) {
+      final List<DateTime> nuevosHorarios = [];
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        final status = data['status'] ?? '';
+        if (status != 'finished' && status != 'cancelled') {
+          DateTime? t;
+          if (data['scheduledAt'] != null) {
+            t = (data['scheduledAt'] as Timestamp).toDate();
+          } else {
+            t = _parseDateManual(data['fecha']?.toString() ?? '', data['hora']?.toString() ?? '');
+          }
+          if (t != null) nuevosHorarios.add(t);
+        }
+      }
+      _misHorariosOcupados = nuevosHorarios;
+
+      if (_deck.isNotEmpty && mounted) {
+        final mazoLimpio = _deck.where((card) {
+          if (card.isAd || card.scheduledAt == null) return true;
+          for (var ocupado in _misHorariosOcupados) {
+            if (card.scheduledAt!.difference(ocupado).inMinutes.abs() < 180) return false;
+          }
+          return true;
+        }).toList();
+        if (mazoLimpio.length != _deck.length) setState(() => _deck = mazoLimpio);
+      }
+    });
+  }
+
+  DateTime? _parseDateManual(String fTexto, String hTexto) {
+    try {
+      final parts = fTexto.trim().split(RegExp(r'[/ -]'));
+      if (parts.length >= 3) {
+        int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+        String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
+        bool esPM = rawHora.contains("PM");
+        final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+        if (tP.isNotEmpty && tP[0].isNotEmpty) {
+          int hh = int.parse(tP[0]);
+          int mm = tP.length > 1 ? int.parse(tP[1]) : 0;
+          if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
+          return DateTime(y, m, d, hh, mm);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _initMatchySpeed() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -182,6 +246,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       _generoUser = 'NoDecir';
     }
 
+    _initRadarRealTime(); // 🔥 Enciende el radar invisible
     await _fetchCitasBatch();
   }
 
@@ -304,12 +369,6 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     }
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   double get _rotationDeg => _dx / rotationDivisor;
   double get _likeOpacityValue => _dx > 0 ? (_dx.abs() / opacityDivisor).clamp(0.0, 1.0) : 0.0;
   double get _nopeOpacityValue => _dx < 0 ? (_dx.abs() / opacityDivisor).clamp(0.0, 1.0) : 0.0;
@@ -358,100 +417,12 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
 
   void _onPanUpdate(DragUpdateDetails d) { if (_isAnimating) return; setState(() => _dx += d.delta.dx); }
 
-  // 🔥 NUEVO: HELPER RADAR DE 3 HORAS (OMNIDIRECCIONAL)
-  Future<bool> _checkRadarCollision(_CitaCardModel model, String uid) async {
-    if (model.isAd) return false;
-
-    try {
-      final db = FirebaseFirestore.instance;
-      final ownerSnap = await db.collection('citas').where('ownerUid', isEqualTo: uid).get();
-      final matchySnap = await db.collection('citas').where('matchyUid', isEqualTo: uid).get();
-
-      final allDocs = [...ownerSnap.docs, ...matchySnap.docs];
-      final deadStatuses = ['finished', 'cancelled'];
-
-      DateTime? cardDate;
-      try {
-        final parts = model.fecha.trim().split(RegExp(r'[/ -]'));
-        if (parts.length >= 3) {
-          int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
-          String rawHora = model.hora.toUpperCase().replaceAll('.', '').trim();
-          bool esPM = rawHora.contains("PM");
-          final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
-          int hh = int.parse(tP[0]), mm = int.parse(tP[1]);
-          if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
-          cardDate = DateTime(y, m, d, hh, mm);
-        }
-      } catch (_) {}
-
-      if (cardDate != null) {
-        for (var doc in allDocs) {
-          if (doc.id == model.citaId) continue;
-
-          final data = doc.data();
-          final status = data['status'] ?? '';
-
-          if (!deadStatuses.contains(status)) {
-            DateTime? existingTime;
-
-            if (data['scheduledAt'] != null) {
-              existingTime = (data['scheduledAt'] as Timestamp).toDate();
-            } else {
-              // Backward Compatibility: Leer el string si no hay scheduledAt
-              try {
-                final fTexto = (data['fecha'] ?? '').toString();
-                final hTexto = (data['hora'] ?? '').toString();
-                final parts = fTexto.trim().split(RegExp(r'[/ -]'));
-                if (parts.length >= 3) {
-                  int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
-                  String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
-                  bool esPM = rawHora.contains("PM");
-                  final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
-                  int hh = int.parse(tP[0]), mm = int.parse(tP[1]);
-                  if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
-                  existingTime = DateTime(y, m, d, hh, mm);
-                }
-              } catch (_) {}
-            }
-
-            if (existingTime != null) {
-              final diffMinutes = cardDate.difference(existingTime).inMinutes.abs();
-              if (diffMinutes < 180) { // Menos de 3 horas
-                _mostrarBurbuja(
-                    "¡Choque de horarios! Ya tienes un compromiso a menos de 3 horas de esta cita.",
-                    const Color(0xFFFF5252),
-                    Icons.event_busy_rounded
-                );
-                return true; // 🚨 Hay Colisión
-              }
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Error en radar de búsqueda: $e");
-    }
-    return false; // Vía Libre
-  }
-
-  // 🔥 INTERCEPTOR 1: CUANDO EL USUARIO DESLIZA LA TARJETA
+  // 🔥 GESTO LIBERADO: Vuela directo a la derecha
   Future<void> _onPanEnd(DragEndDetails d, Size size, String uid) async {
     if (_isAnimating) return;
     if (_dx.abs() < decisionThresholdPx) { await _resetCard(); return; }
     if (_topIndex >= _deck.length) return;
     final model = _deck[_topIndex];
-
-    // Si va a la derecha (LIKE)
-    if (_dx > 0) {
-      setState(() => _isAnimating = true); // Pausamos interacción
-      bool collision = await _checkRadarCollision(model, uid);
-      if (collision) {
-        setState(() => _isAnimating = false);
-        await _resetCard(); // Rebota al centro
-        return;
-      }
-      _isAnimating = true; // Restauramos flag por si acaso
-    }
 
     await _flingOut(right: _dx > 0, size: size, model: model, uid: uid, durationMs: flingDurationMs);
   }
@@ -464,22 +435,12 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     await _flingOut(right: false, size: size, model: _deck[_topIndex], uid: uid, durationMs: 450);
   }
 
-  // 🔥 INTERCEPTOR 2: CUANDO EL USUARIO TOCA EL BOTÓN DEL CORAZÓN
+  // 🔥 BOTÓN LIBERADO: Vuela directo a la derecha
   Future<void> _onLike(Size size, String uid) async {
     if (_isAnimating || _topIndex >= _deck.length) return;
-
-    final model = _deck[_topIndex];
-    setState(() => _isAnimating = true); // Pausamos
-
-    bool collision = await _checkRadarCollision(model, uid);
-    if (collision) {
-      setState(() => _isAnimating = false);
-      return; // No lanzamos la tarjeta, la dejamos ahí con el error rojo
-    }
-
     _isAnimating = true;
-    final isAd = model.isAd;
-    await _animateTo(isAd ? 40 : decisionThresholdPx + 60, const Duration(milliseconds: 300));
+    final model = _deck[_topIndex];
+    await _animateTo(model.isAd ? 40 : decisionThresholdPx + 60, const Duration(milliseconds: 300));
     await _flingOut(right: true, size: size, model: model, uid: uid, durationMs: 450);
   }
 
@@ -536,9 +497,21 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     try { final snap = await FirebaseFirestore.instance.collection(kUsersCol).doc(uid).get(); final d = snap.data() ?? {}; _userCache[uid] = d; return d; } catch (_) { _userCache[uid] = {}; return {}; }
   }
 
+  // 🔥 RADAR INVISIBLE: Filtro Matemático
   Future<List<_CitaCardModel>> _applyFilters({required List<_CitaCardModel> raw, required String uid, required String generoUser, required String prefGlobal}) async {
     final out = <_CitaCardModel>[];
     for (final m in raw) {
+      if (!m.isAd && m.scheduledAt != null) {
+        bool chocaRadar = false;
+        for (var ocupado in _misHorariosOcupados) {
+          if (m.scheduledAt!.difference(ocupado).inMinutes.abs() < 180) {
+            chocaRadar = true;
+            break;
+          }
+        }
+        if (chocaRadar) continue;
+      }
+
       final docDesc = await FirebaseFirestore.instance.collection(kCitasCol).doc(m.citaId).collection(kSubDescartes).doc(uid).get();
       final docCand = await FirebaseFirestore.instance.collection(kCitasCol).doc(m.citaId).collection(kSubCandidatos).doc(uid).get();
       if (docDesc.exists || docCand.exists) continue;
@@ -571,8 +544,18 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
       for (final f in _safeList(data['lugarFotos'])) { if (!placePhotos.contains(f)) placePhotos.add(f); }
       if (placePhotos.isEmpty) placePhotos.add('assets/images/perfil1.jpg');
       String fechaRaw = _s(data[kFechaField]); String horaRaw = _s(data[kHoraField]);
+
+      // 🔥 Se añade la asignación del nuevo campo invisible scheduledAt a la data
+      DateTime? dtRadar;
       final sched = data['scheduledAt'];
-      if (sched is Timestamp) { final dt = sched.toDate(); fechaRaw = _fmtFechaLarga(dt); horaRaw = _fmtHora24(dt); }
+      if (sched is Timestamp) {
+        dtRadar = sched.toDate();
+        fechaRaw = _fmtFechaLarga(dtRadar);
+        horaRaw = _fmtHora24(dtRadar);
+      } else {
+        dtRadar = _parseDateManual(fechaRaw, horaRaw);
+      }
+
       final intencion = _s(data['intencion']).isEmpty ? 'Amistad' : _s(data['intencion']);
       final prefCita = _s(data['preferencia']).isEmpty ? 'Ambos' : _s(data['preferencia']);
       final creador = _readCreador(data);
@@ -600,6 +583,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
         citaId: d.id, ownerUid: ownerFinal, creatorName: creadorNombre, creatorAge: edadFinal, creatorPhoto: fotoFinal,
         placePhotos: placePhotos, placeName: nombreLugar, placeAddress: direccionLugar,
         fecha: fechaRaw.isEmpty ? 'Fecha pendiente' : fechaRaw, hora: horaRaw.isEmpty ? 'Hora pendiente' : horaRaw,
+        scheduledAt: dtRadar, // 🔥 Se pasa el dato al modelo
         intencion: intencion, preferencia: prefCita, puntualidad: puntajeFinal, isVerified: userIsVerified,
       ));
     }
@@ -1042,6 +1026,7 @@ class _CitaCardModel {
   final String placeAddress;
   final String fecha;
   final String hora;
+  final DateTime? scheduledAt; // 🔥 Nuevo campo invisible para radar
   final String intencion;
   final String preferencia;
   final int puntualidad;
@@ -1060,6 +1045,7 @@ class _CitaCardModel {
     required this.placeAddress,
     required this.fecha,
     required this.hora,
+    this.scheduledAt,
     required this.intencion,
     required this.preferencia,
     this.puntualidad = 100,
@@ -1073,7 +1059,7 @@ class _CitaCardModel {
         citaId: idRealFirebase,
         ownerUid: '', creatorName: '', creatorAge: 0, creatorPhoto: '',
         placePhotos: [], placeName: '', placeAddress: '',
-        fecha: '', hora: '', intencion: '', preferencia: '', isVerified: false
+        fecha: '', hora: '', scheduledAt: null, intencion: '', preferencia: '', isVerified: false
     );
   }
 }

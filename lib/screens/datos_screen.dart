@@ -81,13 +81,13 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final ctrl = ref.read(profileFormProvider.notifier);
+
+      // 1. Cargamos el borrador local
       await ctrl.loadDraft();
-      final localState = ref.read(profileFormProvider);
-      if (localState.nombre.isEmpty) {
-        await _hydrateFromFirestore(ctrl);
-      } else {
-        if (mounted) setState(() => _isLoadingCloudData = false);
-      }
+
+      // 2. 🔥 FIX: Siempre hidratamos desde Firestore para asegurar que 'isVerified' se actualice
+      await _hydrateFromFirestore(ctrl);
+
       final finalState = ref.read(profileFormProvider);
       _nombreCtrl.text = finalState.nombre;
       _edadCtrl.text = finalState.edad;
@@ -187,55 +187,58 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
 
-        // 🔥 Extraemos el estado de verificación
+        // 🔥 EXTRAEMOS SIEMPRE EL ESTADO DE VERIFICACIÓN (isVerified)
         if (mounted) setState(() => _isVerified = data['isVerified'] ?? false);
 
-        ctrl.setNombre(data['nombre'] ?? '');
-        if (data['edad'] != null) ctrl.setEdad(data['edad'].toString());
-        ctrl.setProfesion(data['profesion'] ?? '');
-        ctrl.setBiografia(data['biografia'] ?? '');
-        ctrl.setDetalle(data['detalle'] ?? '');
-        ctrl.setEstatura(data['estatura'] ?? '');
+        // Solo hidratamos el resto de campos si el estado local está vacío (para respetar borradores)
+        if (ref.read(profileFormProvider).nombre.isEmpty) {
+          ctrl.setNombre(data['nombre'] ?? '');
+          if (data['edad'] != null) ctrl.setEdad(data['edad'].toString());
+          ctrl.setProfesion(data['profesion'] ?? '');
+          ctrl.setBiografia(data['biografia'] ?? '');
+          ctrl.setDetalle(data['detalle'] ?? '');
+          ctrl.setEstatura(data['estatura'] ?? '');
 
-        if (mounted) {
-          setState(() {
-            if (data['paisOrigen'] != null && data['paisOrigen'].toString().isNotEmpty) {
-              _paisOrigen = data['paisOrigen'];
-              _ciudadOrigen = data['ciudadOrigen'];
-              ctrl.setPaisOrigen(_paisOrigen);
-              ctrl.setCiudadOrigen(_ciudadOrigen);
-              ctrl.setPais(data['pais']);
-              ctrl.setCiudad(data['ciudad']);
-              _vivoEnMiOrigen = (_paisOrigen == data['pais'] && _ciudadOrigen == data['ciudad']);
-            } else {
-              _paisOrigen = data['pais'];
-              _ciudadOrigen = data['ciudad'];
-              ctrl.setPaisOrigen(_paisOrigen);
-              ctrl.setCiudadOrigen(_ciudadOrigen);
-              ctrl.setPais(data['pais']);
-              ctrl.setCiudad(data['ciudad']);
-              _vivoEnMiOrigen = true;
-            }
-          });
-        }
+          if (mounted) {
+            setState(() {
+              if (data['paisOrigen'] != null && data['paisOrigen'].toString().isNotEmpty) {
+                _paisOrigen = data['paisOrigen'];
+                _ciudadOrigen = data['ciudadOrigen'];
+                ctrl.setPaisOrigen(_paisOrigen);
+                ctrl.setCiudadOrigen(_ciudadOrigen);
+                ctrl.setPais(data['pais']);
+                ctrl.setCiudad(data['ciudad']);
+                _vivoEnMiOrigen = (_paisOrigen == data['pais'] && _ciudadOrigen == data['ciudad']);
+              } else {
+                _paisOrigen = data['pais'];
+                _ciudadOrigen = data['ciudad'];
+                ctrl.setPaisOrigen(_paisOrigen);
+                ctrl.setCiudadOrigen(_ciudadOrigen);
+                ctrl.setPais(data['pais']);
+                ctrl.setCiudad(data['ciudad']);
+                _vivoEnMiOrigen = true;
+              }
+            });
+          }
 
-        ctrl.setGenero(data['genero'] ?? '');
-        ctrl.setPreferenciaCitas(data['preferenciaCitas'] ?? 'Ambos');
-        if (data['sobreMiSeleccion'] is List) {
-          for (var item in data['sobreMiSeleccion']) ctrl.toggleSobreMi(item);
-        }
-        if (data['buscoSeleccion'] is List) {
-          for (var item in data['buscoSeleccion']) ctrl.toggleBusco(item);
-        }
-        if (data['interesesSeleccion'] is List) {
-          for (var item in data['interesesSeleccion']) ctrl.toggleInteres(item);
-        }
-        if (data['photoUrls'] is List) {
-          final urls = List<String>.from(data['photoUrls']);
-          ctrl.setFotos(urls);
+          ctrl.setGenero(data['genero'] ?? '');
+          ctrl.setPreferenciaCitas(data['preferenciaCitas'] ?? 'Ambos');
+          if (data['sobreMiSeleccion'] is List) {
+            for (var item in data['sobreMiSeleccion']) ctrl.toggleSobreMi(item);
+          }
+          if (data['buscoSeleccion'] is List) {
+            for (var item in data['buscoSeleccion']) ctrl.toggleBusco(item);
+          }
+          if (data['interesesSeleccion'] is List) {
+            for (var item in data['interesesSeleccion']) ctrl.toggleInteres(item);
+          }
+          if (data['photoUrls'] is List) {
+            final urls = List<String>.from(data['photoUrls']);
+            ctrl.setFotos(urls);
+          }
         }
       }
-    } catch (e) { debugPrint("Error: $e"); }
+    } catch (e) { debugPrint("Error Hydrating: $e"); }
   }
 
   @override
@@ -446,7 +449,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
 
     const List<String> buscoOpciones = ['💞 Relación estable', '🎉 Citas divertidas', '💬 Conversación', '👫 Amistad', '🌍 Conocer gente nueva', '🔥 Aventura', '💍 Pareja a largo plazo', '👀 Algo casual', '🎶 Compartir gustos', '✈️ Viajar juntos'];
     const List<String> signosOpciones = ['♈ Aries', '♉ Tauro', '♊ Géminis', '♋ Cáncer', '♌ Leo', '♍ Virgo', '♎ Libra', '♏ Escorpio', '♐ Sagitario', '♑ Capricornio', '♒ Acuario', '♓ Piscis'];
-    const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','💌 Escritura','📷 Selfies','🌙 Noche','☀️ Amaneceres','🌇 Atardeceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
+    const List<String> interesesOpciones = ['🎬 Cine','🎵 Música','✈️ Viajar','📖 Lectura','☕ Café','🏃‍♂️ Running','🏋️ Gimnasio','🌄 Senderismo','🍷 Vino','🎨 Arte','🎮 Videojuegos','📸 Fotografía','🍳 Cocina','🏖️ Playa','🎭 Teatro','💃 Bailar','🎤 Cantar','🧘 Yoga','🧠 Filosofía','💼 Emprender','💻 Tecnología','💅 Moda','📺 Series','🎙️ Podcasts','🌿 Naturaleza','🏕️ Camping','⚽ Fútbol','🏀 Baloncesto','🚴‍♂️ Ciclismo','🏔️ Escalada','🐠 Buceo','🎯 Juegos de mesa','💫 Astrología','🐾 Voluntariado','🧑‍🍳 Comida gourmet','🎲 Rol','💌 Escritura','📷 Youtube','🌙 Noche','☀️ Amaneceres','🌇 Atardeceres','💃 Salsa','🎧 DJ','🎁 Regalos','🍕 Pizza','🥂 Brindar','📚 Manga','🌌 Meditar','💡 Innovar','🤟 Rock','🎫 Conciertos','⚡ Adrenalina','🏅 Deportes','🎭 Cosplay','🐾 Animalismo','📺 Streaming'];
 
     if (_isLoadingCloudData) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))));
 
@@ -587,7 +590,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  "¡Destaca en el radar! Los perfiles con Check Azul generan confianza instantánea y al demostrar que eres 100% real multiplica tus citas exitosas.Se comparará con tu foto de perfil actual. ",
+                                  "¡Destaca en el radar! Los perfiles con Check Azul generan confianza instantánea y al demostrar que eres 100% real multiplica tus citas exitosas. Se comparará con tu foto de perfil actual.",
                                   style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins', height: 1.3, fontWeight: FontWeight.w500),
                                 ),
                               ),
@@ -595,7 +598,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                           ),
                         ),
                         const SizedBox(height: 15),
-                        // Botón de Verificación
+                        // Botón de Verificación (Textos actualizados)
                         GestureDetector(
                           onTap: () async {
                             if (!state.photoUrls.isNotEmpty && !state.fotosCargadas.isNotEmpty) {
@@ -620,11 +623,11 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                               boxShadow: kChipShadow,
                             ),
                             alignment: Alignment.center,
-                            child: const Text('OBTENER CHECK AZUL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1.0)),
+                            child: const Text('VERIFICA TU PERFIL', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1.0)),
                           ),
                         ),
                       ] else ...[
-                        // 🟢 Sello Permanente de Verificación
+                        // 🟢 Sello Permanente de Verificación (Textos actualizados)
                         Container(
                           width: MediaQuery.of(context).size.width * 0.85,
                           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -638,7 +641,7 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
                             children: const [
                               Icon(Icons.verified, color: Color(0xFF1664DA), size: 22),
                               SizedBox(width: 8),
-                              Text('IDENTIDAD VERIFICADA', style: TextStyle(color: Color(
+                              Text('TU PERFIL ESTÁ VERIFICADO', style: TextStyle(color: Color(
                                   0xFFFFFFFF), fontWeight: FontWeight.w900, fontSize: 15, letterSpacing: 1.0)),
                             ],
                           ),

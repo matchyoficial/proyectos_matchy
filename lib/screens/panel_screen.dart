@@ -9,6 +9,7 @@
 // 🚀 NEW: CachedNetworkImage inyectado en foto de perfil y buscador.
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
 // 💰 ADD: BANNER DE PUBLICIDAD (Llamado a Widget Independiente).
+// 📡 NEW: IN-APP UPDATES. Motor de actualización silenciosa de Google Play integrado.
 
 import 'dart:io';
 import 'dart:async';
@@ -17,6 +18,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+// 🔥 MOTOR DE ACTUALIZACIONES INYECTADO
+import 'package:in_app_update/in_app_update.dart';
 
 import 'package:proyectos_matchy/screens/home_shell.dart';
 import 'package:proyectos_matchy/screens/splash_screen.dart';
@@ -262,6 +266,23 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   bool _bootstrapped = false;
   bool _sentToShell = false;
 
+  // 🔥 MÉTODO DEL RADAR DE GOOGLE PLAY
+  Future<void> _checkForUpdate() async {
+    try {
+      final AppUpdateInfo updateInfo = await InAppUpdate.checkForUpdate();
+
+      // Si hay una actualización disponible y es de tipo flexible (la ideal para no interrumpir)
+      if (updateInfo.updateAvailability == UpdateAvailability.updateAvailable) {
+        await InAppUpdate.startFlexibleUpdate();
+        // Cuando termine de descargar en segundo plano, pedimos permiso para instalar
+        await InAppUpdate.completeFlexibleUpdate();
+      }
+    } catch (e) {
+      // Ignoramos errores en silencio para no molestar al usuario si falla la conexión a Play Store
+      debugPrint("Error buscando actualizaciones: $e");
+    }
+  }
+
   String _nombreSeguro(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return 'SIN NOMBRE';
@@ -308,6 +329,9 @@ class _PanelScreenState extends ConsumerState<PanelScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Lanzamos la búsqueda de actualización de forma asíncrona
+      _checkForUpdate();
+
       if (widget.showBottomNav == true && _sentToShell == false) {
         _sentToShell = true;
         if (!mounted) return;
