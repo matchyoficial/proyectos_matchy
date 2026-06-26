@@ -1,14 +1,15 @@
 // 📂 lib/screens/matchys_detalle_screen.dart
 // ✅ DETALLE DE MATCHY BLINDADO (SMART CACHE PRO + FILTRO DE HISTORIA FELIZ)
-// 🔥 FILTRO: Solo muestra citas finalizadas que NO sean fallidas (Exclusión de penalizaciones).
+// 🔥 FILTRO: Solo muestra citas finalizadas que NO sean fallidas.
 // 🔥 CACHÉ PRO: Renderizado instantáneo en el Historial (Grid) y en el Pop-Up (0ms).
-// 🔥 UI: Carta de detalle con diseño premium y blindaje adaptativo.
+// 🔥 UI: Carta de detalle con botones separados de Eliminar (Tenue) y Bloquear (Nuclear).
+// 🧨 WIPE-OUT PROTOCOL INYECTADO: Destruye citas, chats, matchys y añade a lista negra.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_network_image/cached_network_image.dart'; // 🔥 Motor de caché
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:proyectos_matchy/widgets/matchy_page_layout.dart';
 import 'package:proyectos_matchy/screens/matchys_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
@@ -202,9 +203,9 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
       await batch.commit();
 
       if (mounted) {
-        Navigator.pop(context);
-        Navigator.pop(context);
-        Navigator.pop(context);
+        Navigator.pop(context); // loading
+        Navigator.pop(context); // dialog
+        Navigator.pop(context); // screen
       }
     } catch (e) {
       if (mounted) Navigator.pop(context);
@@ -222,13 +223,12 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2),
-            boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.15), blurRadius: 20, spreadRadius: 2)],
+            border: Border.all(color: Colors.white24, width: 1), // Borde tenue
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 60),
+              const Icon(Icons.link_off_rounded, color: Colors.white54, size: 60),
               const SizedBox(height: 16),
               const Text(
                 "¿ELIMINAR MATCHY?",
@@ -236,7 +236,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
               ),
               const SizedBox(height: 12),
               const Text(
-                "Se eliminará la conexión actual y el historial de citas. No habrá bloqueos, por lo que podrán volver a conectar en el futuro si coinciden.",
+                "Se eliminará la conexión actual y el historial de citas. Podrán volver a conectar en el futuro.",
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
               ),
@@ -248,12 +248,9 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                       onTap: () => Navigator.pop(ctx),
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15)),
                         alignment: Alignment.center,
-                        child: const Text("NO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                     ),
                   ),
@@ -265,13 +262,9 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)]),
-                          borderRadius: BorderRadius.circular(15),
-                          boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))],
-                        ),
+                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(15)),
                         alignment: Alignment.center,
-                        child: const Text("SÍ, ELIMINAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: const Text("ELIMINAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                     ),
                   ),
@@ -281,6 +274,142 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
           ),
         ),
       ),
+    );
+  }
+
+  // 🧨 PROTOCOLO WIPE-OUT (BORRADO NUCLEAR Y LISTA NEGRA)
+  Future<void> _bloquearUsuarioDefinitivo() async {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+    if (myUid == null) return;
+    final matchyUid = widget.matchyData.uid;
+
+    try {
+      showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator(color: Colors.redAccent)));
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // 1. Destrucción de Citas Compartidas (Historial)
+      final citasRef = FirebaseFirestore.instance.collection('citas');
+      final snapshotCitas1 = await citasRef.where('ownerUid', isEqualTo: myUid).where('matchyUid', isEqualTo: matchyUid).get();
+      for (var doc in snapshotCitas1.docs) { batch.delete(doc.reference); }
+      final snapshotCitas2 = await citasRef.where('ownerUid', isEqualTo: matchyUid).where('matchyUid', isEqualTo: myUid).get();
+      for (var doc in snapshotCitas2.docs) { batch.delete(doc.reference); }
+
+      // 2. Destrucción de Chats Activos
+      final chatsRef = FirebaseFirestore.instance.collection('chat_threads');
+      final snapshotChats = await chatsRef.where('participantUids', arrayContains: myUid).get();
+      for (var doc in snapshotChats.docs) {
+        final data = doc.data();
+        final participants = List<String>.from(data['participantUids'] ?? []);
+        if (participants.contains(matchyUid)) {
+          batch.delete(doc.reference);
+        }
+      }
+
+      // 3. Destrucción de Conexión (Matchys)
+      final myMatchyRef = FirebaseFirestore.instance.collection('users').doc(myUid).collection('my_matchys').doc(matchyUid);
+      final suMatchyRef = FirebaseFirestore.instance.collection('users').doc(matchyUid).collection('my_matchys').doc(myUid);
+      batch.delete(myMatchyRef);
+      batch.delete(suMatchyRef);
+
+      // 4. Exilio (Lista Negra para filtrar publicaciones)
+      final myBlockRef = FirebaseFirestore.instance.collection('users').doc(myUid).collection('blocked_users').doc(matchyUid);
+      batch.set(myBlockRef, {'blockedAt': FieldValue.serverTimestamp(), 'uid': matchyUid});
+
+      await batch.commit();
+
+      if (mounted) {
+        Navigator.pop(context); // Cierra loading
+        Navigator.pop(context); // Cierra popup
+        Navigator.pop(context); // Sale de la pantalla de detalle
+        _mostrarBurbuja("Usuario y todo su historial bloqueados y eliminados.", const Color(0xFFD32F2F), Icons.block);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      debugPrint("Error bloqueando usuario: $e");
+    }
+  }
+
+  void _mostrarAlertaBloquearUsuario() {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2),
+            boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.15), blurRadius: 20, spreadRadius: 2)],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.block_flipped, color: Colors.redAccent, size: 60),
+              const SizedBox(height: 16),
+              const Text(
+                "¿BLOQUEAR USUARIO?",
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, fontFamily: 'Poppins'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                "Esta acción es permanente. Se eliminará el historial, la conexión actual y jamás volverás a ver sus publicaciones ni podrá contactarte.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(15)),
+                        alignment: Alignment.center,
+                        child: const Text("CANCELAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        _bloquearUsuarioDefinitivo();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFD32F2F), Color(0xFFB71C1C)]),
+                          borderRadius: BorderRadius.circular(15),
+                          boxShadow: [BoxShadow(color: Colors.red.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))],
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text("BLOQUEAR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(children: [Icon(icono, color: Colors.white), const SizedBox(width: 10), Expanded(child: Text(mensaje, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)))]),
+          backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(20),
+          duration: const Duration(seconds: 3),
+        )
     );
   }
 
@@ -383,7 +512,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                   ),
                   const SizedBox(height: 12),
 
-                  // 2. HISTORIAL (CON FILTRO DE EXCLUSIÓN PARA CITAS FALLIDAS)
+                  // 2. HISTORIAL (CON FILTRO DE EXCLUSIÓN)
                   Container(
                     height: kHistorialHeight,
                     padding: const EdgeInsets.all(12),
@@ -397,16 +526,14 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                         final docs = (snapshot.data?.docs ?? []).where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
                           final status = data['status'];
-                          final res = (data['resultado'] ?? '').toString(); // 🔥 Leemos el resultado
+                          final res = (data['resultado'] ?? '').toString();
                           final ownerUid = data['ownerUid'];
                           final matchyUid = data['matchyUid'];
 
-                          // 🔥 FILTRO DE EXCLUSIÓN: ¿Es una cita fallida?
                           bool esFallo = res == 'expired_by_inactivity' ||
                               res == 'timeout_punished' ||
                               res == 'cancelled_penalty';
 
-                          // Solo dejamos pasar las terminadas que NO sean fallos
                           if (status != 'finished' || esFallo) return false;
 
                           return (ownerUid == myUid && matchyUid == widget.matchyData.uid) || (matchyUid == myUid && ownerUid == widget.matchyData.uid);
@@ -517,8 +644,33 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
 
                   const SizedBox(height: 20),
 
+                  // BOTÓN: ELIMINAR MATCHY (Tenue)
                   GestureDetector(
                     onTap: _mostrarAlertaEliminarMatchy,
+                    child: Container(
+                      width: double.infinity,
+                      height: 55,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          "ELIMINAR MATCHY",
+                          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14, letterSpacing: 0.5),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // BOTÓN: BLOQUEAR USUARIO (Agresivo)
+                  GestureDetector(
+                    onTap: _mostrarAlertaBloquearUsuario,
                     child: Container(
                       width: double.infinity,
                       height: 55,
@@ -531,7 +683,7 @@ class _MatchysDetalleScreenState extends State<MatchysDetalleScreen> with Single
                       child: const FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          "ELIMINAR MATCHY",
+                          "BLOQUEAR USUARIO",
                           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5),
                         ),
                       ),

@@ -85,7 +85,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   // 🔥 CONFIGURACIÓN DE GPS (INTERRUPTOR MAESTRO)
   // ===========================================================================
   static const bool kUsarValidacionGPS = true; // 👈 CAMBIAR A TRUE EN PRODUCCIÓN
-  static const int kRadioToleranciaMetros = 200;
+  static const int kRadioToleranciaMetros = 30;
   // ===========================================================================
 
   final TextEditingController _codigoMatchyController = TextEditingController();

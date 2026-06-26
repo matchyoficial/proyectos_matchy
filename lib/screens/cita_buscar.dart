@@ -2,6 +2,7 @@
 // ✅ PANTALLA RADAR TINDER-STYLE (BLINDADA CON CACHÉ Y ANTI-FANTASMAS)
 // 🔥 INYECCIÓN DE ÉLITE: Check Azul visible en las tarjetas de perfil.
 // 🛡️ RADAR INVISIBLE: Filtro omnidireccional en tiempo real (<3h) sin bloquear animaciones.
+// 🧨 ESCUDO WIPE-OUT INYECTADO: Ignora y oculta citas publicadas por usuarios bloqueados.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -89,6 +90,7 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   // 🔥 RADAR INVISIBLE: Variables
   StreamSubscription<QuerySnapshot>? _agendaSub;
   List<DateTime> _misHorariosOcupados = [];
+  List<String> _misBloqueados = []; // 🧨 WIPE-OUT: Lista Negra en Memoria
 
   @override
   void initState() {
@@ -235,6 +237,10 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
     _uid = user.uid;
 
     try {
+      // 🧨 WIPE-OUT PROTOCOL: Cargar lista de bloqueados en segundo plano
+      final blockSnap = await FirebaseFirestore.instance.collection(kUsersCol).doc(_uid).collection('blocked_users').get();
+      _misBloqueados = blockSnap.docs.map((doc) => doc.id).toList();
+
       final snap = await FirebaseFirestore.instance.collection(kUsersCol).doc(_uid).get();
       final udata = snap.data() ?? {};
       _prefGlobal = _normPref((udata[kUserPreferenciaCitasField] ?? 'Ambos').toString());
@@ -501,6 +507,10 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   Future<List<_CitaCardModel>> _applyFilters({required List<_CitaCardModel> raw, required String uid, required String generoUser, required String prefGlobal}) async {
     final out = <_CitaCardModel>[];
     for (final m in raw) {
+
+      // 🧨 WIPE-OUT: ESCUDO ANTI-BLOQUEADOS (Si su UID está en mi lista negra, lo salto al instante)
+      if (!m.isAd && _misBloqueados.contains(m.ownerUid)) continue;
+
       if (!m.isAd && m.scheduledAt != null) {
         bool chocaRadar = false;
         for (var ocupado in _misHorariosOcupados) {

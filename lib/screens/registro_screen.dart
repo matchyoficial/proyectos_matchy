@@ -3,13 +3,16 @@
 // 🔥 FIX: Eliminado bucle infinito que bloqueaba la persistencia de sesión.
 // 🔥 FIX: Escritura en Firestore garantizada antes de navegar.
 // 🔥 UI: Diseño visual y "Chinches Maestros" intactos.
+// 🍏 NEW: Integración oficial de "Sign in with Apple" exclusiva para iOS.
 
 import 'dart:async';
+import 'dart:io' show Platform; // 🔥 Detección de sistema operativo
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart'; // 🔥 Botón oficial de Apple
 
 import 'package:proyectos_matchy/screens/datos_screen.dart';
 import 'package:proyectos_matchy/screens/home_shell.dart';
@@ -26,7 +29,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   bool _loading = false;
-  String _statusMessage = "Continuar con Google";
+  String _statusMessage = "Iniciando...";
 
   // ==========================================================
   // 🛡️ ZONA DE CHINCHES MAESTROS (CONTROL DE POSICIONES)
@@ -89,7 +92,7 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
           'email': user.email,
           'nombre': user.displayName ?? '',
           'profilePhotoUrl': user.photoURL ?? '',
-          'provider': 'google',
+          'provider': user.providerData.isNotEmpty ? user.providerData.first.providerId : 'unknown',
           'createdAt': FieldValue.serverTimestamp(),
           'onboarding_completed': false, // Importante: Nuevo usuario = false
           'lastLoginAt': FieldValue.serverTimestamp(),
@@ -103,60 +106,89 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
     }
   }
 
+  // 🍏 LÓGICA DE APPLE
+  Future<void> _signInWithApple(BuildContext context) async {
+    if (_loading) return;
+
+    setState(() {
+      _loading = true;
+      _statusMessage = "Conectando con Apple...";
+    });
+
+    try {
+      final appleProvider = AppleAuthProvider();
+      appleProvider.addScope('email');
+      appleProvider.addScope('name');
+
+      if (mounted) setState(() => _statusMessage = "Autenticando...");
+
+      final userCred = await _auth.signInWithProvider(appleProvider);
+      final user = userCred.user;
+
+      if (user == null) throw Exception('No se pudo obtener el usuario de Apple.');
+
+      if (mounted) setState(() => _statusMessage = "Verificando cuenta...");
+      final esUsuarioCompleto = await _gestionarUsuarioEnFirestore(user);
+
+      if (esUsuarioCompleto) {
+        _irHomeShellPanel(context);
+      } else {
+        _irADatos(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error de acceso con Apple: $e'), backgroundColor: Colors.red)
+      );
+      setState(() => _loading = false);
+    }
+  }
+
+  // 🤖 LÓGICA DE GOOGLE
   Future<void> _signInWithGoogle(BuildContext context) async {
     if (_loading) return;
 
     setState(() {
       _loading = true;
-      _statusMessage = "Cargando...";
+      _statusMessage = "Conectando con Google...";
     });
 
     try {
-      // 1. INICIO GOOGLE (Nativo)
       final googleUser = await GoogleSignIn().signIn();
 
       if (googleUser == null) {
-        // Usuario canceló la ventana de Google
-        setState(() { _loading = false; _statusMessage = "Continuar con Google"; });
+        setState(() => _loading = false);
         return;
       }
 
-      // 2. OBTENER CREDENCIALES
       final auth = await googleUser.authentication;
       final cred = GoogleAuthProvider.credential(
           accessToken: auth.accessToken,
           idToken: auth.idToken
       );
 
-      // 3. IMPACTAR FIREBASE (El momento crítico)
       if (mounted) setState(() => _statusMessage = "Autenticando...");
 
-      // Guardamos la sesión en Firebase Authentication
       final userCred = await _auth.signInWithCredential(cred);
       final user = userCred.user;
 
       if (user == null) throw Exception('No se pudo obtener el usuario.');
 
-      // 4. GESTIÓN FIRESTORE (Sin bucles raros)
       if (mounted) setState(() => _statusMessage = "Verificando cuenta...");
 
-      // Esta función ahora es sólida y lineal
       final esUsuarioCompleto = await _gestionarUsuarioEnFirestore(user);
 
-      // 5. NAVEGACIÓN FINAL
-      // Solo navegamos si todo lo anterior salió bien
       if (esUsuarioCompleto) {
         _irHomeShellPanel(context);
       } else {
         _irADatos(context);
       }
-
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error de acceso: $e'), backgroundColor: Colors.red)
       );
-      setState(() { _loading = false; _statusMessage = "Reintentar"; });
+      setState(() => _loading = false);
     }
   }
 
@@ -191,46 +223,85 @@ class _RegistroScreenState extends ConsumerState<RegistroScreen> {
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(
-                        width: buttonWidth,
-                        height: kButtonHeight,
-                        child: ElevatedButton(
-                          onPressed: _loading ? null : () => _signInWithGoogle(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black87,
-                            elevation: 8,
-                            shadowColor: Colors.black,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      // 🔥 SISTEMA DE CARGA UNIFICADO
+                      if (_loading)
+                        SizedBox(
+                          width: buttonWidth,
+                          height: kButtonHeight,
+                          child: ElevatedButton(
+                            onPressed: null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black87,
+                              elevation: 8,
+                              shadowColor: Colors.black,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purple)),
+                                    const SizedBox(width: 15),
+                                    Text(_statusMessage, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, shadows: kTextShadow)),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: _loading
-                                  ? Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.purple)),
-                                  const SizedBox(width: 15),
-                                  Text(_statusMessage, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, shadows: kTextShadow)),
-                                ],
-                              )
-                                  : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Image.asset('assets/images/ic_google.png', height: 24, errorBuilder: (_,__,___) => const Icon(Icons.login, color: Colors.grey)),
-                                  const SizedBox(width: 12),
-                                  const Text(
-                                    'Continuar con Google',
-                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow),
-                                  ),
-                                ],
+                        )
+                      else ...[
+                        // 🍏 BOTÓN OFICIAL DE APPLE (SOLO VISIBLE EN iOS)
+                        if (Platform.isIOS) ...[
+                          SizedBox(
+                            width: buttonWidth,
+                            height: kButtonHeight,
+                            child: SignInWithAppleButton(
+                              onPressed: () => _signInWithApple(context),
+                              text: "Continuar con Apple",
+                              borderRadius: const BorderRadius.all(Radius.circular(30)),
+                              style: SignInWithAppleButtonStyle.black,
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                        ],
+
+                        // 🤖 BOTÓN DE GOOGLE (VISIBLE EN TODOS LADOS)
+                        SizedBox(
+                          width: buttonWidth,
+                          height: kButtonHeight,
+                          child: ElevatedButton(
+                            onPressed: () => _signInWithGoogle(context),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black87,
+                              elevation: 8,
+                              shadowColor: Colors.black,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Image.asset('assets/images/ic_google.png', height: 24, errorBuilder: (_,__,___) => const Icon(Icons.login, color: Colors.grey)),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'Continuar con Google',
+                                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
 
                       const SizedBox(height: kEspacioBotonTexto),
 

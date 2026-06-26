@@ -3,7 +3,7 @@ description: Aplicación Matchy en Flutter
 publish_to: "none"
 
 # ✅ 1. CAMBIO DE VERSIÓN (Subimos a 1.0.1 y Build 11 para asegurar)
-version: 1.0.1+55
+version: 1.0.2+58
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -34,6 +34,7 @@ dependencies:
   cloud_functions: ^5.6.2
   # 🔥 MOTOR DE ACTUALIZACIONES FLEXIBLES (IN-APP UPDATES)
   in_app_update: ^4.2.5
+  sign_in_with_apple: ^7.0.1
 
 dev_dependencies:
   flutter_test:
