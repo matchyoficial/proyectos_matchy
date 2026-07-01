@@ -5,6 +5,10 @@
 // 🔥 FIX: Tamaños unificados (Nombre 30 / Dirección 18).
 // 🔥 ADD: Texto informativo de sedes múltiples debajo del botón.
 // 🛠️ FIX OVERFLOW FOTO: Carrusel ajustado a proporción 16:9.
+// 🎯 NEW: modoSeleccionCita — cuando viene true, el botón cambia a "ESCOGER SITIO" (cian),
+//    no valida bloqueo de usuario (aquí solo se elige un candidato, no se crea cita real),
+//    y al tocarlo hace Navigator.pop(context, widget.lugar) para devolver el lugar elegido
+//    hacia intereses_citas_screen.dart. Se oculta el texto de "sedes múltiples" en este modo.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -19,11 +23,13 @@ import 'package:proyectos_matchy/screens/crea_cita_matchy_screen.dart';
 class LugarPlantillaScreen extends StatefulWidget {
   final LugarData lugar;
   final String? matchyUidInvitado;
+  final bool modoSeleccionCita; // 🎯 NUEVO
 
   const LugarPlantillaScreen({
     super.key,
     required this.lugar,
     this.matchyUidInvitado,
+    this.modoSeleccionCita = false, // 🎯 NUEVO — default false, no rompe usos existentes
   });
 
   @override
@@ -49,6 +55,7 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
   static const List<Color> kGradientAction = [Color(0xFF6B4EE6), Color(0xFF4527A0)];
   static const List<Color> kGradientBlocked = [Color(0xFF424242), Color(0xFF212121)];
   static const List<Color> kGradientWeb = [Color(0xFF007BFF), Color(0xFF0056B3)];
+  static const List<Color> kGradientSeleccion = [Color(0xFF00B4DB), Color(0xFF0083B0)]; // 🎯 NUEVO
 
   // Colores de fondo para el Zoom (Notificaciones)
   static const List<Color> kNotifGradient = [Color(0xFF4A3B75), Color(0xFF1F1F1F)];
@@ -118,6 +125,15 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
     }
   }
 
+  // 🎯 NUEVO: Manejador único del botón principal, decide entre modo selección y modo normal
+  void _handleBotonPrincipalTap() {
+    if (widget.modoSeleccionCita) {
+      Navigator.pop(context, widget.lugar);
+      return;
+    }
+    _manejarClickCrearCita();
+  }
+
   // 🔥 ZOOM BLINDADO CON SMART CACHE
   void _mostrarFotoZoom(String url) {
     showDialog(
@@ -159,8 +175,25 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
   Widget build(BuildContext context) {
     final lugar = widget.lugar;
     final bool esCitaPrivada = widget.matchyUidInvitado != null;
-    String textoBoton = esCitaPrivada ? "INVITAR A TU MATCHY" : "CREAR CITA AQUÍ";
-    if (_isUserBlocked) textoBoton = "CUENTA BLOQUEADA";
+
+    // 🎯 NUEVO: texto, gradiente e ícono del botón, con el modo selección como prioridad
+    String textoBoton;
+    List<Color> gradientBoton;
+    IconData iconBoton;
+
+    if (widget.modoSeleccionCita) {
+      textoBoton = "ESCOGER SITIO";
+      gradientBoton = kGradientSeleccion;
+      iconBoton = Icons.check_circle_outline_rounded;
+    } else if (_isUserBlocked) {
+      textoBoton = "CUENTA BLOQUEADA";
+      gradientBoton = kGradientBlocked;
+      iconBoton = Icons.lock;
+    } else {
+      textoBoton = esCitaPrivada ? "INVITAR A TU MATCHY" : "CREAR CITA AQUÍ";
+      gradientBoton = kGradientAction;
+      iconBoton = Icons.calendar_month_rounded;
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -203,12 +236,13 @@ class _LugarPlantillaScreenState extends State<LugarPlantillaScreen> {
                         _PremiumButton(text: "VISITAR SITIO WEB", gradient: kGradientWeb, icon: Icons.public, onTap: () async => launchUrl(Uri.parse(lugar.sitioWeb))),
                         const SizedBox(height: 16)
                       ],
-                      if (_isLoadingStatus) const CircularProgressIndicator(color: Colors.white)
+                      // 🎯 En modo selección no esperamos el estado de bloqueo (es irrelevante aquí)
+                      if (_isLoadingStatus && !widget.modoSeleccionCita) const CircularProgressIndicator(color: Colors.white)
                       else ...[
-                        _PremiumButton(text: textoBoton, gradient: _isUserBlocked ? kGradientBlocked : kGradientAction, icon: _isUserBlocked ? Icons.lock : Icons.calendar_month_rounded, onTap: _manejarClickCrearCita),
+                        _PremiumButton(text: textoBoton, gradient: gradientBoton, icon: iconBoton, onTap: _handleBotonPrincipalTap),
 
-                        // 🔥 TEXTO INFORMATIVO DE SEDES (Solo si existen 2 o más)
-                        if (lugar.sedes.length >= 2) ...[
+                        // 🔥 TEXTO INFORMATIVO DE SEDES (Solo si existen 2 o más, y NO en modo selección)
+                        if (!widget.modoSeleccionCita && lugar.sedes.length >= 2) ...[
                           const SizedBox(height: 12),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 10),

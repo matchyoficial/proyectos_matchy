@@ -10,6 +10,8 @@
 // 🚀 NEW LOGIC: "Historial Pasivo" de Notificaciones. Las viejas se archivan (fondo gris, sin tap), ordenadas al final.
 // 💰 ADD: BANNER DE PUBLICIDAD (Llamado a Widget Independiente).
 // 📡 NEW: IN-APP UPDATES. Motor de actualización silenciosa de Google Play integrado.
+// 🎯 NEW: Botón e imagen "COMUNIDAD" inyectados en tarjeta de Acciones, apuntando a ComunidadScreen.
+// 🐛 FIX: Se quitó 'const' de ComunidadScreen() en los dos onTap (error de compilación por cambio StatelessWidget -> StatefulWidget).
 
 import 'dart:io';
 import 'dart:async';
@@ -32,6 +34,7 @@ import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT
 
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
+import 'package:proyectos_matchy/screens/comunidad.dart'; // 🔥 NUEVA PANTALLA: COMUNIDAD (SWIPE DE PERFILES)
 import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
 import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
@@ -635,7 +638,25 @@ class _PanelContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
           decoration: BoxDecoration(color: _PanelScreenState.kCardBackground, borderRadius: BorderRadius.circular(26), boxShadow: _PanelScreenState.kCardShadow),
           child: Row(children: [
-            Image.asset('assets/images/ic_calendar.png', width: 90, height: 90, fit: BoxFit.contain),
+            // 🔥 COLUMNA IZQUIERDA: IMAGEN COMUNIDAD (BOTÓN) + BOTÓN PREMIUM "COMUNIDAD"
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComunidadScreen())),
+                  child: Image.asset('assets/images/comunidad.png', width: 102, height: 99, fit: BoxFit.contain),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: 99,
+                  child: _BotonPanelPremium(
+                    texto: "COMUNIDAD",
+                    bloqueado: false,
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComunidadScreen())),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(width: 22),
             Expanded(child: Column(children: [
 

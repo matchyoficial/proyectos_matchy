@@ -3,6 +3,8 @@
 // 🔥 BLINDAJE: Texto de cabecera estandarizado a 16pt y protegido con FittedBox.
 // 🔥 DATOS: Filtro estricto por Ciudad y País inyectado.
 // 🔥 UI: Diseño Premium con cápsula y fade out inferior intactos.
+// 🎯 NEW: modoSeleccionCita — se pasa hacia LugarPlantillaScreen; si vuelve un lugar elegido,
+//    esta pantalla se cierra devolviéndolo también (relevo hacia intereses_citas_screen.dart).
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,7 +15,13 @@ import 'package:proyectos_matchy/screens/lugar_plantilla_screen.dart';
 
 class ActividadesScreen extends StatefulWidget {
   final String? matchyUidInvitado;
-  const ActividadesScreen({super.key, this.matchyUidInvitado});
+  final bool modoSeleccionCita; // 🎯 NUEVO
+
+  const ActividadesScreen({
+    super.key,
+    this.matchyUidInvitado,
+    this.modoSeleccionCita = false, // 🎯 NUEVO — default false, no rompe usos existentes
+  });
 
   @override
   State<ActividadesScreen> createState() => _ActividadesScreenState();
@@ -58,6 +66,32 @@ class _ActividadesScreenState extends State<ActividadesScreen> {
     if (mounted) {
       setState(() => _isLoadingLocation = false);
     }
+  }
+
+  // 🎯 NUEVO: maneja el tap de una tarjeta, con o sin modo selección
+  Future<void> _onLugarTap(LugarData lugar) async {
+    if (widget.modoSeleccionCita) {
+      final resultado = await Navigator.of(context).push<LugarData>(
+        MaterialPageRoute(
+          builder: (_) => LugarPlantillaScreen(
+            lugar: lugar,
+            matchyUidInvitado: widget.matchyUidInvitado,
+            modoSeleccionCita: true,
+          ),
+        ),
+      );
+      if (resultado != null && mounted) {
+        Navigator.of(context).pop(resultado);
+      }
+      return;
+    }
+
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => LugarPlantillaScreen(
+            lugar: lugar,
+            matchyUidInvitado: widget.matchyUidInvitado
+        )
+    ));
   }
 
   @override
@@ -164,14 +198,7 @@ class _ActividadesScreenState extends State<ActividadesScreen> {
                             child: LugarCard(
                               lugar: lugar,
                               altoTarjeta: index == 0 ? 150 : 170,
-                              onTap: () {
-                                Navigator.of(context).push(MaterialPageRoute(
-                                    builder: (_) => LugarPlantillaScreen(
-                                        lugar: lugar,
-                                        matchyUidInvitado: widget.matchyUidInvitado
-                                    )
-                                ));
-                              },
+                              onTap: () => _onLugarTap(lugar),
                             ),
                           );
                         }),
