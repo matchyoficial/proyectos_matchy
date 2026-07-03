@@ -4,15 +4,21 @@
 // 🛡️ GESTOS: RawGestureDetector + HorizontalDragGestureRecognizer -> se puede arrastrar en TODA la
 //    tarjeta sin romper el scroll vertical (para leer el perfil completo), igual que Tinder.
 // 🧨 RECHAZOS: swipe izquierda oculta el perfil 1 mes. Al 3er rechazo acumulado, se oculta para siempre.
-// 💜 INTERÉS: swipe derecha registra el interés en Firestore y navega a intereses_citas_screen.dart
-//    (pantalla real de selección de 3 sitios — ya NO pasa por el placeholder intereses_screen.dart).
+// 💜 INTERÉS: swipe derecha navega a intereses_citas_screen.dart. El registro real de "me interesa"
+//    y el avance del mazo YA NO ocurren aquí — ver fix crítico abajo.
 // 🎯 FILTRO: preferencia de citas MUTUA (mi preferencia vs su género, y viceversa) — mismo patrón que
 //    cita_buscar.dart. Campos confirmados contra datos_screen.dart: 'genero' ('Hombre'/'Mujer'/'Otro'/
 //    'NoDecir') y 'preferenciaCitas' ('Hombres'/'Mujeres'/'Ambos').
 // 📢 PUBLICIDAD: mismo sistema exacto que cita_buscar.dart (colección 'publicidad_swap', filtro por
 //    pais/ciudad, caché diario en SharedPreferences, inserción cada ~5 tarjetas, PublicidadSwapCard).
-// 🆕 FIX: se agrega edadInteres al navegar a InteresesCitasScreen (viajará hasta la invitación en
-//    Firestore, para que intereses_screen.dart pueda mostrar la edad sin fetches adicionales).
+// 🐛 FIX CRÍTICO: antes, al hacer swipe derecha, se escribía de inmediato en 'perfil_intereses'
+//    (escondiendo ese perfil PARA SIEMPRE) y se avanzaba el mazo, SIN IMPORTAR si el usuario
+//    completaba el formulario de intereses_citas_screen.dart o le daba "atrás" a mitad de camino.
+//    Ahora: la escritura en 'perfil_intereses' se movió a intereses_citas_screen.dart (solo ocurre
+//    si la invitación se envía de verdad), y el avance del mazo depende del valor que devuelve esa
+//    pantalla al cerrarse — Navigator.push<bool>(...). Si vuelve `true` (invitación enviada), el
+//    mazo avanza normal. Si vuelve null/false (canceló), la tarjeta regresa suavemente a su lugar
+//    con _resetCard(), lista para reintentarlo.
 // ⚠️ IMPORTANTE: revisa tus reglas de seguridad de Firestore — esta pantalla necesita permiso de
 //    "list" sobre la colección 'users' (no solo "get" por UID), o la consulta fallará en tiempo real.
 
@@ -307,7 +313,7 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
         }
       } catch (_) {}
 
-      // 🔥 Ya le diste "me interesa" antes -> no repetir
+      // 🔥 Ya le enviaste una invitación real antes -> no repetir
       try {
         final interesSnap = await FirebaseFirestore.instance
             .collection(kUsersCollection)
@@ -388,7 +394,8 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
   }
 
   // ===========================================================================
-  // ✍️ ESCRITURA: RECHAZO / INTERÉS
+  // ✍️ ESCRITURA: RECHAZO
+  // (la escritura de "interés" ya no vive aquí — se movió a intereses_citas_screen.dart)
   // ===========================================================================
   Future<void> _writeRechazo(String otroUid) async {
     final ref = FirebaseFirestore.instance
@@ -406,18 +413,6 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
       'permanente': permanente,
       'ocultarHasta': permanente ? null : Timestamp.fromDate(DateTime.now().add(const Duration(days: kDiasCooldownRechazo))),
       'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
-  Future<void> _writeInteres(String otroUid) async {
-    await FirebaseFirestore.instance
-        .collection(kUsersCollection)
-        .doc(_uid)
-        .collection(kSubIntereses)
-        .doc(otroUid)
-        .set({
-      'uid': otroUid,
-      'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
@@ -460,20 +455,26 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
     }
 
     if (right) {
-      // 💜 SWIPE DERECHA: registrar interés y navegar a intereses_citas_screen.dart
-      Future(() async {
-        try { await _writeInteres(model.uid); } catch (_) {}
-      });
+      // 💜 SWIPE DERECHA: navega a intereses_citas_screen.dart y ESPERA su resultado.
+      // 🐛 FIX: el mazo solo avanza si de verdad se completó y envió la invitación (pop(true)).
+      // Si se canceló (atrás, o cualquier otra salida), la tarjeta regresa a su lugar.
       if (!mounted) return;
-      await Navigator.of(context).push(MaterialPageRoute(
+      final invitacionEnviada = await Navigator.of(context).push<bool>(MaterialPageRoute(
           builder: (_) => InteresesCitasScreen(
             uidInteres: model.uid,
             nombreInteres: model.nombre,
-            edadInteres: model.edad, // 🆕 viaja hasta la invitación
+            edadInteres: model.edad,
           )));
       if (!mounted) return;
-      setState(() { _topIndex++; _dx = 0.0; });
-      if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) _fetchUsersBatch();
+
+      if (invitacionEnviada == true) {
+        setState(() { _topIndex++; _dx = 0.0; });
+        if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) _fetchUsersBatch();
+      } else {
+        // Canceló sin completar el formulario: la tarjeta regresa suavemente a su lugar,
+        // deslizándose desde donde voló hasta el centro (misma animación que ya existía).
+        await _resetCard();
+      }
       return;
     }
 

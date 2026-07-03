@@ -12,8 +12,13 @@
 //    YO soy el inviter — tarjeta "PROGRAMAR" ámbar, con la foto del sitio que eligieron.
 // 🆕 FIX: _InteresElegidoCard ya NO marca la invitación como 'agendado' por su cuenta antes de
 //    navegar — ahora solo pasa invitacionId a CreaCitaMatchyScreen, que se encarga de marcarla
-//    justo cuando la cita real se crea con éxito (así, si el usuario se devuelve sin terminar,
-//    la tarjeta "PROGRAMAR" sigue esperándolo en vez de perderse).
+//    justo cuando la cita real se crea con éxito.
+// 🆕 NUEVO: interesesPendientesProvider ahora también filtra por 'rechazadoPorInvitado' == false.
+//    Cuando el invitado rechaza una invitación desde intereses_invitacion_screen.dart, esa
+//    tarjeta "INTERESADO" desaparece de aquí de inmediato — sin afectar en nada lo que ve el
+//    invitador en intereses_screen.dart (ese archivo sigue mirando solo 'status'). Requiere su
+//    propio índice compuesto nuevo (invitadoUid + status + rechazadoPorInvitado + createdAt) —
+//    Firebase dará el link la primera vez que se ejecute.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -264,6 +269,7 @@ final interesesPendientesProvider = StreamProvider.autoDispose<List<InteresPendi
       .collection('invitaciones_citas')
       .where('invitadoUid', isEqualTo: user.uid)
       .where('status', isEqualTo: 'pending')
+      .where('rechazadoPorInvitado', isEqualTo: false) // 🆕 NUEVO
       .where('createdAt', isGreaterThan: hace30Dias)
       .orderBy('createdAt', descending: true)
       .snapshots()
@@ -714,7 +720,7 @@ class _InteresElegidoCard extends StatelessWidget {
       builder: (_) => CreaCitaMatchyScreen(
         lugar: _lugarElegido(),
         matchyUidInvitado: item.invitadoUid,
-        invitacionId: item.id, // 🆕 CreaCitaMatchyScreen cierra la invitación al crear la cita
+        invitacionId: item.id, // CreaCitaMatchyScreen se encarga de cerrar la invitación
       ),
     ));
   }

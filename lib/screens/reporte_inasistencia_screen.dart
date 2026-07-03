@@ -1,7 +1,7 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
 // ✅ REPORTE DE INASISTENCIA (BLINDADO & ANCLAJE DE RED)
 // 🔥 FIX: Burbujas Flotantes "Matchy Style" centradas con iconos y animación.
-// 🔥 FIX: Sincronizado a 30 MINUTOS (Tiempo prudencial de espera) ultra-demarcado.
+// 🔥 FIX: Sincronizado a 60 MINUTOS (Tiempo prudencial de espera) ultra-demarcado.
 // 🔥 NOTIFICACIÓN: La campana ahora recibe el nombre del Lugar y del Matchy.
 
 import 'dart:async';
@@ -143,7 +143,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
       // TIEMPO PRUDENCIAL DE ESPERA CONFIGURADO A: 30 MINUTOS
       // =========================================================================
-      _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 30));
+      _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 60));
       // =========================================================================
 
       _startTimer();

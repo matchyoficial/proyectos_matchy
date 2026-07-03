@@ -13,12 +13,14 @@
 // 🔔 NUEVO: al enviar la invitación, se notifica al invitado en users/{uid}/notifications.
 // 🆕 NUEVO: sección "INTENCIÓN" con las 6 opciones (mismo patrón visual que creacita_screen.dart),
 //    ubicada después de las 3 casillas y antes del grid de categorías. Valor por defecto
-//    'Conocernos' — no bloquea el envío, el usuario puede cambiarlo o dejarlo así. Se guarda
-//    como 'intencion' en el documento de la invitación.
-// 🆕 NUEVO: se agrega 'rechazadoPorInvitado': false al crear el documento — campo independiente
-//    de 'status', usado exclusivamente por intereses_invitacion_screen.dart para que el invitado
-//    pueda "ocultar" la invitación de su propia vista sin afectar la cuenta regresiva de 30 días
-//    que ve el invitador en intereses_screen.dart.
+//    'Conocernos' — no bloquea el envío. Se guarda como 'intencion' en el documento.
+// 🐛 FIX CRÍTICO: el registro de "perfil_intereses" (que oculta un perfil para siempre en
+//    Comunidad) se movió AQUÍ, al momento real de enviar la invitación con éxito — antes vivía
+//    en comunidad.dart y se disparaba con el simple swipe derecha, escondiendo perfiles para
+//    siempre aunque el usuario nunca completara este formulario (le diera "atrás" a mitad de
+//    camino). Además, al terminar con éxito se hace pop(true) en vez de pop() — así
+//    comunidad.dart sabe distinguir "se completó" de "se canceló" y decide si avanza el mazo
+//    o le devuelve la tarjeta al usuario.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -192,12 +194,28 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
         'sitioElegidoId': null,
         'sitioElegidoNombre': null,
         'status': 'pending',
-        'rechazadoPorInvitado': false, // 🆕 NUEVO — independiente de 'status'
+        'rechazadoPorInvitado': false,
         'createdAt': FieldValue.serverTimestamp(),
         'respondedAt': null,
       });
 
-      // 🔔 NUEVO: notificamos al invitado
+      // 🐛 FIX: se registra "me interesa" SOLO ahora que la invitación real se envió con éxito.
+      // Antes esto se escribía prematuramente en comunidad.dart, al simple swipe derecha —
+      // eso escondía el perfil para siempre en el mazo, aunque el usuario nunca terminara
+      // de llenar este formulario.
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(myUid)
+            .collection('perfil_intereses')
+            .doc(widget.uidInteres)
+            .set({
+          'uid': widget.uidInteres,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+
+      // 🔔 notificamos al invitado
       try {
         await FirebaseFirestore.instance.collection('users').doc(widget.uidInteres).collection('notifications').add({
           'type': 'interes_cita',
@@ -213,7 +231,8 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
       _mostrarBurbuja("¡Invitación enviada! Le avisaremos a ${widget.nombreInteres}.", const Color(0xFF00E676), Icons.send_rounded);
       await Future.delayed(const Duration(seconds: 2));
       if (!mounted) return;
-      Navigator.of(context).pop();
+      // 🐛 FIX: pop(true) en vez de pop() — le confirma a comunidad.dart que SÍ se completó
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
         _mostrarBurbuja("Error al enviar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);

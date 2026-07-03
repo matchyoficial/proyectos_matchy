@@ -227,7 +227,7 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
           ],
         ),
         content: Text(
-          "Esta acción no se puede deshacer. $inviterNombre no sabrá que la rechazaste — sus otras invitaciones seguirán su curso normal.",
+          "Esta acción no se puede deshacer. $inviterNombre no sabrá que la rechazaste. En Matchy es muy importante cuidar la privacidad de tus decisiones.",
           style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins', height: 1.4),
         ),
         actions: [
