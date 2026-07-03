@@ -11,6 +11,14 @@
 // 🆕 FIX: se agrega edadInteres (requerido) y se guarda como 'invitadoEdad' en el documento,
 //    para que intereses_screen.dart pueda mostrar la edad sin fetches adicionales.
 // 🔔 NUEVO: al enviar la invitación, se notifica al invitado en users/{uid}/notifications.
+// 🆕 NUEVO: sección "INTENCIÓN" con las 6 opciones (mismo patrón visual que creacita_screen.dart),
+//    ubicada después de las 3 casillas y antes del grid de categorías. Valor por defecto
+//    'Conocernos' — no bloquea el envío, el usuario puede cambiarlo o dejarlo así. Se guarda
+//    como 'intencion' en el documento de la invitación.
+// 🆕 NUEVO: se agrega 'rechazadoPorInvitado': false al crear el documento — campo independiente
+//    de 'status', usado exclusivamente por intereses_invitacion_screen.dart para que el invitado
+//    pueda "ocultar" la invitación de su propia vista sin afectar la cuenta regresiva de 30 días
+//    que ve el invitador en intereses_screen.dart.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -53,6 +61,9 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
   LugarData? _slot2;
   LugarData? _slot3;
   bool _enviando = false;
+
+  // Intención de la cita, con default 'Conocernos' (mismo patrón que creacita_screen.dart)
+  String _intencion = 'Conocernos';
 
   bool get _completoLas3 => _slot1 != null && _slot2 != null && _slot3 != null;
 
@@ -171,6 +182,7 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
         'invitadoUid': widget.uidInteres,
         'invitadoNombre': widget.nombreInteres,
         'invitadoEdad': widget.edadInteres,
+        'intencion': _intencion,
         'sitios': [_slot1, _slot2, _slot3].map((l) => {
           'id': l!.id,
           'nombre': l.nombre,
@@ -180,6 +192,7 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
         'sitioElegidoId': null,
         'sitioElegidoNombre': null,
         'status': 'pending',
+        'rechazadoPorInvitado': false, // 🆕 NUEVO — independiente de 'status'
         'createdAt': FieldValue.serverTimestamp(),
         'respondedAt': null,
       });
@@ -219,6 +232,9 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
     final String fotoUserFinal = fotoProvider ?? 'assets/images/perfil1.jpg';
     final String nombreUserFinal = _nombreSeguro(profile.nombre);
     final String nombreMatchFinal = _nombreSeguro(widget.nombreInteres);
+
+    final double width = MediaQuery.of(context).size.width;
+    final double itemWidthIntencion = (width - 40 - 24) / 3;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -298,6 +314,36 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
                             _SlotSitio(lugar: _slot2, onClear: () => setState(() => _slot2 = null)),
                             const SizedBox(width: 10),
                             _SlotSitio(lugar: _slot3, onClear: () => setState(() => _slot3 = null)),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // 🆕 SECCIÓN INTENCIÓN (mismo patrón visual que creacita_screen.dart)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            "INTENCIÓN",
+                            style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Poppins'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Wrap(
+                          spacing: 12,
+                          runSpacing: 10,
+                          children: [
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Solo hablar', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Conocernos', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Algo casual', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Amistad', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Una relación', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
+                            SizedBox(width: itemWidthIntencion, child: _RadioOpcionInteres(label: 'Algo serio', groupValue: _intencion, onChanged: (v) => setState(() => _intencion = v))),
                           ],
                         ),
                       ),
@@ -535,6 +581,38 @@ class _SafeSlotImage extends StatelessWidget {
       return Image.asset(v, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.grey[900]));
     }
     return Container(color: Colors.grey[900], child: const Icon(Icons.image_not_supported, color: Colors.white24, size: 18));
+  }
+}
+
+// ===============================================================
+// 🆕 RADIO DE INTENCIÓN (copia fiel de _RadioOpcion en creacita_screen.dart —
+//    esa clase es privada de aquel archivo, no se puede reutilizar directamente)
+// ===============================================================
+class _RadioOpcionInteres extends StatelessWidget {
+  final String label;
+  final String groupValue;
+  final double fontSize;
+  final ValueChanged<String> onChanged;
+  const _RadioOpcionInteres({required this.label, required this.groupValue, required this.onChanged, this.fontSize = 13});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Radio<String>(
+        value: label,
+        groupValue: groupValue,
+        onChanged: (v) => onChanged(v!),
+        activeColor: Colors.white,
+        fillColor: WidgetStateProperty.all(Colors.white),
+        visualDensity: VisualDensity.compact,
+      ),
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(label, softWrap: false, style: TextStyle(color: Colors.white, fontSize: fontSize, fontFamily: 'Poppins')),
+        ),
+      ),
+    ]);
   }
 }
 

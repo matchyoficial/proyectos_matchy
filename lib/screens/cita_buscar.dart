@@ -3,6 +3,12 @@
 // 🔥 INYECCIÓN DE ÉLITE: Check Azul visible en las tarjetas de perfil.
 // 🛡️ RADAR INVISIBLE: Filtro omnidireccional en tiempo real (<3h) sin bloquear animaciones.
 // 🧨 ESCUDO WIPE-OUT INYECTADO: Ignora y oculta citas publicadas por usuarios bloqueados.
+// 🕐 FIX MARGEN MÍNIMO 12H: solo se muestran citas con AL MENOS 12 horas de margen antes de
+//    que ocurran (12h00m exactas cuentan; 11h59m o menos, se ocultan). Es el tiempo mínimo que
+//    necesita el dueño para revisar candidatos y elegir uno antes de la cita — complementa la
+//    regla ya existente en creacita_screen.dart (que solo valida al MOMENTO de crear la cita,
+//    no mientras sigue publicada). Sin límite superior. Citas sin fecha parseable se excluyen
+//    (no se puede garantizar que cumplan la regla).
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -68,6 +74,9 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   static const String kHoraField = 'hora';
   static const String kUserGeneroField = 'genero';
   static const String kUserPreferenciaCitasField = 'preferenciaCitas';
+
+  // 🕐 NEW: margen mínimo requerido entre "ahora" y la hora de la cita para que se muestre
+  static const Duration kMargenMinimoAntesDeCita = Duration(hours: 12);
 
   List<_CitaCardModel> _deck = [];
   int _topIndex = 0;
@@ -504,12 +513,26 @@ class _CitaBuscarScreenState extends State<CitaBuscarScreen> with SingleTickerPr
   }
 
   // 🔥 RADAR INVISIBLE: Filtro Matemático
+  // 🕐 FIX MARGEN MÍNIMO DE 12H: solo se muestran citas con AL MENOS 12 horas de margen antes
+  // de que ocurran (12h00m exactas cuentan como válidas; 11h59m o menos, se ocultan). Es el
+  // tiempo mínimo que necesita el dueño para revisar candidatos y elegir uno antes de la cita.
+  // Sin límite superior — una cita a 3 meses se muestra igual si cumple el margen mínimo.
+  // Citas sin fecha parseable se excluyen (no se puede garantizar que cumplan la regla).
   Future<List<_CitaCardModel>> _applyFilters({required List<_CitaCardModel> raw, required String uid, required String generoUser, required String prefGlobal}) async {
     final out = <_CitaCardModel>[];
+    final ahora = DateTime.now();
+
     for (final m in raw) {
 
       // 🧨 WIPE-OUT: ESCUDO ANTI-BLOQUEADOS (Si su UID está en mi lista negra, lo salto al instante)
       if (!m.isAd && _misBloqueados.contains(m.ownerUid)) continue;
+
+      // 🕐 FIX MARGEN MÍNIMO DE 12H (no aplica a anuncios)
+      if (!m.isAd) {
+        if (m.scheduledAt == null) continue;
+        final faltante = m.scheduledAt!.difference(ahora);
+        if (faltante < kMargenMinimoAntesDeCita) continue;
+      }
 
       if (!m.isAd && m.scheduledAt != null) {
         bool chocaRadar = false;

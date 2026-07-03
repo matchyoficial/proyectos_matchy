@@ -12,6 +12,15 @@
 // 🔔 NUEVO: al escoger, se notifica al invitador Y se navega de inmediato a Citas
 //    (vía HomeShell.go(index: 1), mismo patrón que panel_screen.dart usa para "ir a Mis Citas",
 //    así conserva la barra de navegación inferior).
+// 🆕 NUEVO: chip "Intención: [valor]" debajo del subtítulo.
+// 🆕 NUEVO: botón "RECHAZAR INVITACIÓN" (outline rojo/coral), ubicado dentro de la tarjeta,
+//    justo después de la fila de los 3 sitios. Pide DOBLE confirmación (diálogo con Cancelar/
+//    Sí, rechazar) antes de ejecutar. Al confirmar, actualiza SOLO 'rechazadoPorInvitado': true
+//    — el campo 'status' NUNCA se toca, sigue en 'pending'. Esto es intencional: así el invitado
+//    deja de ver esta invitación en citas_screen.dart (que ahora filtra por este campo nuevo),
+//    pero el invitador sigue viendo su cuenta regresiva normal de 30 días en intereses_screen.dart
+//    sin enterarse del rechazo — evita la frustración de una notificación negativa. SIN
+//    notificación al invitador (decisión explícita).
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,7 +31,7 @@ import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/banner_publicidad.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
-import 'package:proyectos_matchy/screens/home_shell.dart'; // 🆕 NUEVO
+import 'package:proyectos_matchy/screens/home_shell.dart';
 
 class InteresesInvitacionScreen extends StatefulWidget {
   static const String routeName = 'intereses_invitacion';
@@ -45,6 +54,9 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
 
   static const TextStyle kTituloStyle = TextStyle(color: Colors.white, fontSize: 29, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5);
   static const TextStyle kSubtituloStyle = TextStyle(color: Colors.white70, fontSize: 20, fontWeight: FontWeight.w600, fontFamily: 'Poppins');
+
+  // 🆕 Color coral/rojo consistente con "NO ME INTERESA" en comunidad.dart / cita_buscar.dart
+  static const Color kColorRechazo = Color(0xFFFF6E63);
   // ===========================================================================
 
   bool _procesando = false;
@@ -131,7 +143,6 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: _lugarDesdeMapa(sitioMap))));
   }
 
-  // 🔔 NUEVO: recibe inviterUid + invitadoNombre para poder notificar al invitador
   Future<void> _escogerSitio(Map<String, dynamic> sitioMap, {required String inviterUid, required String invitadoNombre}) async {
     if (_procesando) return;
     setState(() => _procesando = true);
@@ -144,7 +155,7 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
         'respondedAt': FieldValue.serverTimestamp(),
       });
 
-      // 🔔 NUEVO: notificamos al invitador
+      // 🔔 Notificamos al invitador (esto SÍ se mantiene — es una buena noticia)
       if (inviterUid.isNotEmpty) {
         try {
           await FirebaseFirestore.instance.collection('users').doc(inviterUid).collection('notifications').add({
@@ -161,7 +172,6 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
       if (!mounted) return;
       _mostrarBurbuja("¡Listo! Elegiste ${sitioMap['nombre']}.", const Color(0xFF00E676), Icons.check_circle_rounded);
 
-      // 🔔 NUEVO: breve pausa para que se vea la burbuja, luego saltamos directo a Citas
       await Future.delayed(const Duration(seconds: 2));
       if (!mounted) return;
       HomeShell.go(context, index: 1);
@@ -170,6 +180,71 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
     } finally {
       if (mounted) setState(() => _procesando = false);
     }
+  }
+
+  // ===========================================================================
+  // 🆕 RECHAZO — solo toca 'rechazadoPorInvitado', 'status' nunca se modifica.
+  // SIN notificación al invitador (decisión explícita, evita frustrarlo).
+  // ===========================================================================
+  Future<void> _rechazarInvitacion() async {
+    if (_procesando) return;
+    setState(() => _procesando = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('invitaciones_citas').doc(widget.invitacionId).update({
+        'rechazadoPorInvitado': true,
+        'respondedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      _mostrarBurbuja("Invitación rechazada.", kColorRechazo, Icons.block_rounded);
+
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) _mostrarBurbuja("Error al rechazar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _procesando = false);
+    }
+  }
+
+  // 🆕 Diálogo de DOBLE confirmación (toque 1: abre el diálogo; toque 2: confirma dentro de él)
+  void _mostrarDialogoRechazar(String inviterNombre) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: Colors.white24, width: 1)),
+        title: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: kColorRechazo, size: 26),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text("¿RECHAZAR INVITACIÓN?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins')),
+            ),
+          ],
+        ),
+        content: Text(
+          "Esta acción no se puede deshacer. $inviterNombre no sabrá que la rechazaste — sus otras invitaciones seguirán su curso normal.",
+          style: const TextStyle(color: Colors.white70, fontSize: 14, fontFamily: 'Poppins', height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("CANCELAR", style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _rechazarInvitacion();
+            },
+            child: const Text("SÍ, RECHAZAR", style: TextStyle(color: kColorRechazo, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -202,13 +277,22 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                       final data = snap.data!.data() as Map<String, dynamic>;
                       final inviterUid = (data['inviterUid'] ?? '').toString();
                       final inviterNombre = (data['inviterNombre'] ?? 'Alguien').toString();
-                      final invitadoNombre = (data['invitadoNombre'] ?? '').toString(); // 🆕 usado en la notificación
+                      final invitadoNombre = (data['invitadoNombre'] ?? '').toString();
                       final status = (data['status'] ?? 'pending').toString();
                       final sitioElegidoId = data['sitioElegidoId'] as String?;
-                      final yaRespondido = status == 'elegido';
+                      final intencion = (data['intencion'] ?? '').toString(); // 🆕 NUEVO
+                      final rechazadoPorInvitado = data['rechazadoPorInvitado'] == true; // 🆕 NUEVO
+
+                      // 🆕 Ampliado: bloquea la UI tanto si eligió sitio como si rechazó
+                      final yaRespondido = status == 'elegido' || rechazadoPorInvitado;
 
                       final sitiosRaw = (data['sitios'] as List<dynamic>? ?? []);
                       final sitios = sitiosRaw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+
+                      // 🆕 Subtítulo condicional
+                      final String subtitulo = rechazadoPorInvitado
+                          ? "Rechazaste esta invitación."
+                          : "está interesado(a) en ir contigo\na alguno de estos 3 sitios";
 
                       return Column(
                         children: [
@@ -226,7 +310,32 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                                 // 🔝 "ARRIBA EL NOMBRE DE QUIEN HACE LA INVITACIÓN"
                                 FittedBox(fit: BoxFit.scaleDown, child: Text(inviterNombre.toUpperCase(), style: kTituloStyle, textAlign: TextAlign.center)),
                                 const SizedBox(height: 6),
-                                FittedBox(fit: BoxFit.scaleDown, child: const Text("está interesado(a) en ir contigo\na alguno de estos 3 sitios", style: kSubtituloStyle, textAlign: TextAlign.center)),
+                                FittedBox(fit: BoxFit.scaleDown, child: Text(subtitulo, style: kSubtituloStyle, textAlign: TextAlign.center)),
+
+                                // 🆕 CHIP DE INTENCIÓN
+                                if (intencion.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 10),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.08),
+                                          borderRadius: BorderRadius.circular(50),
+                                          border: Border.all(color: Colors.white12),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.favorite_border_rounded, color: Color(0xFFE0D4FF), size: 14),
+                                            const SizedBox(width: 6),
+                                            Text("Intención: $intencion", style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
 
                                 const SizedBox(height: 22),
 
@@ -270,6 +379,14 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                                     ],
                                   ],
                                 ),
+
+                                // 🆕 BOTÓN "RECHAZAR INVITACIÓN" — solo visible mientras no se ha respondido
+                                if (!yaRespondido) ...[
+                                  const SizedBox(height: 20),
+                                  _BotonRechazarOutline(
+                                    onTap: _procesando ? null : () => _mostrarDialogoRechazar(inviterNombre),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -320,6 +437,42 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 🆕 BOTÓN "RECHAZAR INVITACIÓN" — outline coral, discreto pero visible
+// ============================================================================
+class _BotonRechazarOutline extends StatelessWidget {
+  final VoidCallback? onTap;
+  const _BotonRechazarOutline({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFFF6E63), width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.close_rounded, color: Color(0xFFFF6E63), size: 18),
+              SizedBox(width: 8),
+              Text("RECHAZAR INVITACIÓN", style: TextStyle(color: Color(0xFFFF6E63), fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', letterSpacing: 0.5)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -496,7 +649,7 @@ class _BotonEscogerDoradoState extends State<_BotonEscogerDorado> with SingleTic
       );
     }
 
-    // Ya respondiste, pero este NO fue el elegido -> apagado, sin pulso
+    // Ya respondiste (elegiste otro sitio, o rechazaste) -> apagado, sin pulso
     if (widget.respondido) {
       return Container(
         height: 34,
