@@ -11,6 +11,8 @@
 //    'NoDecir') y 'preferenciaCitas' ('Hombres'/'Mujeres'/'Ambos').
 // 📢 PUBLICIDAD: mismo sistema exacto que cita_buscar.dart (colección 'publicidad_swap', filtro por
 //    pais/ciudad, caché diario en SharedPreferences, inserción cada ~5 tarjetas, PublicidadSwapCard).
+// 🆕 FIX: se agrega edadInteres al navegar a InteresesCitasScreen (viajará hasta la invitación en
+//    Firestore, para que intereses_screen.dart pueda mostrar la edad sin fetches adicionales).
 // ⚠️ IMPORTANTE: revisa tus reglas de seguridad de Firestore — esta pantalla necesita permiso de
 //    "list" sobre la colección 'users' (no solo "get" por UID), o la consulta fallará en tiempo real.
 
@@ -464,7 +466,11 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
       });
       if (!mounted) return;
       await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => InteresesCitasScreen(uidInteres: model.uid, nombreInteres: model.nombre)));
+          builder: (_) => InteresesCitasScreen(
+            uidInteres: model.uid,
+            nombreInteres: model.nombre,
+            edadInteres: model.edad, // 🆕 viaja hasta la invitación
+          )));
       if (!mounted) return;
       setState(() { _topIndex++; _dx = 0.0; });
       if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) _fetchUsersBatch();

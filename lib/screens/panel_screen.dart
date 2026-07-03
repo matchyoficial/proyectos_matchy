@@ -12,6 +12,10 @@
 // 📡 NEW: IN-APP UPDATES. Motor de actualización silenciosa de Google Play integrado.
 // 🎯 NEW: Botón e imagen "COMUNIDAD" inyectados en tarjeta de Acciones, apuntando a ComunidadScreen.
 // 🐛 FIX: Se quitó 'const' de ComunidadScreen() en los dos onTap (error de compilación por cambio StatelessWidget -> StatefulWidget).
+// 🆕 NEW: El botón de texto ahora dice "INTERESES" y lleva a InteresesScreen (el ícono
+//    comunidad.png sigue llevando a ComunidadScreen sin cambios).
+// 🔔 NEW: NotificationLogic.handleTap reconoce 'interes_cita' (invitación nueva -> abre
+//    InteresesInvitacionScreen) e 'interes_elegido' (invitado eligió sitio -> salta a Citas).
 
 import 'dart:io';
 import 'dart:async';
@@ -35,6 +39,8 @@ import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
 import 'package:proyectos_matchy/screens/comunidad.dart'; // 🔥 NUEVA PANTALLA: COMUNIDAD (SWIPE DE PERFILES)
+import 'package:proyectos_matchy/screens/intereses_screen.dart'; // 🆕 NUEVO: MIS INTERESES ENVIADOS
+import 'package:proyectos_matchy/screens/intereses_invitacion_screen.dart'; // 🆕 NUEVO: DESTINO DE NOTIFICACIÓN
 import 'package:proyectos_matchy/screens/citas_pendientes_screen.dart';
 import 'package:proyectos_matchy/screens/citas_pendientes_detalle.dart';
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
@@ -163,12 +169,26 @@ class NotificationLogic {
   }
 
   // 🔥 EL FIX MAESTRO: Usamos parentContext para navegar seguros y _mostrarBurbuja para alertas
-  static Future<void> handleTap(BuildContext parentContext, BuildContext sheetContext, String docId, String type, String? citaId) async {
+  // 🆕 NUEVO: parámetro opcional invitacionId para las notificaciones de Comunidad/Intereses
+  static Future<void> handleTap(BuildContext parentContext, BuildContext sheetContext, String docId, String type, String? citaId, {String? invitacionId}) async {
     // 1. Archivar notificación en segundo plano
     archiveNotification(docId);
 
     // 2. Cerrar la campanita inmediatamente usando su propio contexto
     Navigator.pop(sheetContext);
+
+    // 🆕 CASOS DE COMUNIDAD/INTERESES (usan invitacionId, no citaId) — se resuelven ANTES
+    // del chequeo de citaId de abajo, para que ese "return" no las bloquee.
+    if (type == 'interes_cita') {
+      if (invitacionId == null) return;
+      Navigator.push(parentContext, MaterialPageRoute(builder: (_) => InteresesInvitacionScreen(invitacionId: invitacionId)));
+      return;
+    }
+    if (type == 'interes_elegido') {
+      // El invitado ya eligió sitio -> saltamos directo a Mis Citas, donde ya está la tarjeta "PROGRAMAR"
+      HomeShell.go(parentContext, index: 1);
+      return;
+    }
 
     if (citaId == null) return;
 
@@ -638,7 +658,8 @@ class _PanelContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
           decoration: BoxDecoration(color: _PanelScreenState.kCardBackground, borderRadius: BorderRadius.circular(26), boxShadow: _PanelScreenState.kCardShadow),
           child: Row(children: [
-            // 🔥 COLUMNA IZQUIERDA: IMAGEN COMUNIDAD (BOTÓN) + BOTÓN PREMIUM "COMUNIDAD"
+            // 🔥 COLUMNA IZQUIERDA: IMAGEN COMUNIDAD (BOTÓN, lleva a ComunidadScreen) + BOTÓN
+            //    PREMIUM "INTERESES" (lleva a InteresesScreen)
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -650,9 +671,9 @@ class _PanelContent extends StatelessWidget {
                 SizedBox(
                   width: 99,
                   child: _BotonPanelPremium(
-                    texto: "COMUNIDAD",
+                    texto: "INTERESES",
                     bloqueado: false,
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComunidadScreen())),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InteresesScreen())),
                   ),
                 ),
               ],
@@ -1140,11 +1161,14 @@ class _NotificacionesSheet extends ConsumerWidget {
                       final cuerpo = data['body'] ?? '';
                       final type = data['type'] ?? '';
                       final citaId = data['citaId'];
+                      final invitacionId = data['invitacionId']; // 🆕 NUEVO
 
                       // Lógica de Iconos
                       IconData icono = Icons.notifications_rounded;
                       if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded;
                       if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded;
+                      if (type == 'interes_cita') icono = Icons.favorite_rounded; // 🆕 NUEVO
+                      if (type == 'interes_elegido') icono = Icons.event_available_rounded; // 🆕 NUEVO
 
                       // 🔥 DISEÑO GOLDEN TICKET (AHORA CON DISMISSIBLE)
                       if (type == 'golden_ticket') {
@@ -1173,7 +1197,7 @@ class _NotificacionesSheet extends ConsumerWidget {
                               title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.black, fontWeight: FontWeight.w900, fontSize: 15)),
                               subtitle: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.black87, fontSize: 13, fontWeight: FontWeight.w600)),
                               trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.black45), // Flecha solo si está activa
-                              onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId), // 🔥 LLAMADA CORREGIDA
+                              onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId, invitacionId: invitacionId), // 🔥 LLAMADA CORREGIDA
                             ),
                           ),
                         );
@@ -1205,7 +1229,7 @@ class _NotificacionesSheet extends ConsumerWidget {
                                   title: Text(titulo, style: TextStyle(color: isArchived ? Colors.white54 : Colors.white, fontWeight: isArchived ? FontWeight.normal : (leido ? FontWeight.normal : FontWeight.bold), fontSize: 15)),
                                   subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text(cuerpo, style: TextStyle(color: isArchived ? Colors.white38 : Colors.white70, fontSize: 13))),
                                   trailing: isArchived ? null : const Icon(Icons.chevron_right, color: Colors.white38), // Flecha solo si está activa
-                                  onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId) // 🔥 LLAMADA CORREGIDA
+                                  onTap: isArchived ? null : () => NotificationLogic.handleTap(parentContext, context, docId, type, citaId, invitacionId: invitacionId) // 🔥 LLAMADA CORREGIDA
                               )
                           )
                       );

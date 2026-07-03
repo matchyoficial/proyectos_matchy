@@ -8,6 +8,9 @@
 //    modoSeleccionCita:true, esperan (await) el resultado y llenan la primera casilla vacía.
 // 📝 SIN CAMPO "nombre de la cita" — confirmado que no existe en el original.
 // 🗄️ Al enviar, escribe en Firestore la colección 'invitaciones_citas' (ver esquema abajo).
+// 🆕 FIX: se agrega edadInteres (requerido) y se guarda como 'invitadoEdad' en el documento,
+//    para que intereses_screen.dart pueda mostrar la edad sin fetches adicionales.
+// 🔔 NUEVO: al enviar la invitación, se notifica al invitado en users/{uid}/notifications.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -32,11 +35,13 @@ class InteresesCitasScreen extends ConsumerStatefulWidget {
   static const String routeName = 'intereses_citas';
   final String uidInteres;
   final String nombreInteres;
+  final int edadInteres;
 
   const InteresesCitasScreen({
     super.key,
     required this.uidInteres,
     required this.nombreInteres,
+    required this.edadInteres,
   });
 
   @override
@@ -149,7 +154,7 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
   }
 
   // ===========================================================================
-  // ✍️ ENVÍO DE LA INVITACIÓN (real, no placeholder)
+  // ✍️ ENVÍO DE LA INVITACIÓN (real, no placeholder) + NOTIFICACIÓN AL INVITADO
   // ===========================================================================
   Future<void> _enviarInvitacion() async {
     if (!_completoLas3 || _enviando) return;
@@ -160,11 +165,12 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
       final profile = ref.read(profileFormProvider);
       final inviterNombre = profile.nombre.trim().isNotEmpty ? profile.nombre.trim() : 'Alguien';
 
-      await FirebaseFirestore.instance.collection('invitaciones_citas').add({
+      final docRef = await FirebaseFirestore.instance.collection('invitaciones_citas').add({
         'inviterUid': myUid,
         'inviterNombre': inviterNombre,
         'invitadoUid': widget.uidInteres,
         'invitadoNombre': widget.nombreInteres,
+        'invitadoEdad': widget.edadInteres,
         'sitios': [_slot1, _slot2, _slot3].map((l) => {
           'id': l!.id,
           'nombre': l.nombre,
@@ -177,6 +183,18 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'respondedAt': null,
       });
+
+      // 🔔 NUEVO: notificamos al invitado
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(widget.uidInteres).collection('notifications').add({
+          'type': 'interes_cita',
+          'title': '¡NUEVO INTERÉS!',
+          'body': '$inviterNombre está interesado en invitarte a una cita. Puedes revisar los lugares a los que te quiere invitar.',
+          'invitacionId': docRef.id,
+          'read': false,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (_) {}
 
       if (!mounted) return;
       _mostrarBurbuja("¡Invitación enviada! Le avisaremos a ${widget.nombreInteres}.", const Color(0xFF00E676), Icons.send_rounded);

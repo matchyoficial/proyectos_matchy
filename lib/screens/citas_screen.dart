@@ -4,6 +4,16 @@
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
 // 🔥 CACHÉ PRO: ValueKey y memCacheHeight inyectados en la foto del lugar para evitar parpadeos con el Reloj.
 // 🚀 NEW: CachedNetworkImage inyectado con BLINDAJE ANTI-BUCLES (Filtro HTTP vs Assets).
+// 🆕 NEW: Sección "PENDIENTES Y POR ACEPTAR" ahora también muestra invitaciones de Comunidad
+//    (invitaciones_citas, status pending, <30 días) con tarjeta y etiqueta "INTERESADO" propias.
+//    Completamente aislado del Juez Supremo — CitaItem, _convertirDoc y la lógica de castigo
+//    NO se tocan, ya que estas invitaciones no tienen fecha/hora/GPS/deadline real todavía.
+// 🆕 NEW: También muestra invitaciones YA RESPONDIDAS por el invitado (status 'elegido') donde
+//    YO soy el inviter — tarjeta "PROGRAMAR" ámbar, con la foto del sitio que eligieron.
+// 🆕 FIX: _InteresElegidoCard ya NO marca la invitación como 'agendado' por su cuenta antes de
+//    navegar — ahora solo pasa invitacionId a CreaCitaMatchyScreen, que se encarga de marcarla
+//    justo cuando la cita real se crea con éxito (así, si el usuario se devuelve sin terminar,
+//    la tarjeta "PROGRAMAR" sigue esperándolo en vez de perderse).
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -18,6 +28,9 @@ import 'package:proyectos_matchy/screens/reprogramar_cita_aceptar_screen.dart';
 import 'package:proyectos_matchy/screens/nueva_cita_solicitud_screen.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/screens/reporte_inasistencia_screen.dart';
+import 'package:proyectos_matchy/screens/intereses_invitacion_screen.dart';
+import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/screens/crea_cita_matchy_screen.dart';
 
 const String kCitasCollection = 'citas';
 
@@ -211,6 +224,106 @@ final misCitasMezcladasProvider = Provider.autoDispose<AsyncValue<List<CitaItem>
   return AsyncValue.data(listaFinal);
 });
 
+// ============================================================================
+// 🆕 MODELO + PROVIDER: INVITACIONES DE COMUNIDAD PENDIENTES POR RESPONDER
+// (aislado por completo de CitaItem y del Juez Supremo)
+// ============================================================================
+class InteresPendienteItem {
+  final String id;
+  final String inviterUid;
+  final String inviterNombre;
+  final List<Map<String, dynamic>> sitios;
+  final DateTime? createdAt;
+
+  const InteresPendienteItem({
+    required this.id,
+    required this.inviterUid,
+    required this.inviterNombre,
+    required this.sitios,
+    required this.createdAt,
+  });
+
+  factory InteresPendienteItem.fromDoc(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final sitiosRaw = (data['sitios'] as List<dynamic>? ?? []);
+    return InteresPendienteItem(
+      id: doc.id,
+      inviterUid: (data['inviterUid'] ?? '').toString(),
+      inviterNombre: (data['inviterNombre'] ?? 'Alguien').toString(),
+      sitios: sitiosRaw.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+    );
+  }
+}
+
+final interesesPendientesProvider = StreamProvider.autoDispose<List<InteresPendienteItem>>((ref) {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return const Stream.empty();
+  final hace30Dias = Timestamp.fromDate(DateTime.now().subtract(const Duration(days: 30)));
+  return FirebaseFirestore.instance
+      .collection('invitaciones_citas')
+      .where('invitadoUid', isEqualTo: user.uid)
+      .where('status', isEqualTo: 'pending')
+      .where('createdAt', isGreaterThan: hace30Dias)
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((s) => s.docs.map((d) => InteresPendienteItem.fromDoc(d)).toList());
+});
+
+// ============================================================================
+// 🆕 MODELO + PROVIDER: INVITACIONES QUE YO ENVIÉ Y YA FUERON RESPONDIDAS
+// (status 'elegido' -> falta que YO agende fecha/hora real)
+// ============================================================================
+class InteresElegidoItem {
+  final String id;
+  final String invitadoUid;
+  final String invitadoNombre;
+  final String sitioElegidoId;
+  final String sitioElegidoNombre;
+  final List<Map<String, dynamic>> sitios;
+
+  const InteresElegidoItem({
+    required this.id,
+    required this.invitadoUid,
+    required this.invitadoNombre,
+    required this.sitioElegidoId,
+    required this.sitioElegidoNombre,
+    required this.sitios,
+  });
+
+  factory InteresElegidoItem.fromDoc(QueryDocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final sitiosRaw = (data['sitios'] as List<dynamic>? ?? []);
+    return InteresElegidoItem(
+      id: doc.id,
+      invitadoUid: (data['invitadoUid'] ?? '').toString(),
+      invitadoNombre: (data['invitadoNombre'] ?? 'Usuario').toString(),
+      sitioElegidoId: (data['sitioElegidoId'] ?? '').toString(),
+      sitioElegidoNombre: (data['sitioElegidoNombre'] ?? '').toString(),
+      sitios: sitiosRaw.map((e) => Map<String, dynamic>.from(e as Map)).toList(),
+    );
+  }
+
+  Map<String, dynamic> get sitioElegidoData {
+    return sitios.firstWhere(
+          (s) => (s['id'] ?? '').toString() == sitioElegidoId,
+      orElse: () => sitios.isNotEmpty ? sitios.first : <String, dynamic>{},
+    );
+  }
+}
+
+final interesesElegidosProvider = StreamProvider.autoDispose<List<InteresElegidoItem>>((ref) {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return const Stream.empty();
+  return FirebaseFirestore.instance
+      .collection('invitaciones_citas')
+      .where('inviterUid', isEqualTo: user.uid)
+      .where('status', isEqualTo: 'elegido')
+      .orderBy('respondedAt', descending: true)
+      .snapshots()
+      .map((s) => s.docs.map((d) => InteresElegidoItem.fromDoc(d)).toList());
+});
+
 // --- PANTALLA ---
 class CitasScreen extends ConsumerWidget {
   final bool showBottomNav;
@@ -337,6 +450,8 @@ class _CitasSplitLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final asyncCitas = ref.watch(misCitasMezcladasProvider);
+    final asyncIntereses = ref.watch(interesesPendientesProvider);
+    final asyncInteresesElegidos = ref.watch(interesesElegidosProvider);
     final size = MediaQuery.of(context).size;
 
     // Altura calculada para "Próximas" (55% aprox de la pantalla)
@@ -350,6 +465,8 @@ class _CitasSplitLayout extends ConsumerWidget {
       data: (list) {
         final proximas = list.where((c) => !c.esUrgente && !c.tengoSolicitudAcuerdo && !c.tengoPropuestaAcuerdo && c.status == 'matched').toList();
         final pendientes = list.where((c) => c.esUrgente || c.tengoSolicitudAcuerdo || c.tengoPropuestaAcuerdo || c.status != 'matched').toList();
+        final intereses = asyncIntereses.value ?? [];
+        final interesesElegidos = asyncInteresesElegidos.value ?? [];
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -360,10 +477,16 @@ class _CitasSplitLayout extends ConsumerWidget {
                 child: _Seccion(titulo: "PRÓXIMAS CITAS", citas: proximas, color: const Color(0x40FFFFFF), esPendiente: false)
             ),
             const SizedBox(height: 15),
-            // 2. PENDIENTES
+            // 2. PENDIENTES (combinada con intereses de Comunidad + invitaciones ya elegidas)
             SizedBox(
                 height: heightPendientes,
-                child: _Seccion(titulo: "PENDIENTES Y POR ACEPTAR", citas: pendientes, color: const Color(0x506B4EE6), esPendiente: true)
+                child: _SeccionPendientesConIntereses(
+                  titulo: "PENDIENTES Y POR ACEPTAR",
+                  citas: pendientes,
+                  intereses: intereses,
+                  interesesElegidos: interesesElegidos,
+                  color: const Color(0x506B4EE6),
+                )
             ),
             const SizedBox(height: 120),
           ],
@@ -402,6 +525,60 @@ class _Seccion extends StatelessWidget {
   }
 }
 
+// ============================================================================
+// 🆕 NUEVA SECCIÓN COMBINADA (solo para "PENDIENTES Y POR ACEPTAR")
+// Reutiliza _EmptyState y _CitaCard sin modificarlos. No reemplaza ni toca _Seccion.
+// Orden de aparición: PROGRAMAR (más urgente/emocionante) -> INTERESADO -> citas normales.
+// ============================================================================
+class _SeccionPendientesConIntereses extends StatelessWidget {
+  final String titulo;
+  final List<CitaItem> citas;
+  final List<InteresPendienteItem> intereses;
+  final List<InteresElegidoItem> interesesElegidos;
+  final Color color;
+  const _SeccionPendientesConIntereses({
+    required this.titulo,
+    required this.citas,
+    required this.intereses,
+    required this.interesesElegidos,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final totalVacio = citas.isEmpty && intereses.isEmpty && interesesElegidos.isEmpty;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white10)),
+      child: Column(children: [
+        FittedBox(fit: BoxFit.scaleDown, child: Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 4)]))),
+        const SizedBox(height: 12),
+        Expanded(
+          child: totalVacio
+              ? const _EmptyState(esPendiente: true)
+              : ListView.builder(
+            padding: EdgeInsets.zero,
+            physics: const BouncingScrollPhysics(),
+            itemCount: interesesElegidos.length + intereses.length + citas.length,
+            itemBuilder: (_, i) {
+              if (i < interesesElegidos.length) {
+                return _InteresElegidoCard(item: interesesElegidos[i]);
+              }
+              final iSinElegidos = i - interesesElegidos.length;
+              if (iSinElegidos < intereses.length) {
+                return _InteresPendienteCard(item: intereses[iSinElegidos]);
+              }
+              return _CitaCard(item: citas[iSinElegidos - intereses.length]);
+            },
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   final bool esPendiente;
   const _EmptyState({required this.esPendiente});
@@ -416,6 +593,198 @@ class _EmptyState extends StatelessWidget {
       );
     }
     return const Center(child: Text("No tienes citas próximas.", style: TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'Poppins')));
+  }
+}
+
+// ============================================================================
+// 🆕 TARJETA DE INTERÉS PENDIENTE (hermana visual de _CitaCard, aislada de CitaItem)
+// Etiqueta "INTERESADO" — invitación que ME LLEGÓ y aún no respondo.
+// ============================================================================
+class _InteresPendienteCard extends StatelessWidget {
+  final InteresPendienteItem item;
+  const _InteresPendienteCard({required this.item});
+
+  static const Color kColorInteres = Color(0xFFE91E63); // Rosa/magenta — color nuevo, no usado en esta pantalla
+
+  String _tiempoRestanteTexto() {
+    if (item.createdAt == null) return '';
+    final vence = item.createdAt!.add(const Duration(days: 30));
+    final restante = vence.difference(DateTime.now());
+    final dias = restante.inDays;
+    if (dias <= 0) return 'Por vencer';
+    return 'Quedan $dias día${dias == 1 ? '' : 's'} para responder';
+  }
+
+  Widget _fotoPrimerSitio() {
+    final primerFoto = item.sitios.isNotEmpty ? (item.sitios.first['fotoPortada'] ?? '').toString() : '';
+    final v = primerFoto.trim();
+    if (v.startsWith('http')) {
+      return CachedNetworkImage(
+        key: ValueKey(v),
+        imageUrl: v,
+        fit: BoxFit.cover,
+        memCacheHeight: 315,
+        placeholder: (context, url) => Container(color: const Color(0xFF1A1A1A)),
+        errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24, size: 24)),
+      );
+    }
+    return Container(color: Colors.grey[900], child: const Icon(Icons.image_not_supported, color: Colors.white24, size: 24));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => InteresesInvitacionScreen(invitacionId: item.id))),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        height: 105,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
+          border: Border.all(color: kColorInteres, width: 1.5),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Stack(fit: StackFit.expand, children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+                child: ColorFiltered(
+                  colorFilter: ColorFilter.mode(kColorInteres.withOpacity(0.2), BlendMode.srcATop),
+                  child: _fotoPrimerSitio(),
+                ),
+              ),
+              Container(decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black12, Colors.black.withOpacity(0.9)], stops: const [0.4, 1.0]))),
+
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "${item.inviterNombre.toUpperCase()} TE INVITÓ",
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+                    ),
+                  ),
+                  Text(_tiempoRestanteTexto(), style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Poppins')),
+                ]),
+              ),
+
+              Positioned(top: 8, left: 8, child: _EtiquetaPulsante(texto: "INTERESADO", bg: kColorInteres, color: Colors.white)),
+            ]),
+          ),
+          SizedBox(width: 105, child: ClipRRect(borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)), child: FotoPerfilUsuario(uid: item.inviterUid, fit: BoxFit.cover))),
+        ]),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 🆕 TARJETA "PROGRAMAR" — invitación que YO envié y el invitado ya respondió.
+// Al tocarla: navega directo a CreaCitaMatchyScreen con el sitio elegido, pasando
+// invitacionId. La marca de 'agendado' ahora la hace CreaCitaMatchyScreen, solo cuando
+// la cita real se crea con éxito (no antes) — así la tarjeta no se pierde si te devuelves.
+// ============================================================================
+class _InteresElegidoCard extends StatelessWidget {
+  final InteresElegidoItem item;
+  const _InteresElegidoCard({required this.item});
+
+  static const Color kColorProgramar = Color(0xFFFFC107); // Ámbar — nuevo, no usado en esta pantalla
+
+  LugarData _lugarElegido() {
+    final s = item.sitioElegidoData;
+    final foto = (s['fotoPortada'] ?? '').toString();
+    return LugarData(
+      id: (s['id'] ?? item.sitioElegidoId).toString(),
+      nombre: (s['nombre'] ?? item.sitioElegidoNombre).toString(),
+      direccion: (s['direccion'] ?? '').toString(),
+      bio: '',
+      fotos: foto.isNotEmpty ? [foto] : const [],
+      fotoPortada: foto,
+      sitioWeb: '',
+      orden: 9999,
+      sedes: const [],
+    );
+  }
+
+  void _programar(BuildContext context) {
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => CreaCitaMatchyScreen(
+        lugar: _lugarElegido(),
+        matchyUidInvitado: item.invitadoUid,
+        invitacionId: item.id, // 🆕 CreaCitaMatchyScreen cierra la invitación al crear la cita
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final foto = (item.sitioElegidoData['fotoPortada'] ?? '').toString();
+    return GestureDetector(
+      onTap: () => _programar(context),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        height: 105,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
+          border: Border.all(color: kColorProgramar, width: 1.5),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Stack(fit: StackFit.expand, children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+                child: ColorFiltered(
+                  colorFilter: ColorFilter.mode(kColorProgramar.withOpacity(0.2), BlendMode.srcATop),
+                  child: _FotoSitioElegidoSegura(url: foto),
+                ),
+              ),
+              Container(decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black12, Colors.black.withOpacity(0.9)], stops: const [0.4, 1.0]))),
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.end, children: [
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      item.sitioElegidoNombre.toUpperCase(),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins', height: 1.0, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+                    ),
+                  ),
+                  Text("${item.invitadoNombre} eligió este sitio", style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'Poppins')),
+                ]),
+              ),
+              Positioned(top: 8, left: 8, child: _EtiquetaPulsante(texto: "PROGRAMAR", bg: kColorProgramar, color: Colors.black)),
+            ]),
+          ),
+          SizedBox(width: 105, child: ClipRRect(borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)), child: FotoPerfilUsuario(uid: item.invitadoUid, fit: BoxFit.cover))),
+        ]),
+      ),
+    );
+  }
+}
+
+class _FotoSitioElegidoSegura extends StatelessWidget {
+  final String url;
+  const _FotoSitioElegidoSegura({required this.url});
+  @override
+  Widget build(BuildContext context) {
+    final v = url.trim();
+    if (v.startsWith('http')) {
+      return CachedNetworkImage(
+        key: ValueKey(v),
+        imageUrl: v,
+        fit: BoxFit.cover,
+        memCacheHeight: 315,
+        placeholder: (context, url) => Container(color: const Color(0xFF1A1A1A)),
+        errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.white24, size: 24)),
+      );
+    }
+    return Container(color: Colors.grey[900], child: const Icon(Icons.image_not_supported, color: Colors.white24, size: 24));
   }
 }
 

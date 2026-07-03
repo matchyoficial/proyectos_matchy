@@ -4,6 +4,10 @@
 // 🔥 FIX: Se inicializan ownerCastigado, matchyCastigado, etc. en FALSE.
 // 🔥 UI FIX: Selector de hora moderno 12h (AM/PM) en PANTALLA EMERGENTE CENTRAL.
 // 🔥 FIX DE SEGURIDAD: Generador criptográfico estandarizado de 8 caracteres (Random.secure).
+// 🆕 NEW: parámetro opcional invitacionId — cuando viene desde el botón "PROGRAMAR" de
+//    citas_screen.dart (invitación de Comunidad ya respondida), marca esa invitación como
+//    'agendado' justo DESPUÉS de que la cita real se crea con éxito (nunca antes). Si
+//    invitacionId es null (uso normal, ej. desde lugar_plantilla_screen.dart), no pasa nada nuevo.
 
 import 'dart:io';
 import 'dart:ui'; // 🔥 Para el efecto de desenfoque
@@ -21,11 +25,13 @@ import 'package:proyectos_matchy/screens/cita_creada_screen.dart';
 class CreaCitaMatchyScreen extends StatefulWidget {
   final LugarData lugar;
   final String matchyUidInvitado;
+  final String? invitacionId; // 🆕 NUEVO
 
   const CreaCitaMatchyScreen({
     super.key,
     required this.lugar,
     required this.matchyUidInvitado,
+    this.invitacionId, // 🆕 NUEVO — opcional, no rompe usos existentes
   });
 
   @override
@@ -314,6 +320,15 @@ class _CreaCitaMatchyScreenState extends State<CreaCitaMatchyScreen> {
       'createdAt': FieldValue.serverTimestamp(),
       'read': false,
     });
+
+    // 🆕 NUEVO: si venimos del flujo "PROGRAMAR" de Citas (invitación de Comunidad ya elegida),
+    // marcamos esa invitación como 'agendado' SOLO ahora que la cita real ya existe en Firestore.
+    // Así, si el usuario entra y se devuelve sin terminar, la tarjeta "PROGRAMAR" sigue esperándolo.
+    if (widget.invitacionId != null && widget.invitacionId!.isNotEmpty) {
+      try {
+        await FirebaseFirestore.instance.collection('invitaciones_citas').doc(widget.invitacionId).update({'status': 'agendado'});
+      } catch (_) {}
+    }
 
     return citaId;
   }

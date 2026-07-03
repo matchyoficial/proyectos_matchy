@@ -9,9 +9,9 @@
 // 🖼️ Las 3 fotos de sitios son clickeables -> LugarPlantillaSinBotonScreen (sin modificar, se
 //    autoalimenta de datos completos por id/nombre).
 // ✍️ Al escoger, se actualiza Firestore YA (no placeholder): status, sitioElegidoId, respondedAt.
-// ⚠️ PENDIENTE (Paso 5, no ahora): todavía no existe ningún camino real que traiga al invitado
-//    hasta aquí (falta notificación + lista "Intereses" en panel). Esta pantalla ya funciona de
-//    punta a punta una vez alguien llegue con un invitacionId válido.
+// 🔔 NUEVO: al escoger, se notifica al invitador Y se navega de inmediato a Citas
+//    (vía HomeShell.go(index: 1), mismo patrón que panel_screen.dart usa para "ir a Mis Citas",
+//    así conserva la barra de navegación inferior).
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,6 +22,7 @@ import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/banner_publicidad.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
+import 'package:proyectos_matchy/screens/home_shell.dart'; // 🆕 NUEVO
 
 class InteresesInvitacionScreen extends StatefulWidget {
   static const String routeName = 'intereses_invitacion';
@@ -130,7 +131,8 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => LugarPlantillaSinBotonScreen(lugar: _lugarDesdeMapa(sitioMap))));
   }
 
-  Future<void> _escogerSitio(Map<String, dynamic> sitioMap) async {
+  // 🔔 NUEVO: recibe inviterUid + invitadoNombre para poder notificar al invitador
+  Future<void> _escogerSitio(Map<String, dynamic> sitioMap, {required String inviterUid, required String invitadoNombre}) async {
     if (_procesando) return;
     setState(() => _procesando = true);
 
@@ -141,8 +143,28 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
         'status': 'elegido',
         'respondedAt': FieldValue.serverTimestamp(),
       });
+
+      // 🔔 NUEVO: notificamos al invitador
+      if (inviterUid.isNotEmpty) {
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(inviterUid).collection('notifications').add({
+            'type': 'interes_elegido',
+            'title': '¡ELIGIERON UN SITIO!',
+            'body': '$invitadoNombre quiere ir a una cita contigo, eligió ${sitioMap['nombre']} para su cita. ¡Agenda tu cita ya!',
+            'invitacionId': widget.invitacionId,
+            'read': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       _mostrarBurbuja("¡Listo! Elegiste ${sitioMap['nombre']}.", const Color(0xFF00E676), Icons.check_circle_rounded);
+
+      // 🔔 NUEVO: breve pausa para que se vea la burbuja, luego saltamos directo a Citas
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      HomeShell.go(context, index: 1);
     } catch (e) {
       if (mounted) _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
@@ -180,6 +202,7 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                       final data = snap.data!.data() as Map<String, dynamic>;
                       final inviterUid = (data['inviterUid'] ?? '').toString();
                       final inviterNombre = (data['inviterNombre'] ?? 'Alguien').toString();
+                      final invitadoNombre = (data['invitadoNombre'] ?? '').toString(); // 🆕 usado en la notificación
                       final status = (data['status'] ?? 'pending').toString();
                       final sitioElegidoId = data['sitioElegidoId'] as String?;
                       final yaRespondido = status == 'elegido';
@@ -238,7 +261,11 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                                         elegido: yaRespondido && sitioElegidoId != null && sitioElegidoId == (i < sitios.length ? sitios[i]['id'] : null),
                                         respondido: yaRespondido,
                                         onTapFoto: () => _abrirDetalleSitio(i < sitios.length ? sitios[i] : const {}),
-                                        onEscoger: () => _escogerSitio(i < sitios.length ? sitios[i] : const {}),
+                                        onEscoger: () => _escogerSitio(
+                                          i < sitios.length ? sitios[i] : const {},
+                                          inviterUid: inviterUid,
+                                          invitadoNombre: invitadoNombre,
+                                        ),
                                       ),
                                     ],
                                   ],
