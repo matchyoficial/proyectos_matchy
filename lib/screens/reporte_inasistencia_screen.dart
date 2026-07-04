@@ -1,15 +1,25 @@
 // 📂 lib/screens/reporte_inasistencia_screen.dart
-// ✅ REPORTE DE INASISTENCIA (BLINDADO & ANCLAJE DE RED)
-// 🔥 FIX: Burbujas Flotantes "Matchy Style" centradas con iconos y animación.
-// 🔥 FIX: Sincronizado a 60 MINUTOS (Tiempo prudencial de espera) ultra-demarcado.
-// 🔥 NOTIFICACIÓN: La campana ahora recibe el nombre del Lugar y del Matchy.
+// ✅ REPORTE DE INASISTENCIA (RESOLUCIÓN MANUAL DE CITAS EN CONFLICTO)
+// 🔥 Se llega aquí desde citas_screen.dart cuando una cita está urgente (pasó su hora) o tiene
+//    una propuesta/solicitud de acuerdo mutuo en curso.
+// ⏱️ RELOJ EN VIVO: cuenta regresiva real (Timer.periodic, tick cada segundo) hacia el deadline
+//    = hora de la cita + kVentanaResolucion (60 min). Formato HH:MM:SS, caja roja, ícono de alarma.
+// 🆕 GPS DINÁMICO: radio efectivo = 40m base + el margen de error (accuracy) que el GPS reporta
+//    en el momento, con techo absoluto de 100m. Se toman hasta 3 lecturas en ~2 segundos y se
+//    usa la más precisa.
+// 🛡️ Guía de Consecuencias, reloj, chevron: sin cambios de diseño.
+// 🆕 ORDEN: bloque de código/GPS al final, después de los 3 botones de resolución.
+// 🐛 FIX NUEVO: los 3 botones compartían UNA sola variable de estado (_procesandoBoton), así que
+//    al tocar cualquiera, los 3 spinners giraban a la vez. Ahora cada botón tiene su propio
+//    identificador (_botonEnProceso == 'yo_asisti' / 'ninguno_asistio' / 'no_pude_asistir') —
+//    solo el que tocaste muestra su spinner. Los 3 siguen DESHABILITADOS mientras cualquiera
+//    está en curso (correcto, evita doble-toque accidental), pero solo uno gira visualmente.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:proyectos_matchy/screens/home_shell.dart';
 
 class ReporteInasistenciaScreen extends StatefulWidget {
   final String citaId;
@@ -20,33 +30,54 @@ class ReporteInasistenciaScreen extends StatefulWidget {
 }
 
 class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
-  static const double kLogoHeight = 40.0;
+  static const Duration kVentanaResolucion = Duration(minutes: 60);
 
-  // ===========================================================================
-  // 🔥 CONFIGURACIÓN DE GPS
-  // ===========================================================================
-  static const bool kModoPruebasGPS = false;
-  static const int kRadioToleranciaMetros = 200;
-  // ===========================================================================
+  static const double kRadioGPSBase = 40.0;
+  static const double kRadioGPSTecho = 100.0;
 
-  String _tiempoRestante = "--:--:--";
-  Timer? _timer;
-  bool _isLoading = false;
-  DateTime? _deadline;
+  final TextEditingController _codigoCtrl = TextEditingController();
+  bool _confirmandoCodigo = false;
+
+  // 🐛 FIX: en vez de un booleano compartido, guardamos CUÁL botón está procesando
+  String? _botonEnProceso;
+
+  Timer? _tickTimer;
 
   @override
   void initState() {
     super.initState();
-    _cargarDatosCita();
+    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _tickTimer?.cancel();
+    _codigoCtrl.dispose();
     super.dispose();
   }
 
-  // 🔥 SISTEMA DE BURBUJAS FLOTANTES MATCHY STYLE (REEMPLAZA SNACKBARS)
+  DateTime? _parseFechaHora(String fTexto, String hTexto) {
+    try {
+      final parts = fTexto.trim().split(RegExp(r'[/ -]'));
+      int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
+      String rawHora = hTexto.toUpperCase().replaceAll('.', '').trim();
+      bool esPM = rawHora.contains("PM");
+      final tP = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
+      if (tP.isEmpty || tP[0].isEmpty) return null;
+      int hh = int.parse(tP[0]);
+      int mm = tP.length > 1 ? int.parse(tP[1]) : 0;
+      if (esPM && hh != 12) hh += 12; else if (!esPM && hh == 12) hh = 0;
+      return DateTime(y, m, d, hh, mm);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ===========================================================================
+  // 🔔 BURBUJA FLOTANTE (mismo patrón usado en todo el proyecto)
+  // ===========================================================================
   void _mostrarBurbuja(String mensaje, Color color, IconData icono) {
     if (!mounted) return;
     final overlayState = Overlay.of(context);
@@ -55,9 +86,9 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     entry = OverlayEntry(
       builder: (context) => SafeArea(
         child: Align(
-          alignment: Alignment.center, // Centradas en la pantalla como solicitaste
+          alignment: Alignment.topCenter,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 25),
+            padding: const EdgeInsets.only(top: 20, left: 25, right: 25),
             child: Material(
               color: Colors.transparent,
               child: TweenAnimationBuilder<double>(
@@ -90,7 +121,7 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
                       Expanded(
                           child: Text(
                             mensaje,
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'Poppins'),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'Poppins'),
                           )
                       ),
                     ],
@@ -104,326 +135,476 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
     );
 
     overlayState.insert(entry);
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 4), () {
       if (entry.mounted) entry.remove();
     });
   }
 
-  void _mostrarError(String msg) {
-    if (!mounted) return;
-    _mostrarBurbuja(msg, const Color(0xFFFF5252), Icons.error_outline_rounded);
-  }
-
-  DateTime _parsearFechaManual(String fStr, String hStr) {
-    try {
-      final parts = fStr.trim().split(RegExp(r'[/ -]'));
-      if (parts.length < 3) return DateTime.now();
-      int d = int.parse(parts[0]), m = int.parse(parts[1]), y = int.parse(parts[2]);
-      String rawHora = hStr.toUpperCase().replaceAll('.', '').trim();
-      bool esPM = rawHora.contains("PM");
-      final timeParts = rawHora.replaceAll(RegExp(r'[^0-9:]'), '').split(':');
-      if (timeParts.length < 2) return DateTime.now();
-      int h = int.parse(timeParts[0]), min = int.parse(timeParts[1]);
-      if (esPM && h != 12) h += 12; else if (!esPM && h == 12) h = 0;
-      return DateTime(y, m, d, h, min);
-    } catch (_) { return DateTime.now(); }
-  }
-
-  Future<void> _cargarDatosCita() async {
-    setState(() => _isLoading = true);
-    try {
-      final doc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
-      if (!doc.exists) { _mostrarError("Cita no encontrada."); return; }
-      final data = doc.data()!;
-      final f = (data['fecha'] ?? '').toString();
-      final h = (data['hora'] ?? '').toString();
-      if (f.isEmpty || h.isEmpty) return;
-
-      // =========================================================================
-      // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
-      // TIEMPO PRUDENCIAL DE ESPERA CONFIGURADO A: 30 MINUTOS
-      // =========================================================================
-      _deadline = _parsearFechaManual(f, h).add(const Duration(minutes: 60));
-      // =========================================================================
-
-      _startTimer();
-    } catch (e) { debugPrint("Error: $e"); }
-    finally { if (mounted) setState(() => _isLoading = false); }
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_deadline == null) return;
-      final diff = _deadline!.difference(DateTime.now());
-      if (diff.isNegative) {
-        _timer?.cancel();
-        _finalizarPorReloj(); // 🔥 Redirige para que el Juez actúe
-      } else {
-        final h = diff.inHours.toString().padLeft(2, '0');
-        final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
-        final s = (diff.inSeconds % 60).toString().padLeft(2, '0');
-        if (mounted) setState(() => _tiempoRestante = "$h:$m:$s");
+  // ===========================================================================
+  // 🆕 GPS DINÁMICO: mejor lectura de hasta 3 intentos + radio efectivo con techo
+  // ===========================================================================
+  Future<Position?> _obtenerMejorUbicacion({int intentos = 3}) async {
+    Position? mejor;
+    for (int i = 0; i < intentos; i++) {
+      try {
+        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        if (mejor == null || pos.accuracy < mejor.accuracy) {
+          mejor = pos;
+        }
+      } catch (_) {
+        // seguimos intentando con la siguiente lectura
       }
-    });
+      if (i < intentos - 1) await Future.delayed(const Duration(milliseconds: 700));
+    }
+    return mejor;
   }
 
-  Future<void> _finalizarPorReloj() async {
-    if (mounted) setState(() { _tiempoRestante = "00:00:00"; _isLoading = true; });
-    // Anclaje: Esperamos un momento antes de sacar al usuario
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) HomeShell.go(context, index: 1);
+  double _radioEfectivo(double accuracy) {
+    return (kRadioGPSBase + accuracy).clamp(kRadioGPSBase, kRadioGPSTecho);
   }
 
-  void _mostrarDialogoMatchy({
-    required String titulo,
-    required String mensaje,
-    required IconData icono,
-    required Color color,
-    required String botonTexto,
-    required VoidCallback onCerrar,
-  }) {
-    showDialog(
+  // Devuelve null si la validación pasó, o un mensaje de error si no
+  Future<String?> _validarGPS({required double lat, required double lng}) async {
+    final pos = await _obtenerMejorUbicacion();
+    if (pos == null) {
+      return "No pudimos obtener tu ubicación. Activa el GPS e inténtalo de nuevo.";
+    }
+    final distancia = Geolocator.distanceBetween(pos.latitude, pos.longitude, lat, lng);
+    final radioEfectivo = _radioEfectivo(pos.accuracy);
+    if (distancia > radioEfectivo) {
+      return "Estás a ${distancia.round()}m del lugar. Tu GPS tiene un margen de ±${pos.accuracy.round()}m ahora mismo — si estás en el lugar, intenta de nuevo en unos segundos o acércate a una ventana.";
+    }
+    return null;
+  }
+
+  // ===========================================================================
+  // 🆕 BLOQUE: confirmar código + validar GPS dinámico
+  // ===========================================================================
+  Future<void> _confirmarConCodigo({
+    required String codigoDelOtro,
+    required bool isOwner,
+    required double lat,
+    required double lng,
+  }) async {
+    if (_confirmandoCodigo) return;
+    final ingresado = _codigoCtrl.text.trim().toUpperCase();
+
+    if (ingresado.isEmpty) {
+      _mostrarBurbuja("Escribe el código que te dio tu Matchy.", Colors.orangeAccent, Icons.info_outline_rounded);
+      return;
+    }
+
+    setState(() => _confirmandoCodigo = true);
+
+    try {
+      if (ingresado != codigoDelOtro.toUpperCase()) {
+        _mostrarBurbuja("Código incorrecto. Revísalo con tu Matchy.", const Color(0xFFFF5252), Icons.error_outline_rounded);
+        return;
+      }
+
+      final errorGPS = await _validarGPS(lat: lat, lng: lng);
+      if (errorGPS != null) {
+        _mostrarBurbuja(errorGPS, const Color(0xFFFF5252), Icons.social_distance_rounded);
+        return;
+      }
+
+      final campo = isOwner ? 'gpsCheckOwner' : 'gpsCheckMatchy';
+      await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update({campo: true});
+
+      if (!mounted) return;
+      _mostrarBurbuja("¡Cita confirmada! Tu asistencia quedó registrada.", const Color(0xFF00E676), Icons.check_circle_rounded);
+      _codigoCtrl.clear();
+    } catch (e) {
+      _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _confirmandoCodigo = false);
+    }
+  }
+
+  // ===========================================================================
+  // 🛡️ BOTONES DE RESOLUCIÓN (ahora con spinner individual por botón)
+  // ===========================================================================
+
+  Future<void> _accionYoAsisti({required bool isOwner, required double lat, required double lng}) async {
+    if (_botonEnProceso != null) return;
+    setState(() => _botonEnProceso = 'yo_asisti');
+    try {
+      final errorGPS = await _validarGPS(lat: lat, lng: lng);
+      if (errorGPS != null) {
+        _mostrarBurbuja(errorGPS, const Color(0xFFFF5252), Icons.social_distance_rounded);
+        return;
+      }
+      final campo = isOwner ? 'gpsCheckOwner' : 'gpsCheckMatchy';
+      await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update({campo: true});
+      if (!mounted) return;
+      _mostrarBurbuja("Quedó registrado que sí asististe.", const Color(0xFF00E676), Icons.check_circle_rounded);
+    } catch (e) {
+      _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _botonEnProceso = null);
+    }
+  }
+
+  Future<void> _accionNingunoAsistio({required bool isOwner, required bool elOtroYaPropuso}) async {
+    if (_botonEnProceso != null) return;
+    setState(() => _botonEnProceso = 'ninguno_asistio');
+    try {
+      final campoMio = isOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo';
+      final Map<String, dynamic> update = {campoMio: true};
+      if (elOtroYaPropuso) {
+        update['status'] = 'mutual_agreement_finish';
+      } else {
+        update['status'] = 'mutual_agreement_pending';
+      }
+      await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update(update);
+      if (!mounted) return;
+      _mostrarBurbuja(
+        elOtroYaPropuso ? "Acuerdo confirmado. Se aplicarán -10 puntos a ambos." : "Propuesta enviada. Esperando que tu Matchy confirme.",
+        const Color(0xFF448AFF),
+        Icons.handshake_rounded,
+      );
+    } catch (e) {
+      _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _botonEnProceso = null);
+    }
+  }
+
+  Future<void> _accionNoPudeAsistir() async {
+    if (_botonEnProceso != null) return;
+
+    final confirmar = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: BorderSide(color: color, width: 1.5)),
-        title: Row(children: [Icon(icono, color: color), const SizedBox(width: 10), Flexible(child: Text(titulo, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)))]),
-        content: Text(mensaje, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),
-        actions: [TextButton(onPressed: () { Navigator.pop(ctx); onCerrar(); }, child: Text(botonTexto, style: TextStyle(color: color, fontWeight: FontWeight.w900)))],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.white24)),
+        title: const Text("¿ASUMIR TU FALTA?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+        content: const Text(
+          "Esto te restará -20 puntos, sumará un strike, y borrará tu racha actual — lo que puede generar un bloqueo temporal. Úsalo solo si de verdad no pudiste asistir.",
+          style: TextStyle(color: Colors.white70, fontFamily: 'Poppins'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("CANCELAR", style: TextStyle(color: Colors.white54))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("SÍ, ASUMIR", style: TextStyle(color: Color(0xFFFF5252), fontWeight: FontWeight.w900))),
+        ],
       ),
     );
-  }
+    if (confirmar != true) return;
 
-  // 🔹 BOTÓN VERDE: Solo valida GPS y pone el Check.
-  Future<void> _verificarUbicacionYReclamar() async {
-    setState(() => _isLoading = true);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
+    setState(() => _botonEnProceso = 'no_pude_asistir');
     try {
-      final citaDoc = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
-      final data = citaDoc.data()!;
-      final double lat = (data['latitude'] as num?)?.toDouble() ?? 0.0;
-      final double lng = (data['longitude'] as num?)?.toDouble() ?? 0.0;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-      if (lat == 0.0 || lng == 0.0) throw "Sin coordenadas guardadas.";
-
-      LocationPermission p = await Geolocator.checkPermission();
-      if (p == LocationPermission.denied) {
-        p = await Geolocator.requestPermission();
-        if (p == LocationPermission.denied) throw "Permiso GPS denegado.";
-      }
-
-      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      double dist = Geolocator.distanceBetween(pos.latitude, pos.longitude, lat, lng);
-
-      bool gpsAprobado = kModoPruebasGPS ? true : (dist <= kRadioToleranciaMetros);
-
-      if (gpsAprobado) {
-        await FirebaseFirestore.instance.runTransaction((tx) async {
-          final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
-          final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-          final doc = await tx.get(citaRef);
-          if (!doc.exists) return;
-
-          bool isOwner = doc.data()!['ownerUid'] == user.uid;
-
-          // 🔥 SOLO PONEMOS EL CHECK. El Juez decide si cierra la cita.
-          if (isOwner) {
-            tx.update(citaRef, {'gpsCheckOwner': true});
-          } else {
-            tx.update(citaRef, {'gpsCheckMatchy': true});
-          }
-
-          // Premio inmediato por llegar (Validación positiva)
-          tx.update(userRef, {'citas_consecutivas_exitosas': FieldValue.increment(1)});
-        });
-
-        // ⚓ ANCLAJE DE RED
-        await Future.delayed(const Duration(seconds: 2));
-
-        if (mounted) {
-          _mostrarDialogoMatchy(
-            titulo: "UBICACIÓN CONFIRMADA",
-            mensaje: "GPS verificado. Has asegurado tu asistencia.\nSi tu Matchy también confirma, la cita se cerrará con éxito automáticamente.",
-            icono: Icons.check_circle_outline,
-            color: const Color(0xFF00E676),
-            botonTexto: "¡GENIAL!",
-            onCerrar: () => HomeShell.go(context, index: 1),
-          );
-        }
-      } else {
-        throw "Estás a ${dist.toInt()}m. Acércate más.";
-      }
-
-    } catch (e) { if (mounted) _mostrarError(e.toString()); }
-    finally { if (mounted) setState(() => _isLoading = false); }
-  }
-
-  // 🔹 BOTÓN AZUL: Gestión de Estados
-  Future<void> _gestionarBotonAzul() async {
-    setState(() => _isLoading = true);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    try {
-      bool esCierre = false;
       await FirebaseFirestore.instance.runTransaction((tx) async {
         final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
-        final citaSnap = await tx.get(citaRef);
-        if (!citaSnap.exists) throw "Error lectura";
-        final cData = citaSnap.data()!;
-
-        bool soyOwner = cData['ownerUid'] == user.uid;
-        // Revisamos si el otro YA propuso
-        bool otroPropuso = soyOwner ? (cData['matchyPropusoAcuerdo'] == true) : (cData['ownerPropusoAcuerdo'] == true);
-
-        if (otroPropuso) {
-          // 🔥 SEGUNDO CLICK: GATILLO FINAL
-          esCierre = true;
-          tx.update(citaRef, {
-            'status': 'mutual_agreement_finish', // EL JUEZ LEERÁ ESTO
-            'resultado': 'mutual_agreement',
-            soyOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo': true,
-          });
-        } else {
-          // 🔥 PRIMER CLICK: PROPUESTA
-          tx.update(citaRef, {
-            'status': 'mutual_agreement_pending',
-            soyOwner ? 'ownerPropusoAcuerdo' : 'matchyPropusoAcuerdo': true,
-          });
-        }
-      });
-
-      // ⚓ ANCLAJE DE RED
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        if (esCierre) {
-          _mostrarBurbuja("Acuerdo cerrado mutuo. Procesando...", const Color(0xFF448AFF), Icons.handshake_rounded);
-          HomeShell.go(context, index: 1);
-        } else {
-          _mostrarDialogoMatchy(
-            titulo: "PROPUESTA ENVIADA",
-            mensaje: "Has propuesto un acuerdo. Si tu Matchy acepta, la cita se cerrará y ambos perderán 10 puntos.",
-            icono: Icons.info_outline,
-            color: const Color(0xFF64B5F6),
-            botonTexto: "ESPERAR",
-            onCerrar: () => HomeShell.go(context, index: 1),
-          );
-        }
-      }
-
-    } catch (e) { if (mounted) _mostrarError("$e"); }
-    finally { if (mounted) setState(() => _isLoading = false); }
-  }
-
-  // 🔹 BOTÓN ROJO: Cancelación Unilateral
-  Future<void> _ejecutarSentencia(String tipo) async {
-    setState(() => _isLoading = true);
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-    try {
-      await FirebaseFirestore.instance.runTransaction((tx) async {
         final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
         final citaSnap = await tx.get(citaRef);
-        final data = citaSnap.data()!;
-
-        // Extraer datos para enriquecer la notificación
-        final bool isOwner = data['ownerUid'] == user.uid;
-        final String peerName = isOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
-        final String lugarNombre = data['lugarNombre'] ?? 'Lugar';
-
-        // 📝 Registro de Notificación Mejorado (PANEL COMPATIBLE)
-        final notiRef = userRef.collection('notifications').doc();
-        tx.set(notiRef, {
-          'title': 'Sanción: ${lugarNombre.toUpperCase()}',
-          'body': "Cancelaste unilateralmente la cita con $peerName en $lugarNombre.",
-          'createdAt': FieldValue.serverTimestamp(),
-          'type': 'danger',
-          'read': false,
-        });
-
-        // Sanción
         final userSnap = await tx.get(userRef);
-        if (userSnap.exists) {
-          int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
-          int strikes = (userSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
-          int newS = strikes + 1;
-          tx.update(userRef, {
-            'confiabilidad': (score - 20).clamp(0, 100),
-            'strikes': newS,
-            'citas_consecutivas_exitosas': 0,
-            'userStatus': newS >= 5 ? 'blocked_permanent' : 'blocked',
-            'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5))),
-          });
-        }
 
-        // Finalizamos cita
-        tx.update(citaRef, {
-          'status': 'finished',
-          'resultado': 'absent_confessed',
-          'culpableUid': user.uid,
-          isOwner ? 'ownerCastigado' : 'matchyCastigado': true
+        final citaData = citaSnap.data() ?? {};
+        final isOwner = citaData['ownerUid'] == user.uid;
+        final campo = isOwner ? 'ownerCastigado' : 'matchyCastigado';
+
+        int score = (userSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100;
+        int strikes = (userSnap.data()?['strikes'] as num?)?.toInt() ?? 0;
+        int newStrikes = strikes + 1;
+
+        tx.update(userRef, {
+          'confiabilidad': (score - 20).clamp(0, 100),
+          'strikes': newStrikes,
+          'citas_consecutivas_exitosas': 0,
+          'userStatus': newStrikes >= 5 ? 'blocked_permanent' : 'blocked',
+          'bloqueadoHasta': Timestamp.fromDate(DateTime.now().add(Duration(days: newStrikes * 5))),
         });
+
+        tx.update(citaRef, {campo: true, 'status': 'finished', 'resultado': 'self_reported_absence'});
       });
 
-      // ⚓ ANCLAJE DE RED
-      await Future.delayed(const Duration(seconds: 3));
-
-      if (mounted) HomeShell.go(context, index: 1);
-    } catch (e) { if (mounted) _mostrarError("$e"); }
-    finally { if (mounted) setState(() => _isLoading = false); }
+      if (!mounted) return;
+      _mostrarBurbuja("Registrado. Se aplicaron -20 puntos, un strike y se borró tu racha.", const Color(0xFFFF5252), Icons.report_problem_rounded);
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+    } catch (e) {
+      _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
+    } finally {
+      if (mounted) setState(() => _botonEnProceso = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final myUid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: Opacity(opacity: 0.3, child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover))),
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10), child: Stack(alignment: Alignment.center, children: [Align(alignment: Alignment.centerLeft, child: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => Navigator.pop(context))), Image.asset('assets/images/logomatchyplano.png', height: kLogoHeight)])),
-                Expanded(child: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 30), child: Column(children: [
-                  const SizedBox(height: 20),
-                  const Icon(Icons.timer_off_outlined, color: Colors.redAccent, size: 50),
-                  const Text("TIEMPO RESTANTE", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
-                  const SizedBox(height: 15),
-                  Container(height: 90, width: double.infinity, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.redAccent.withOpacity(0.5), width: 2)), child: FittedBox(fit: BoxFit.scaleDown, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Text(_tiempoRestante, style: const TextStyle(color: Color(0xFFFF5252), fontSize: 50, fontFamily: 'monospace', fontWeight: FontWeight.w900, letterSpacing: 2.0))))),
-                  const SizedBox(height: 25),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white12)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text("GUÍA DE CONSECUENCIAS", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
-                        SizedBox(height: 12),
-                        _GuiaItem(icon: Icons.location_pin, color: Color(0xFF00E676), text: "ESTOY AQUÍ: Validación por GPS. Protege tus puntos al 100% y asegura tu racha."),
-                        SizedBox(height: 10),
-                        _GuiaItem(icon: Icons.handshake_rounded, color: Color(0xFF64B5F6), text: "ACUERDO MUTUO: Requiere que AMBOS acepten (-10 Pts)."),
-                        SizedBox(height: 10),
-                        _GuiaItem(icon: Icons.cancel, color: Color(0xFFFF5252), text: "ASUMO MI FALTA: Cancelación unilateral. -20 Pts + Strike + Borrado de Racha."),
-                      ],
-                    ),
+          Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
+
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('citas').doc(widget.citaId).snapshots(),
+            builder: (context, snap) {
+              if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
+              if (!snap.data!.exists) return const Center(child: Text("Esta cita ya no existe", style: TextStyle(color: Colors.white)));
+
+              final data = snap.data!.data() as Map<String, dynamic>;
+              final isOwner = data['ownerUid'] == myUid;
+              final codigoOwner = (data['codigoOwner'] ?? '').toString();
+              final codigoMatchy = (data['codigoMatchy'] ?? '').toString();
+              final miCodigo = isOwner ? codigoOwner : codigoMatchy;
+              final codigoDelOtro = isOwner ? codigoMatchy : codigoOwner;
+              final lugarNombre = (data['lugarNombre'] ?? 'Lugar').toString();
+              final lugarDireccion = (data['lugarDireccion'] ?? '').toString();
+              final lat = (data['latitude'] as num?)?.toDouble() ?? 0.0;
+              final lng = (data['longitude'] as num?)?.toDouble() ?? 0.0;
+              final otroNombre = isOwner ? (data['matchyNombre'] ?? 'tu Matchy').toString() : (data['ownerNombre'] ?? 'tu Matchy').toString();
+              final elOtroYaPropusoAcuerdo = isOwner ? data['matchyPropusoAcuerdo'] == true : data['ownerPropusoAcuerdo'] == true;
+
+              DateTime? fechaReal;
+              final sched = data['scheduledAt'];
+              if (sched is Timestamp) {
+                fechaReal = sched.toDate();
+              } else {
+                fechaReal = _parseFechaHora((data['fecha'] ?? '').toString(), (data['hora'] ?? '').toString());
+              }
+              final deadline = fechaReal?.add(kVentanaResolucion);
+              Duration restante = Duration.zero;
+              if (deadline != null) {
+                final calc = deadline.difference(DateTime.now());
+                restante = calc.isNegative ? Duration.zero : calc;
+              }
+
+              return SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 70, 20, 60),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(child: Image.asset('assets/images/logomatchyplano.png', height: 45)),
+                      const SizedBox(height: 20),
+
+                      // 1️⃣ RELOJ
+                      _buildRelojCuentaRegresiva(restante, lugarNombre, lugarDireccion),
+
+                      const SizedBox(height: 20),
+
+                      // 2️⃣ GUÍA DE CONSECUENCIAS
+                      _buildGuiaConsecuencias(),
+
+                      const SizedBox(height: 24),
+
+                      // 3️⃣ LOS 3 BOTONES DE RESOLUCIÓN (spinner individual por botón)
+                      _BotonResolucion(
+                        texto: "YO SÍ ASISTÍ, MI MATCHY NO",
+                        icon: Icons.location_on_rounded,
+                        colores: const [Color(0xFF00E676), Color(0xFF00B84D)],
+                        cargando: _botonEnProceso == 'yo_asisti',
+                        deshabilitado: _botonEnProceso != null,
+                        onTap: () => _accionYoAsisti(isOwner: isOwner, lat: lat, lng: lng),
+                      ),
+                      const SizedBox(height: 12),
+                      _BotonResolucion(
+                        texto: "NINGUNO ASISTIÓ / ACUERDO",
+                        icon: Icons.diamond_rounded,
+                        colores: const [Color(0xFF448AFF), Color(0xFF2962FF)],
+                        cargando: _botonEnProceso == 'ninguno_asistio',
+                        deshabilitado: _botonEnProceso != null,
+                        onTap: () => _accionNingunoAsistio(isOwner: isOwner, elOtroYaPropuso: elOtroYaPropusoAcuerdo),
+                      ),
+                      const SizedBox(height: 12),
+                      _BotonResolucion(
+                        texto: "NO PUDE ASISTIR",
+                        icon: Icons.cancel_rounded,
+                        colores: const [Color(0xFFFF5252), Color(0xFFD50000)],
+                        cargando: _botonEnProceso == 'no_pude_asistir',
+                        deshabilitado: _botonEnProceso != null,
+                        onTap: _accionNoPudeAsistir,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // 4️⃣ BLOQUE DE CÓDIGO
+                      _buildBloqueCodigo(
+                        miCodigo: miCodigo,
+                        codigoDelOtro: codigoDelOtro,
+                        isOwner: isOwner,
+                        lat: lat,
+                        lng: lng,
+                        otroNombre: otroNombre,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 25),
-                  if (_isLoading) const Padding(padding: EdgeInsets.only(top: 20), child: Column(children: [CircularProgressIndicator(color: Colors.white), SizedBox(height: 10), Text("Procesando...", style: TextStyle(color: Colors.white54))]))
-                  else ...[
-                    _SentenciaButton(text: "YO SÍ ASISTÍ, MI MATCHY NO", icon: Icons.person_pin_circle_rounded, gradient: [const Color(0xFF00E676), const Color(0xFF00C853)], onTap: _verificarUbicacionYReclamar),
-                    const SizedBox(height: 16),
-                    _SentenciaButton(text: "NINGUNO ASISTIÓ / ACUERDO", icon: Icons.handshake_rounded, gradient: [const Color(0xFF64B5F6), const Color(0xFF1976D2)], onTap: _gestionarBotonAzul),
-                    const SizedBox(height: 16),
-                    _SentenciaButton(text: "NO PUDE ASISTIR", icon: Icons.cancel_presentation_rounded, gradient: [const Color(0xFFFF5252), const Color(0xFFD32F2F)], onTap: () => _ejecutarSentencia('CULPABLE')),
-                  ],
-                  const SizedBox(height: 30),
-                ]))),
+                ),
+              );
+            },
+          ),
+
+          Positioned(
+            top: 50, left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 42, height: 42,
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), shape: BoxShape.circle, border: Border.all(color: Colors.white24, width: 1)),
+                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRelojCuentaRegresiva(Duration restante, String lugarNombre, String lugarDireccion) {
+    final horas = restante.inHours.toString().padLeft(2, '0');
+    final minutos = (restante.inMinutes % 60).toString().padLeft(2, '0');
+    final segundos = (restante.inSeconds % 60).toString().padLeft(2, '0');
+
+    return Column(
+      children: [
+        const Icon(Icons.alarm_rounded, color: Color(0xFFFF5252), size: 40),
+        const SizedBox(height: 6),
+        const Text("TIEMPO RESTANTE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, fontFamily: 'Poppins', letterSpacing: 1.0)),
+        const SizedBox(height: 4),
+        Text(
+          "$lugarNombre${lugarDireccion.isNotEmpty ? ' — $lugarDireccion' : ''}",
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white54, fontSize: 12, fontFamily: 'Poppins'),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFFF5252), width: 1.5),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            "$horas:$minutos:$segundos",
+            style: const TextStyle(color: Color(0xFFFF5252), fontSize: 36, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 2),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuiaConsecuencias() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0x20FFFFFF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("GUÍA DE CONSECUENCIAS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, fontFamily: 'Poppins')),
+          const SizedBox(height: 14),
+          _filaConsecuencia(icon: Icons.location_on_rounded, color: const Color(0xFF00E676), texto: "ESTOY AQUÍ: Validación por GPS. Protege tus puntos al 100% y asegura tu racha."),
+          const SizedBox(height: 12),
+          _filaConsecuencia(icon: Icons.diamond_rounded, color: const Color(0xFF448AFF), texto: "ACUERDO MUTUO: Requiere que AMBOS acepten (-10 Pts)."),
+          const SizedBox(height: 12),
+          _filaConsecuencia(icon: Icons.cancel_rounded, color: const Color(0xFFFF5252), texto: "ASUMO MI FALTA: Cancelación unilateral. -20 Pts + Strike + Borrado de Racha."),
+        ],
+      ),
+    );
+  }
+
+  Widget _filaConsecuencia({required IconData icon, required Color color, required String texto}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(texto, style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins', height: 1.3))),
+      ],
+    );
+  }
+
+  Widget _buildBloqueCodigo({
+    required String miCodigo,
+    required String codigoDelOtro,
+    required bool isOwner,
+    required double lat,
+    required double lng,
+    required String otroNombre,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0x20FFFFFF),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text("TU CÓDIGO", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins', letterSpacing: 1.0)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFBEB3FF))),
+            alignment: Alignment.center,
+            child: Text(
+              miCodigo.isEmpty ? '········' : miCodigo,
+              style: const TextStyle(color: Color(0xFFBEB3FF), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 6, fontFamily: 'Poppins'),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          const Text("CONFIRMAR CITA", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins', letterSpacing: 1.0)),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _codigoCtrl,
+            textCapitalization: TextCapitalization.characters,
+            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 3, fontFamily: 'Poppins'),
+            textAlign: TextAlign.center,
+            decoration: InputDecoration(
+              hintText: "CÓDIGO DE $otroNombre",
+              hintStyle: const TextStyle(color: Colors.white38, fontSize: 13, letterSpacing: 1, fontFamily: 'Poppins'),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.08),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: _confirmandoCodigo ? null : () => _confirmarConCodigo(codigoDelOtro: codigoDelOtro, isOwner: isOwner, lat: lat, lng: lng),
+            child: Container(
+              height: 50,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF00E676), Color(0xFF00B84D)]),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              alignment: Alignment.center,
+              child: _confirmandoCodigo
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                  : const Text("CONFIRMAR CITA", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15, fontFamily: 'Poppins')),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.06), borderRadius: BorderRadius.circular(12)),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.shield_outlined, color: Colors.white54, size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Por tu seguridad, nunca compartas tu código por chat. Entrégalo solo en persona.",
+                    style: TextStyle(color: Colors.white54, fontSize: 12, fontFamily: 'Poppins', height: 1.3),
+                  ),
+                ),
               ],
             ),
           ),
@@ -433,22 +614,61 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
   }
 }
 
-class _GuiaItem extends StatelessWidget {
-  final IconData icon; final Color color; final String text;
-  const _GuiaItem({required this.icon, required this.color, required this.text});
-  @override Widget build(BuildContext context) {
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: color, size: 18),
-      const SizedBox(width: 8),
-      Expanded(child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Poppins', fontWeight: FontWeight.w500)))
-    ]);
-  }
-}
+// ============================================================================
+// 🔘 BOTÓN DE RESOLUCIÓN (widget compartido por los 3 botones)
+// 🐛 FIX: nuevo parámetro `deshabilitado`, separado de `cargando` — así el spinner solo se
+// muestra en el botón que se tocó, pero los 3 se bloquean mientras cualquiera está en curso.
+// ============================================================================
+class _BotonResolucion extends StatelessWidget {
+  final String texto;
+  final IconData icon;
+  final List<Color> colores;
+  final bool cargando;
+  final bool deshabilitado;
+  final VoidCallback onTap;
 
-class _SentenciaButton extends StatelessWidget {
-  final String text; final IconData icon; final List<Color> gradient; final VoidCallback onTap;
-  const _SentenciaButton({required this.text, required this.icon, required this.gradient, required this.onTap});
-  @override Widget build(BuildContext context) {
-    return GestureDetector(onTap: onTap, child: Container(width: double.infinity, height: 60, padding: const EdgeInsets.symmetric(horizontal: 16), decoration: BoxDecoration(gradient: LinearGradient(colors: gradient), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white24)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: Colors.white, size: 22), const SizedBox(width: 10), Flexible(child: FittedBox(fit: BoxFit.scaleDown, child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14))))])));
+  const _BotonResolucion({
+    required this.texto,
+    required this.icon,
+    required this.colores,
+    required this.cargando,
+    required this.deshabilitado,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: deshabilitado ? null : onTap,
+      child: Opacity(
+        opacity: deshabilitado && !cargando ? 0.5 : 1.0,
+        child: Container(
+          height: 54,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: colores, begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(texto, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins')),
+                ),
+              ),
+              if (cargando)
+                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              else
+                const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

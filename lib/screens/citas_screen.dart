@@ -1,5 +1,5 @@
 // 📂 lib/screens/citas_screen.dart
-// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 30 MINUTOS + SMART CACHE PRO)
+// ✅ PANTALLA CITAS FINAL (JUEZ SUPREMO 60 MINUTOS + SMART CACHE PRO)
 // 🔥 FIX LOGIC: El Reloj ahora espera al segundo usuario para cerrar la cita (Doble check).
 // 🔥 FIX UI: Layout 60/40, Letreros arriba-izq, Textos ajustados.
 // 🔥 CACHÉ PRO: ValueKey y memCacheHeight inyectados en la foto del lugar para evitar parpadeos con el Reloj.
@@ -7,18 +7,24 @@
 // 🆕 NEW: Sección "PENDIENTES Y POR ACEPTAR" ahora también muestra invitaciones de Comunidad
 //    (invitaciones_citas, status pending, <30 días) con tarjeta y etiqueta "INTERESADO" propias.
 //    Completamente aislado del Juez Supremo — CitaItem, _convertirDoc y la lógica de castigo
-//    NO se tocan, ya que estas invitaciones no tienen fecha/hora/GPS/deadline real todavía.
+//    NO se tocan salvo el cambio de reloj/GPS/equidad de abajo, ya que estas invitaciones no
+//    tienen fecha/hora/GPS/deadline real todavía.
 // 🆕 NEW: También muestra invitaciones YA RESPONDIDAS por el invitado (status 'elegido') donde
 //    YO soy el inviter — tarjeta "PROGRAMAR" ámbar, con la foto del sitio que eligieron.
 // 🆕 FIX: _InteresElegidoCard ya NO marca la invitación como 'agendado' por su cuenta antes de
 //    navegar — ahora solo pasa invitacionId a CreaCitaMatchyScreen, que se encarga de marcarla
 //    justo cuando la cita real se crea con éxito.
 // 🆕 NUEVO: interesesPendientesProvider ahora también filtra por 'rechazadoPorInvitado' == false.
-//    Cuando el invitado rechaza una invitación desde intereses_invitacion_screen.dart, esa
-//    tarjeta "INTERESADO" desaparece de aquí de inmediato — sin afectar en nada lo que ve el
-//    invitador en intereses_screen.dart (ese archivo sigue mirando solo 'status'). Requiere su
-//    propio índice compuesto nuevo (invitadoUid + status + rechazadoPorInvitado + createdAt) —
-//    Firebase dará el link la primera vez que se ejecute.
+// 🕐 NUEVO: la gracia del Juez Supremo pasa de 30 a 60 minutos.
+// 🐛 FIX: 'esUrgente' ahora también depende de si YO ya confirmé mi propia presencia por GPS
+//    (amISafeGPS) — en cuanto tu propio gpsCheckOwner/gpsCheckMatchy queda en true, la tarjeta
+//    deja de mostrarse como pendiente/urgente PARA TI de inmediato.
+// 🐛 FIX NUEVO: el Juez Supremo ahora también reconoce 'tengoPropuestaAcuerdo' como motivo
+//    válido para NO castigar por timeout. Antes, si proponías el Acuerdo Mutuo (-10 pts) y la
+//    otra persona nunca confirmaba antes de los 60 minutos, el Juez te aplicaba el castigo
+//    completo de timeout (-20 pts + strike) en vez de nada — un resultado injusto para quien
+//    actuó de buena fe. Ahora, si ya propusiste el acuerdo (o confirmaste tu GPS), el timeout
+//    te libera sin castigo. Solo se castiga con -20 a quien de verdad no hizo nada en absoluto.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -141,14 +147,16 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
 
     // =========================================================================
     // 🚨 🛑 ⏳ ZONA DE CONFIGURACIÓN DEL RELOJ / GRACIA DE LA CITA ⏳ 🛑 🚨
-    // TIEMPO PRUDENCIAL DE ESPERA CONFIGURADO A: 30 MINUTOS
+    // TIEMPO PRUDENCIAL DE ESPERA CONFIGURADO A: 60 MINUTOS
     // =========================================================================
-    final deadline = fechaReal.add(const Duration(minutes: 30));
+    final deadline = fechaReal.add(const Duration(minutes: 60));
     // =========================================================================
 
+    final bool amISafeGPS = soyOwner ? data['gpsCheckOwner'] == true : data['gpsCheckMatchy'] == true;
+
     final diferencia = ahora.difference(fechaReal);
-    // Urgente si ya pasó la hora o estamos en los 30 minutos de gracia
-    final urgente = diferencia.inMinutes > 0 && (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending');
+    final bool urgenteBase = diferencia.inMinutes > 0 && (data['status'] == 'matched' || data['status'] == 'mutual_agreement_pending');
+    final urgente = urgenteBase && !amISafeGPS;
 
     return CitaItem(
       id: doc.id,
@@ -175,7 +183,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       tengoSolicitudAcuerdo: soyOwner ? data['matchyPropusoAcuerdo'] == true : data['ownerPropusoAcuerdo'] == true,
       isPrivate: data['isPrivate'] == true,
       deadline: deadline,
-      amISafeGPS: soyOwner ? data['gpsCheckOwner'] == true : data['gpsCheckMatchy'] == true,
+      amISafeGPS: amISafeGPS,
       amIPunished: yaPague,
     );
   } catch (e) { return null; }
@@ -269,7 +277,7 @@ final interesesPendientesProvider = StreamProvider.autoDispose<List<InteresPendi
       .collection('invitaciones_citas')
       .where('invitadoUid', isEqualTo: user.uid)
       .where('status', isEqualTo: 'pending')
-      .where('rechazadoPorInvitado', isEqualTo: false) // 🆕 NUEVO
+      .where('rechazadoPorInvitado', isEqualTo: false)
       .where('createdAt', isGreaterThan: hace30Dias)
       .orderBy('createdAt', descending: true)
       .snapshots()
@@ -356,7 +364,12 @@ class CitasScreen extends ConsumerWidget {
         );
       }
       else if (cita.deadline != null && now.isAfter(cita.deadline!)) {
-        if (cita.amISafeGPS) {
+        // 🐛 FIX: si ya confirmaste tu presencia POR GPS, O ya propusiste el Acuerdo Mutuo de
+        // buena fe (aunque el otro nunca respondió), el timeout no te castiga. Antes, proponer
+        // el acuerdo y que el otro nunca confirmara terminaba en el castigo COMPLETO de -20 pts
+        // + strike — peor que no haber hecho nada. Ahora quien actuó de buena fe queda protegido;
+        // solo se castiga con -20 a quien de verdad no hizo nada en absoluto.
+        if (cita.amISafeGPS || cita.tengoPropuestaAcuerdo) {
           _marcarRecibo(cita);
         } else {
           _sentenciaFinal(

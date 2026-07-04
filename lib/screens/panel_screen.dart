@@ -16,6 +16,10 @@
 //    comunidad.png sigue llevando a ComunidadScreen sin cambios).
 // 🔔 NEW: NotificationLogic.handleTap reconoce 'interes_cita' (invitación nueva -> abre
 //    InteresesInvitacionScreen) e 'interes_elegido' (invitado eligió sitio -> salta a Citas).
+// ✨ NUEVO: el ícono estático 'comunidad.png' se reemplaza por AnimacionComunidadIco — mini
+//    swipe animado en bucle con 8 fotos, cada una deslizándose en una dirección fija (verde/rojo
+//    + corazón/X). Tamaño 130x130. El botón "INTERESES" de abajo se ensancha de 99 a 130 para
+//    quedar alineado con el nuevo tamaño del ícono.
 
 import 'dart:io';
 import 'dart:async';
@@ -35,6 +39,7 @@ import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/termometro_confiabilidad.dart';
 import 'package:proyectos_matchy/widgets/banner_publicidad.dart'; // 🔥 IMPORT INYECTADO AQUÍ
+import 'package:proyectos_matchy/widgets/animacion_comunidad_ico.dart'; // ✨ NUEVO
 
 import 'package:proyectos_matchy/screens/crear_cita_panel_screen.dart';
 import 'package:proyectos_matchy/screens/cita_buscar.dart';
@@ -658,18 +663,18 @@ class _PanelContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
           decoration: BoxDecoration(color: _PanelScreenState.kCardBackground, borderRadius: BorderRadius.circular(26), boxShadow: _PanelScreenState.kCardShadow),
           child: Row(children: [
-            // 🔥 COLUMNA IZQUIERDA: IMAGEN COMUNIDAD (BOTÓN, lleva a ComunidadScreen) + BOTÓN
+            // ✨ COLUMNA IZQUIERDA: ANIMACIÓN COMUNIDAD (lleva a ComunidadScreen) + BOTÓN
             //    PREMIUM "INTERESES" (lleva a InteresesScreen)
             Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 GestureDetector(
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComunidadScreen())),
-                  child: Image.asset('assets/images/comunidad.png', width: 102, height: 99, fit: BoxFit.contain),
+                  child: const AnimacionComunidadIco(size: 130),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
-                  width: 99,
+                  width: 130,
                   child: _BotonPanelPremium(
                     texto: "INTERESES",
                     bloqueado: false,
@@ -1161,14 +1166,14 @@ class _NotificacionesSheet extends ConsumerWidget {
                       final cuerpo = data['body'] ?? '';
                       final type = data['type'] ?? '';
                       final citaId = data['citaId'];
-                      final invitacionId = data['invitacionId']; // 🆕 NUEVO
+                      final invitacionId = data['invitacionId'];
 
                       // Lógica de Iconos
                       IconData icono = Icons.notifications_rounded;
                       if (type == 'repro_request' || type == 'invitacion_cita') icono = Icons.calendar_month_rounded;
                       if (type == 'repro_accepted' || type == 'cita_aceptada') icono = Icons.check_circle_rounded;
-                      if (type == 'interes_cita') icono = Icons.favorite_rounded; // 🆕 NUEVO
-                      if (type == 'interes_elegido') icono = Icons.event_available_rounded; // 🆕 NUEVO
+                      if (type == 'interes_cita') icono = Icons.favorite_rounded;
+                      if (type == 'interes_elegido') icono = Icons.event_available_rounded;
 
                       // 🔥 DISEÑO GOLDEN TICKET (AHORA CON DISMISSIBLE)
                       if (type == 'golden_ticket') {
