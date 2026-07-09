@@ -14,12 +14,20 @@
 //    identificador (_botonEnProceso == 'yo_asisti' / 'ninguno_asistio' / 'no_pude_asistir') —
 //    solo el que tocaste muestra su spinner. Los 3 siguen DESHABILITADOS mientras cualquiera
 //    está en curso (correcto, evita doble-toque accidental), pero solo uno gira visualmente.
+// 🆕 FIX "YO SÍ ASISTÍ, MI MATCHY NO": antes, al confirmar con éxito, solo mostraba una burbuja
+//    genérica y dejaba al usuario parado en la misma pantalla con los 3 botones todavía activos
+//    — daba la sensación de que el botón no hacía nada. Ahora muestra un mensaje claro
+//    explicando que su asistencia ya quedó registrada y que está a salvo, y luego navega a
+//    PanelScreen (sin poder volver atrás). Los otros 2 botones y el resto del archivo quedan
+//    exactamente igual.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
+
+import 'package:proyectos_matchy/screens/panel_screen.dart'; // 🆕 NUEVO
 
 class ReporteInasistenciaScreen extends StatefulWidget {
   final String citaId;
@@ -237,7 +245,19 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
       final campo = isOwner ? 'gpsCheckOwner' : 'gpsCheckMatchy';
       await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update({campo: true});
       if (!mounted) return;
-      _mostrarBurbuja("Quedó registrado que sí asististe.", const Color(0xFF00E676), Icons.check_circle_rounded);
+
+      // 🆕 Mensaje claro de que ya quedó a salvo, y navegación a PanelScreen
+      _mostrarBurbuja(
+        "Tu registro de asistencia ya quedó confirmado. Espera a que se cumplan los 60 minutos de esta cita, o a que tu Matchy también confirme — tú ya estás a salvo.",
+        const Color(0xFF00E676),
+        Icons.check_circle_rounded,
+      );
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const PanelScreen()),
+            (route) => false,
+      );
     } catch (e) {
       _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
