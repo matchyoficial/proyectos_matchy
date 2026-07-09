@@ -7,11 +7,25 @@
 //    en el momento, con techo absoluto de 100m. Se toman hasta 3 lecturas en ~2 segundos y se
 //    usa la más precisa. El lat/lng del lugar se obtiene con una consulta puntual a
 //    citas/{citaId} al momento de confirmar (no venía en el constructor).
-// 🐛 FIX: la fecha ahora se muestra en palabras ("Viernes 3 de Jul") usando citaDateTime +
-//    _fechaAmigable — mismo patrón exacto que ya usa citas_screen.dart en sus tarjetas — en vez
-//    del string crudo widget.fecha ("3/7/2026") que se me había colado por error. Envuelta en
-//    FittedBox para que se vea de tamaño mediano y nunca se corte, sin importar el día/mes.
-//    Todo lo demás del archivo queda exactamente igual a la versión anterior.
+// 🎨 REDISEÑO: encabezado fusionado (foto del lugar + foto del Matchy sobrepuesta abajo-derecha
+//    con bordes redondeados, clickeable a su perfil), título "DATOS DE TU CITA", y una sola
+//    cápsula de vidrio con 5 filas (persona / lugar / fecha en letras + hora / intención /
+//    preferencia), todo protegido con FittedBox para que el texto nunca se salga.
+// 🆕 BURBUJA 24H: el campo de código ahora vuelve a avisar "Este espacio para tu código estará
+//    habilitado 24 horas antes de tu cita." si lo tocas antes de tiempo, y no deja escribir.
+// 🆕 CIERRE DE CITA + PUNTOS (vía transacción de Firestore, sin condiciones de carrera):
+//    al confirmar mi código+GPS, si el otro usuario YA había confirmado el suyo, la cita se
+//    cierra en la misma operación (status: 'finished', resultado: 'completada_exitosa'), se
+//    suma +1 a citas_consecutivas_exitosas de ambos, y cada 3 citas consecutivas exitosas se
+//    suman +20 a confiabilidad de ambos (tope 100) — y navego a ConfirmarCitaScreen (sin poder
+//    volver atrás). Si el otro AÚN no ha confirmado, solo guardo mi lado y muestro la burbuja
+//    "DILE A TU MATCHY QUE PONGA TU CÓDIGO PARA CONFIRMAR LA CITA", sin navegar. Se agregó un
+//    spinner "LEYENDO CÓDIGOS..." con mínimo de 1.5s visible, y un chequeo de seguridad interno
+//    (la cita debe seguir en 'matched') por si el Juez Supremo de citas_screen.dart ya la cerró
+//    por tiempo límite antes de terminar de confirmar.
+//    Todo lo demás del archivo (lógica de código/GPS, _obtenerMejorUbicacion, _radioEfectivo,
+//    _fechaAmigable) queda exactamente igual a la versión anterior. No se tocó citas_screen.dart
+//    ni confirmar_cita.dart.
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -20,6 +34,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
+import 'package:proyectos_matchy/screens/confirmar_cita.dart'; // 🆕 NUEVO
 
 class CitaDetalleScreen extends StatefulWidget {
   final String citaId;
@@ -70,6 +85,16 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   static const double kRadioGPSBase = 35.0;    // se queda igual, sin tocar
   static const double kRadioGPSTecho = 100.0;  // techo absoluto, nunca se supera
 
+  // 🎨 ZONA DE CHINCHES — ENCABEZADO FUSIONADO
+  static const double kFotoLugarHeight = 200.0;
+  static const double kFotoLugarRadius = 24.0;
+  static const double kUserPhotoSize = 90.0;
+  static const double kUserPhotoMargin = 15.0;
+  static const double kUserPhotoRadius = 18.0; // bordes redondeados, NO circular
+  static const double kTitleSize = 20.0;
+  static const Color kGlassColor = Color(0x33FFFFFF);
+  static const Color kAccentColor = Color(0xFFBEB3FF);
+
   final TextEditingController _codigoCtrl = TextEditingController();
   bool _confirmando = false;
 
@@ -86,6 +111,9 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     const List<String> meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     return "${dias[d.weekday - 1]} ${d.day} de ${meses[d.month - 1]}";
   }
+
+  // 🆕 ¿ya se puede usar el campo de código? (24 horas antes de la cita)
+  bool get _codigoHabilitado => DateTime.now().isAfter(widget.citaDateTime.subtract(const Duration(hours: 24)));
 
   // ===========================================================================
   // 🔔 BURBUJA FLOTANTE (mismo patrón usado en todo el proyecto)
@@ -176,7 +204,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   }
 
   // ===========================================================================
-  // ✍️ CONFIRMAR CITA (código + GPS dinámico)
+  // ✍️ CONFIRMAR CITA (código + GPS dinámico + transacción de cierre/puntos)
   // ===========================================================================
   Future<void> _confirmarCita() async {
     if (_confirmando) return;
@@ -187,7 +215,14 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       return;
     }
 
+    // 🆕 Puerta de las 24 horas (respaldo por si se llega a confirmar sin pasar por el campo)
+    if (!_codigoHabilitado) {
+      _mostrarBurbuja("Este espacio para tu código estará habilitado 24 horas antes de tu cita.", Colors.orangeAccent, Icons.lock_clock_rounded);
+      return;
+    }
+
     setState(() => _confirmando = true);
+    final inicio = DateTime.now();
 
     try {
       if (ingresado != widget.codigoDelOtro.toUpperCase()) {
@@ -198,10 +233,10 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       // Obtenemos lat/lng directo de la cita (no venía en el constructor)
       double lat = 0.0, lng = 0.0;
       try {
-        final citaSnap = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
-        final cdata = citaSnap.data() ?? {};
-        lat = (cdata['latitude'] as num?)?.toDouble() ?? 0.0;
-        lng = (cdata['longitude'] as num?)?.toDouble() ?? 0.0;
+        final citaSnapPrevia = await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).get();
+        final cdataPrevia = citaSnapPrevia.data() ?? {};
+        lat = (cdataPrevia['latitude'] as num?)?.toDouble() ?? 0.0;
+        lng = (cdataPrevia['longitude'] as num?)?.toDouble() ?? 0.0;
       } catch (_) {}
 
       final pos = await _obtenerMejorUbicacion();
@@ -221,12 +256,124 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         return;
       }
 
-      final campo = widget.isOwner ? 'gpsCheckOwner' : 'gpsCheckMatchy';
-      await FirebaseFirestore.instance.collection('citas').doc(widget.citaId).update({campo: true});
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final myUid = user.uid;
+      final otherUid = widget.matchyUid;
+      final myField = widget.isOwner ? 'gpsCheckOwner' : 'gpsCheckMatchy';
+      final otherField = widget.isOwner ? 'gpsCheckMatchy' : 'gpsCheckOwner';
+
+      final citaRef = FirebaseFirestore.instance.collection('citas').doc(widget.citaId);
+      final myUserRef = FirebaseFirestore.instance.collection('users').doc(myUid);
+      final otherUserRef = FirebaseFirestore.instance.collection('users').doc(otherUid);
+
+      bool citaCompletada = false;
+      bool citaYaCerrada = false;
+      bool yoGanePuntos = false;
+      int miContadorNuevo = 0;
+
+      // 🆕 TRANSACCIÓN: evita condiciones de carrera si ambos confirman casi al mismo tiempo.
+      // Si al leer el documento el otro ya tiene su campo en true, en esta misma operación
+      // atómica cerramos la cita y sumamos los puntos de ambos. Si no, solo guardamos mi lado.
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final citaSnap = await tx.get(citaRef);
+        final cdata = citaSnap.data() ?? {};
+
+        // 🛡️ Chequeo de seguridad: si la cita ya no está 'matched' (por ejemplo, el Juez
+        // Supremo de citas_screen.dart ya la cerró por tiempo límite), no la sobrescribimos.
+        if ((cdata['status'] ?? 'matched') != 'matched') {
+          citaYaCerrada = true;
+          return;
+        }
+
+        final otroYaConfirmo = cdata[otherField] == true;
+
+        if (otroYaConfirmo) {
+          final myUserSnap = await tx.get(myUserRef);
+          final otherUserSnap = await tx.get(otherUserRef);
+
+          // 🆕 CICLO 1→2→3 (nunca pasa de 3): si el contador actual ya estaba en 3 (la cita
+          // anterior alcanzó la meta y otorgó puntos), esta cita reinicia el ciclo y guarda 1.
+          // Si no, simplemente sube en 1. Los puntos se otorgan justo cuando el nuevo valor
+          // llega a 3 (se alcanza a guardar el 3 en Firebase antes de reiniciar en la siguiente).
+          final myActual = (myUserSnap.data()?['citas_consecutivas_exitosas'] as num?)?.toInt() ?? 0;
+          final otherActual = (otherUserSnap.data()?['citas_consecutivas_exitosas'] as num?)?.toInt() ?? 0;
+
+          final myRacha = myActual >= 3 ? 1 : myActual + 1;
+          final otherRacha = otherActual >= 3 ? 1 : otherActual + 1;
+
+          final myConf = ((myUserSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100);
+          final otherConf = ((otherUserSnap.data()?['confiabilidad'] as num?)?.toInt() ?? 100);
+
+          final myGanaPuntos = myRacha == 3;
+          final otherGanaPuntos = otherRacha == 3;
+
+          final myConfNueva = myGanaPuntos ? (myConf + 20).clamp(0, 100) : myConf;
+          final otherConfNueva = otherGanaPuntos ? (otherConf + 20).clamp(0, 100) : otherConf;
+
+          tx.update(myUserRef, {'citas_consecutivas_exitosas': myRacha, 'confiabilidad': myConfNueva});
+          tx.update(otherUserRef, {'citas_consecutivas_exitosas': otherRacha, 'confiabilidad': otherConfNueva});
+          tx.update(citaRef, {myField: true, 'status': 'finished', 'resultado': 'completada_exitosa'});
+
+          citaCompletada = true;
+          yoGanePuntos = myGanaPuntos;
+          miContadorNuevo = myRacha;
+        } else {
+          tx.update(citaRef, {myField: true});
+        }
+      });
+
+      // ⏳ Mínimo de tiempo visible del spinner "LEYENDO CÓDIGOS..." para que no parpadee.
+      final transcurrido = DateTime.now().difference(inicio);
+      const minimoVisible = Duration(milliseconds: 1500);
+      if (transcurrido < minimoVisible) {
+        await Future.delayed(minimoVisible - transcurrido);
+      }
 
       if (!mounted) return;
-      _mostrarBurbuja("¡Cita confirmada! Disfruta tu encuentro.", const Color(0xFF00E676), Icons.check_circle_rounded);
-      _codigoCtrl.clear();
+
+      if (citaYaCerrada) {
+        _mostrarBurbuja("Esta cita ya se cerró por tiempo límite.", const Color(0xFFFF5252), Icons.event_busy_rounded);
+        return;
+      }
+
+      if (citaCompletada) {
+        // Datos frescos de ambos usuarios para la pantalla de éxito
+        String miNombreFresco = 'Tú';
+        String miFotoFresca = '';
+        String otroNombreFresco = widget.matchyNombre;
+        String otroFotoFresca = widget.matchyFoto;
+        try {
+          final miSnap = await FirebaseFirestore.instance.collection('users').doc(myUid).get();
+          final miData = miSnap.data() ?? {};
+          miNombreFresco = (miData['nombre'] ?? 'Tú').toString();
+          miFotoFresca = (miData['profilePhotoUrl'] ?? '').toString();
+        } catch (_) {}
+        try {
+          final otroSnap = await FirebaseFirestore.instance.collection('users').doc(otherUid).get();
+          final otroData = otroSnap.data() ?? {};
+          otroNombreFresco = (otroData['nombre'] ?? widget.matchyNombre).toString();
+          otroFotoFresca = (otroData['profilePhotoUrl'] ?? '').toString();
+        } catch (_) {}
+
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => ConfirmarCitaScreen(
+              ownerNombre: miNombreFresco,
+              ownerFoto: miFotoFresca,
+              matchyNombre: otroNombreFresco,
+              matchyFoto: otroFotoFresca,
+              ganaronPuntos: yoGanePuntos,
+              citasFaltantes: yoGanePuntos ? 0 : (3 - (miContadorNuevo % 3)),
+            ),
+          ),
+              (route) => false,
+        );
+      } else {
+        _mostrarBurbuja("DILE A TU MATCHY QUE PONGA TU CÓDIGO PARA CONFIRMAR LA CITA", const Color(0xFF00E676), Icons.hourglass_top_rounded);
+        _codigoCtrl.clear();
+      }
     } catch (e) {
       _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
@@ -234,8 +381,33 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
     }
   }
 
+  // ===========================================================================
+  // 🎨 FILA DE INFORMACIÓN DE LA CÁPSULA (persona / lugar / fecha+hora / intención / preferencia)
+  // ===========================================================================
+  Widget _buildInfoRow(IconData icon, String text, {bool isAccent = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Icon(icon, color: isAccent ? kAccentColor : Colors.white70, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              text,
+              style: TextStyle(color: isAccent ? kAccentColor : Colors.white, fontSize: 14, fontWeight: FontWeight.w700, fontFamily: 'Poppins', height: 1.1),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool codigoHabilitado = _codigoHabilitado;
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -244,15 +416,20 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
           SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 70, 20, 60),
+              padding: const EdgeInsets.fromLTRB(20, 15, 20, 60),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 🖼️ FOTO DEL LUGAR
+                  // 🆕 LOGO MATCHY (faltaba, mismo patrón que el resto de las pantallas)
+                  const SizedBox(height: 40),
+                  Center(child: Image.asset('assets/images/logomatchyplano.png', height: 45)),
+                  const SizedBox(height: 25),
+
+                  // 🖼️ ENCABEZADO FUSIONADO: foto del lugar + foto del Matchy sobrepuesta
                   Container(
-                    height: 200,
+                    height: kFotoLugarHeight,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(kFotoLugarRadius),
                       boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
                     ),
                     clipBehavior: Clip.antiAlias,
@@ -268,88 +445,75 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                         )
                             : Container(color: Colors.grey[900], child: const Icon(Icons.image_not_supported, color: Colors.white24)),
                         Container(
-                          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.9)])),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                              stops: const [0.5, 1.0],
+                            ),
+                          ),
                         ),
                         Positioned(
-                          left: 18, right: 18, bottom: 14,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(widget.lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
-                              Text(widget.lugarDireccion, style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins')),
-                            ],
+                          bottom: kUserPhotoMargin,
+                          right: kUserPhotoMargin,
+                          child: GestureDetector(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
+                            child: Container(
+                              width: kUserPhotoSize,
+                              height: kUserPhotoSize,
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(kUserPhotoRadius),
+                                border: Border.all(color: Colors.white, width: 2),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(kUserPhotoRadius - 2),
+                                child: widget.matchyFoto.trim().startsWith('http')
+                                    ? CachedNetworkImage(
+                                  imageUrl: widget.matchyFoto,
+                                  fit: BoxFit.cover,
+                                  alignment: Alignment.topCenter,
+                                  errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
+                                )
+                                    : Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
+                              ),
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 25),
 
-                  // 👤 TARJETA DEL MATCHY
-                  GestureDetector(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: widget.matchyUid))),
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: const Color(0x20FFFFFF), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: SizedBox(
-                              width: 60, height: 60,
-                              child: widget.matchyFoto.trim().startsWith('http')
-                                  ? CachedNetworkImage(imageUrl: widget.matchyFoto, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: Colors.grey[900]))
-                                  : Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text("${widget.matchyNombre}, ${widget.matchyEdad}", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Poppins')),
-                          ),
-                          const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-                        ],
-                      ),
+                  // 🏷️ TÍTULO
+                  const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      "DATOS DE TU CITA",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontSize: kTitleSize, fontWeight: FontWeight.w900, fontFamily: 'Poppins', shadows: [Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2))]),
                     ),
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 15),
 
-                  // 📅 FECHA / HORA / INTENCIÓN / PREFERENCIA
+                  // 🛡️ CÁPSULA DE INFORMACIÓN — 5 FILAS
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white12)),
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(color: kGlassColor, borderRadius: BorderRadius.circular(20)),
                     child: Column(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // 🐛 FIX: fecha en palabras (no el string crudo "3/7/2026"), tamaño
-                            // mediano vía FittedBox para que nunca se corte ni se vea gigante.
-                            Expanded(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  _fechaAmigable(widget.citaDateTime),
-                                  style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins'),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Text(widget.hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Container(height: 1, color: Colors.white12),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text("Intención: ${widget.intencion}", style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins')),
-                            Text("Preferencia: ${widget.preferencia}", style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 13, fontFamily: 'Poppins')),
-                          ],
-                        ),
+                        _buildInfoRow(Icons.person, "${widget.matchyNombre.toUpperCase()}, ${widget.matchyEdad}"),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.store_mall_directory_rounded, widget.lugarNombre.toUpperCase()),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.calendar_month_rounded, "${_fechaAmigable(widget.citaDateTime)} - ${widget.hora}".toUpperCase(), isAccent: true),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.chat_bubble_outline_rounded, "INTENCIÓN: ${widget.intencion}".toUpperCase()),
+                        const SizedBox(height: 10),
+                        _buildInfoRow(Icons.tune_rounded, "PREFERENCIA: ${widget.preferencia}".toUpperCase()),
                       ],
                     ),
                   ),
@@ -383,20 +547,31 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
                         const Text("CONFIRMAR CITA", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins', letterSpacing: 1.0)),
                         const SizedBox(height: 8),
-                        TextField(
-                          controller: _codigoCtrl,
-                          textCapitalization: TextCapitalization.characters,
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 3, fontFamily: 'Poppins'),
-                          textAlign: TextAlign.center,
-                          decoration: InputDecoration(
-                            hintText: "CÓDIGO DE ${widget.matchyNombre}",
-                            hintStyle: const TextStyle(color: Colors.white38, fontSize: 13, letterSpacing: 1, fontFamily: 'Poppins'),
-                            filled: true,
-                            fillColor: Colors.white.withOpacity(0.08),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+
+                        // 🆕 CAMPO DE CÓDIGO CON PUERTA DE 24 HORAS
+                        GestureDetector(
+                          onTap: codigoHabilitado
+                              ? null
+                              : () => _mostrarBurbuja("Este espacio para tu código estará habilitado 24 horas antes de tu cita.", Colors.orangeAccent, Icons.lock_clock_rounded),
+                          child: AbsorbPointer(
+                            absorbing: !codigoHabilitado,
+                            child: TextField(
+                              controller: _codigoCtrl,
+                              textCapitalization: TextCapitalization.characters,
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 3, fontFamily: 'Poppins'),
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(
+                                hintText: "CÓDIGO DE ${widget.matchyNombre}",
+                                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13, letterSpacing: 1, fontFamily: 'Poppins'),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.08),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                            ),
                           ),
                         ),
+
                         const SizedBox(height: 14),
                         GestureDetector(
                           onTap: _confirmando ? null : _confirmarCita,
@@ -408,7 +583,14 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
                             ),
                             alignment: Alignment.center,
                             child: _confirmando
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                                ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)),
+                                SizedBox(width: 12),
+                                Text("LEYENDO CÓDIGOS...", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, fontFamily: 'Poppins')),
+                              ],
+                            )
                                 : const Text("CONFIRMAR CITA", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 15, fontFamily: 'Poppins')),
                           ),
                         ),
