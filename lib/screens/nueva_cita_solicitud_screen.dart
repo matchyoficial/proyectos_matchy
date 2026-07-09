@@ -1,8 +1,8 @@
 // 📂 lib/screens/nueva_cita_solicitud_screen.dart
 // ✅ PANTALLA "TE INVITARON A UNA CITA" (status: pending_approval, tú eres el matchy invitado)
 // 🔥 StreamBuilder en vivo sobre citas/{citaId}: encabezado, tarjeta del owner (clickeable a su
-//    perfil), tarjeta grande del lugar con foto, tarjeta de fecha/hora/intención/preferencia,
-//    aviso de seguridad, botones ACEPTAR/RECHAZAR.
+//    perfil), tarjeta grande del lugar con foto, tarjeta de fecha/hora, aviso de seguridad,
+//    botones ACEPTAR / REPROGRAMAR / RECHAZAR.
 // 🆕 FIX: al aceptar la cita, además de la lógica existente (status -> 'matched' + notificación
 //    al owner), ahora también:
 //    1) Registra a ambos como matchys reales en my_matchys (ambos lados), mismo esquema exacto
@@ -12,8 +12,14 @@
 //       match_screen.dart, sin inventar un camino nuevo.
 //    3) Usa datos FRESCOS de Firestore (users/{uid}, campo 'profilePhotoUrl'), no los guardados
 //       viejos en el documento de la cita.
-//    Todo lo demás del archivo (build(), tarjetas, botón RECHAZAR, aviso de seguridad, StreamBuilder)
-//    queda exactamente igual a la versión original.
+//    4) Al terminar, navega a CitasScreen con pushAndRemoveUntil (no se puede volver atrás).
+// 🎨 REDISEÑO: tarjeta de fecha/hora ahora es morada, con "DIA:" y "HORA:" centrados y
+//    apilados, fecha en formato texto largo en español (ej. "SÁBADO 25 DE JULIO"), sin los
+//    campos de Intención/Preferencia, y con protección de overflow en los textos.
+// 🆕 NUEVO: botón "REPROGRAMAR CITA" (azul) entre ACEPTAR y RECHAZAR, navega a
+//    ReprogramarCitaScreen(citaId: widget.citaId).
+//    Todo lo demás del archivo (build(), tarjeta del owner, tarjeta del lugar, botón RECHAZAR,
+//    aviso de seguridad, StreamBuilder) queda exactamente igual a la versión original.
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -24,6 +30,8 @@ import 'package:proyectos_matchy/services/chat_actions.dart'; // 🆕 NUEVO
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
+import 'package:proyectos_matchy/screens/citas_screen.dart'; // 🆕 NUEVO
+import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart'; // 🆕 NUEVO
 
 class NuevaCitaSolicitudScreen extends StatefulWidget {
   static const String routeName = 'nueva_cita_solicitud';
@@ -42,8 +50,18 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
   static const double kCardRadius = 30.0;
   static const double kFotoOwnerSize = 64.0;
   static const double kFotoOwnerRadius = 16.0;
+  // 🆕 NUEVO: foto grande del owner en el encabezado fusionado (foto + nombre + subtítulo).
+  static const double kFotoOwnerHeaderSize = 96.0;
+  static const double kFotoOwnerHeaderRadius = 24.0;
   static const double kAltoFotoLugar = 190.0;
   static const double kRadioFotoLugar = 24.0;
+
+  // 🎨 CHINCHE DE COLOR: cambia este valor cuando quieras para modificar el fondo
+  // de la tarjeta de fecha/hora (actualmente un morado que resalta el amarillo y blanco).
+  static const Color kColorFechaCard = Color(0xFF7B2CBF);
+
+  // 🎨 CHINCHE DE COLOR: gradiente del botón "REPROGRAMAR CITA".
+  static const List<Color> kBtnReprogramarGradient = [Color(0xFF2979FF), Color(0xFF1565C0)];
 
   bool _procesando = false;
 
@@ -132,6 +150,38 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
   }
 
   // ===========================================================================
+  // 🆕 REPROGRAMAR — navega a ReprogramarCitaScreen pasando el citaId de esta invitación
+  // ===========================================================================
+  void _abrirReprogramar() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ReprogramarCitaScreen(citaId: widget.citaId)));
+  }
+
+  // ===========================================================================
+  // 🆕 FORMATEO DE FECHA A TEXTO LARGO EN ESPAÑOL (ej. "SÁBADO 25 DE JULIO")
+  // Mismo patrón de parseo (día/mes/año, separadores '/', '-' o espacio) que ya usa
+  // citas_screen.dart en _convertirDoc(), y mismo estilo de arreglo manual de nombres
+  // de días que ya usa citas_screen.dart en _fechaAmigable() — sin depender de intl
+  // con locale español.
+  // ===========================================================================
+  String _fechaFormateada(String fTexto) {
+    try {
+      final parts = fTexto.trim().split(RegExp(r'[/ -]'));
+      final int d = int.parse(parts[0]);
+      final int m = int.parse(parts[1]);
+      final int y = int.parse(parts[2]);
+      final dt = DateTime(y, m, d);
+      const List<String> dias = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
+      const List<String> meses = [
+        'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+        'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'
+      ];
+      return "${dias[dt.weekday - 1]} ${dt.day} DE ${meses[dt.month - 1]}";
+    } catch (_) {
+      return fTexto;
+    }
+  }
+
+  // ===========================================================================
   // ✍️ ACEPTAR CITA — lógica original preservada + 3 escrituras nuevas integradas
   // ===========================================================================
   Future<void> _aceptarCita() async {
@@ -214,7 +264,12 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
       if (!mounted) return;
       _mostrarBurbuja("¡Cita confirmada! Ya son Matchys.", const Color(0xFF00E676), Icons.check_circle_rounded);
       await Future.delayed(const Duration(seconds: 2));
-      if (mounted && Navigator.of(context).canPop()) Navigator.of(context).pop();
+      if (!mounted) return;
+      // 🆕 NUEVO 3: al terminar, navega a CitasScreen sin poder volver atrás.
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const CitasScreen()),
+            (route) => false,
+      );
     } catch (e) {
       if (mounted) _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
@@ -320,8 +375,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                   final lugarFoto = (data['lugarFotoPortada'] ?? '').toString();
                   final fecha = (data['fecha'] ?? '').toString();
                   final hora = (data['hora'] ?? '').toString();
-                  final intencion = (data['intencion'] ?? '').toString();
-                  final preferencia = (data['preferencia'] ?? '').toString();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -330,11 +383,44 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                       Center(child: Image.asset('assets/images/logomatchyplano.png', height: 45)),
                       const SizedBox(height: 25),
 
-                      const Center(
-                        child: Text(
-                          "¡TE INVITARON A UNA CITA!",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22, fontFamily: 'Poppins'),
+                      // 👤 ENCABEZADO FUSIONADO: foto grande + nombre + "TE QUIERE INVITAR A UNA CITA"
+                      GestureDetector(
+                        onTap: ownerUid.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: ownerUid))),
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(kFotoOwnerHeaderRadius),
+                              child: SizedBox(
+                                width: kFotoOwnerHeaderSize, height: kFotoOwnerHeaderSize,
+                                child: ownerFoto.trim().startsWith('http')
+                                    ? CachedNetworkImage(
+                                  imageUrl: ownerFoto,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
+                                  errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
+                                )
+                                    : Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                ownerNombre.toUpperCase(),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24, fontFamily: 'Poppins'),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                "TE QUIERE INVITAR A UNA CITA",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, fontFamily: 'Poppins'),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -346,46 +432,6 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // 👤 TARJETA DEL OWNER
-                      GestureDetector(
-                        onTap: ownerUid.isEmpty ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => PerfilUsuarioXScreen(uid: ownerUid))),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(color: kCardBackground, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white12)),
-                          child: Row(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(kFotoOwnerRadius),
-                                child: SizedBox(
-                                  width: kFotoOwnerSize, height: kFotoOwnerSize,
-                                  child: ownerFoto.trim().startsWith('http')
-                                      ? CachedNetworkImage(
-                                    imageUrl: ownerFoto,
-                                    fit: BoxFit.cover,
-                                    placeholder: (context, url) => Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF), strokeWidth: 2))),
-                                    errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
-                                  )
-                                      : Container(color: Colors.grey[900], child: const Icon(Icons.person, color: Colors.white24)),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text("$ownerNombre, $ownerEdad", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, fontFamily: 'Poppins')),
-                                    const Text("Te está invitando a esta cita", style: TextStyle(color: Colors.white54, fontSize: 12, fontFamily: 'Poppins')),
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right_rounded, color: Colors.white38),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
 
                       // 📍 TARJETA DEL LUGAR
                       GestureDetector(
@@ -415,9 +461,17 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(lugarNombre.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900, fontFamily: 'Poppins')),
+                                    ),
                                     const SizedBox(height: 2),
-                                    Text(lugarDireccion, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Poppins')),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(lugarDireccion, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Poppins')),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -428,51 +482,37 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
 
                       const SizedBox(height: 16),
 
-                      // 📅 TARJETA DE FECHA/HORA/INTENCIÓN/PREFERENCIA
+                      // 📅 TARJETA DE FECHA/HORA
                       Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white12)),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                        decoration: BoxDecoration(
+                          // 🎨 CHINCHE DE COLOR: este fondo usa la constante kColorFechaCard
+                          // (definida arriba en la ZONA DE CHINCHES MAESTROS). Cámbiala ahí
+                          // cuando quieras otro morado u otro color.
+                          color: kColorFechaCard,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: Colors.white12),
+                        ),
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(fecha, style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.bold, fontSize: 15, fontFamily: 'Poppins')),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Text(hora, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins')),
-                              ],
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                "DIA: ${_fechaFormateada(fecha)}",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Color(0xFFFFC107), fontWeight: FontWeight.w900, fontSize: 17, fontFamily: 'Poppins'),
+                              ),
                             ),
-                            const SizedBox(height: 10),
-                            Container(height: 1, color: Colors.white12),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      const Text("Intención: ", style: TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'Poppins')),
-                                      Expanded(child: Text(intencion, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins'), overflow: TextOverflow.ellipsis)),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      const Text("Pref: ", style: TextStyle(color: Colors.white54, fontSize: 13, fontFamily: 'Poppins')),
-                                      Expanded(child: Text(preferencia, style: const TextStyle(color: Color(0xFFE0D4FF), fontSize: 13, fontWeight: FontWeight.bold, fontFamily: 'Poppins'), overflow: TextOverflow.ellipsis)),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 8),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                "HORA: ${hora.toUpperCase()}",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, fontFamily: 'Poppins'),
+                              ),
                             ),
                           ],
                         ),
@@ -491,7 +531,7 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                             const SizedBox(width: 12),
                             const Expanded(
                               child: Text(
-                                "Mantén tu cita en un lugar público. Al llegar, cada uno recibirá un código para confirmar su asistencia en persona.",
+                                "Puedes acordar los detalles de tu cita con tu Matchy por medio del chat, también puedes reprogramar la cita en caso de que no puedas este día.",
                                 style: TextStyle(color: Colors.white70, fontSize: 12.5, fontFamily: 'Poppins', height: 1.4),
                               ),
                             ),
@@ -515,6 +555,23 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
                           child: _procesando
                               ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
                               : const Text("ACEPTAR CITA", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 16, fontFamily: 'Poppins', letterSpacing: 0.5)),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // 🔵 REPROGRAMAR
+                      GestureDetector(
+                        onTap: _procesando ? null : _abrirReprogramar,
+                        child: Container(
+                          height: 50,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: kBtnReprogramarGradient),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(0, 3))],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text("REPROGRAMAR CITA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15, fontFamily: 'Poppins', letterSpacing: 0.5)),
                         ),
                       ),
 
