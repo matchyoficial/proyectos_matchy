@@ -20,6 +20,13 @@
 //    explicando que su asistencia ya quedó registrada y que está a salvo, y luego navega a
 //    PanelScreen (sin poder volver atrás). Los otros 2 botones y el resto del archivo quedan
 //    exactamente igual.
+// 🆕 FIX "NINGUNO ASISTIÓ / ACUERDO": ahora, tras registrar la propuesta/acuerdo con éxito,
+//    salta a la pestaña de Citas.
+// 🐛 FIX NAVEGACIÓN: el salto de arriba usaba pushAndRemoveUntil(CitasScreen()), que empujaba
+//    esa pantalla SOLA (sin la barra de navegación de abajo, que en realidad vive en HomeShell)
+//    y además borraba todo el historial — por eso al darle "atrás" se cerraba la app. Ahora usa
+//    HomeShell.go(context, index: 1), el mismo patrón que ya usa panel_screen.dart para saltar
+//    a "Mis Citas" con su barra intacta.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -28,6 +35,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:proyectos_matchy/screens/panel_screen.dart'; // 🆕 NUEVO
+import 'package:proyectos_matchy/screens/home_shell.dart'; // 🆕 NUEVO
 
 class ReporteInasistenciaScreen extends StatefulWidget {
   final String citaId;
@@ -283,6 +291,9 @@ class _ReporteInasistenciaScreenState extends State<ReporteInasistenciaScreen> {
         const Color(0xFF448AFF),
         Icons.handshake_rounded,
       );
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      HomeShell.go(context, index: 1);
     } catch (e) {
       _mostrarBurbuja("Error: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {

@@ -25,6 +25,18 @@
 //    completo de timeout (-20 pts + strike) en vez de nada — un resultado injusto para quien
 //    actuó de buena fe. Ahora, si ya propusiste el acuerdo (o confirmaste tu GPS), el timeout
 //    te libera sin castigo. Solo se castiga con -20 a quien de verdad no hizo nada en absoluto.
+// 🆕 FIX ACUERDO MUTUO (RACE + PUNTOS): antes, si el deadline (60 min) pasaba mientras solo
+//    un usuario había propuesto el acuerdo, al OTRO usuario (que aún no había propuesto) el Juez
+//    lo castigaba con el timeout completo (-20 pts) en vez de dejarlo en curso de acuerdo. Ahora
+//    el Juez también protege a quien ve que el OTRO YA propuso el acuerdo (tengoSolicitudAcuerdo).
+//    Además, antes la protección contra el timeout usaba el MISMO campo que el castigo final
+//    (ownerCastigado/matchyCastigado), lo que ocultaba la cita de la lista del primer proponente
+//    y hacía que NUNCA recibiera su -10 cuando el acuerdo se cerraba. Ahora la protección usa un
+//    campo nuevo y separado (ownerProtegido/matchyProtegido) que NO oculta la cita de la lista,
+//    así que cuando el status pasa a 'mutual_agreement_finish' AMBOS siguen viendo la cita y
+//    AMBOS reciben su -10. También se agrega el reinicio de racha (citas_consecutivas_exitosas: 0)
+//    para ambos en el resultado 'mutual_agreement', sin bloqueo ni strikes (eso solo aplica en la
+//    rama de -20 puntos, que no cambia).
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -73,6 +85,7 @@ class CitaItem {
   final DateTime? deadline;
   final bool amISafeGPS;
   final bool amIPunished;
+  final bool amIProtegido; // 🆕 NUEVO: protección contra timeout separada del castigo final
 
   const CitaItem({
     required this.id,
@@ -101,6 +114,7 @@ class CitaItem {
     required this.deadline,
     required this.amISafeGPS,
     required this.amIPunished,
+    required this.amIProtegido, // 🆕 NUEVO
   });
 }
 
@@ -113,6 +127,9 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
     // Filtro personal de castigo
     bool yaPague = soyOwner ? (data['ownerCastigado'] == true) : (data['matchyCastigado'] == true);
     if (yaPague) return null;
+
+    // 🆕 NUEVO: protección contra timeout — NO filtra la cita de la lista (a diferencia de castigado)
+    final bool estoyProtegido = soyOwner ? (data['ownerProtegido'] == true) : (data['matchyProtegido'] == true);
 
     final nombreUI = soyOwner ? (data['matchyNombre'] ?? 'Usuario') : (data['ownerNombre'] ?? 'Usuario');
     final fotoUI = soyOwner ? (data['matchyFoto'] ?? '') : (data['ownerFoto'] ?? '');
@@ -185,6 +202,7 @@ CitaItem? _convertirDoc(DocumentSnapshot doc, bool soyOwner, DateTime ahora) {
       deadline: deadline,
       amISafeGPS: amISafeGPS,
       amIPunished: yaPague,
+      amIProtegido: estoyProtegido, // 🆕 NUEVO
     );
   } catch (e) { return null; }
 }
@@ -364,13 +382,18 @@ class CitasScreen extends ConsumerWidget {
         );
       }
       else if (cita.deadline != null && now.isAfter(cita.deadline!)) {
-        // 🐛 FIX: si ya confirmaste tu presencia POR GPS, O ya propusiste el Acuerdo Mutuo de
-        // buena fe (aunque el otro nunca respondió), el timeout no te castiga. Antes, proponer
-        // el acuerdo y que el otro nunca confirmara terminaba en el castigo COMPLETO de -20 pts
-        // + strike — peor que no haber hecho nada. Ahora quien actuó de buena fe queda protegido;
-        // solo se castiga con -20 a quien de verdad no hizo nada en absoluto.
-        if (cita.amISafeGPS || cita.tengoPropuestaAcuerdo) {
-          _marcarRecibo(cita);
+        // 🐛 FIX: si ya confirmaste tu presencia POR GPS, ya propusiste el Acuerdo Mutuo de
+        // buena fe, O el OTRO usuario ya propuso el acuerdo (tengoSolicitudAcuerdo — 🆕 NUEVO),
+        // el timeout no te castiga. Antes, si solo UNO de los 2 había propuesto el acuerdo antes
+        // de que pasaran los 60 minutos, al OTRO (que seguía sin proponer ni confirmar GPS) el
+        // Juez lo castigaba con el timeout COMPLETO de -20 pts + strike, en vez de dejarlo
+        // resolver el acuerdo con calma — un resultado injusto. Ahora ambos quedan protegidos
+        // en cuanto CUALQUIERA de los 2 lados inicia el proceso de acuerdo. Solo se castiga con
+        // -20 a quien de verdad no hizo nada en absoluto (ni GPS, ni propuso, ni le propusieron).
+        if (cita.amISafeGPS || cita.tengoPropuestaAcuerdo || cita.tengoSolicitudAcuerdo) {
+          // 🆕 NUEVO: solo escribimos si aún no estaba protegido, para no repetir el mismo
+          // write en cada tick de 10 segundos del reloj.
+          if (!cita.amIProtegido) _marcarProtegido(cita);
         } else {
           _sentenciaFinal(
               cita,
@@ -406,6 +429,10 @@ class CitasScreen extends ConsumerWidget {
           userUpdates['citas_consecutivas_exitosas'] = 0;
           userUpdates['userStatus'] = newS >= 5 ? 'blocked_permanent' : 'blocked';
           userUpdates['bloqueadoHasta'] = Timestamp.fromDate(DateTime.now().add(Duration(days: newS * 5)));
+        } else if (resultado == 'mutual_agreement') {
+          // 🆕 NUEVO: el acuerdo mutuo también rompe la racha y la reinicia a 0 para ambos,
+          // pero SIN strike, SIN bloqueo y SIN tocar userStatus/bloqueadoHasta.
+          userUpdates['citas_consecutivas_exitosas'] = 0;
         }
         tx.update(userRef, userUpdates);
 
@@ -434,9 +461,14 @@ class CitasScreen extends ConsumerWidget {
     } catch (e) { debugPrint("Juez Error: $e"); }
   }
 
-  Future<void> _marcarRecibo(CitaItem cita) async {
+  // 🆕 NUEVO (antes se llamaba _marcarRecibo y usaba el campo de castigado): ahora escribe en un
+  // campo SEPARADO (ownerProtegido/matchyProtegido) que solo protege contra el timeout de -20,
+  // sin ocultar la cita de la lista del usuario — así, cuando el acuerdo mutuo se cierra
+  // (status pasa a 'mutual_agreement_finish'), la cita SIGUE visible y el Juez SÍ puede aplicar
+  // el -10 correspondiente, incluso a quien propuso primero.
+  Future<void> _marcarProtegido(CitaItem cita) async {
     try {
-      String myField = cita.isOwner ? 'ownerCastigado' : 'matchyCastigado';
+      String myField = cita.isOwner ? 'ownerProtegido' : 'matchyProtegido';
       await FirebaseFirestore.instance.collection('citas').doc(cita.id).update({myField: true});
     } catch (_) {}
   }

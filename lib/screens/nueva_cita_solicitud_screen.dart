@@ -20,6 +20,11 @@
 //    ReprogramarCitaScreen(citaId: widget.citaId).
 //    Todo lo demás del archivo (build(), tarjeta del owner, tarjeta del lugar, botón RECHAZAR,
 //    aviso de seguridad, StreamBuilder) queda exactamente igual a la versión original.
+// 🐛 FIX NAVEGACIÓN: el paso 4 usaba pushAndRemoveUntil(CitasScreen()), que empujaba esa
+//    pantalla SOLA (sin la barra de navegación de abajo, que en realidad vive en HomeShell) y
+//    además borraba todo el historial — por eso al darle "atrás" se cerraba la app. Ahora usa
+//    HomeShell.go(context, index: 1), el mismo patrón que ya usa panel_screen.dart para saltar
+//    a "Mis Citas" con su barra intacta.
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,7 +35,7 @@ import 'package:proyectos_matchy/services/chat_actions.dart'; // 🆕 NUEVO
 import 'package:proyectos_matchy/screens/perfil_usuariox_screen.dart';
 import 'package:proyectos_matchy/screens/lugar_plantilla_sin_boton_screen.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
-import 'package:proyectos_matchy/screens/citas_screen.dart'; // 🆕 NUEVO
+import 'package:proyectos_matchy/screens/home_shell.dart'; // 🆕 NUEVO
 import 'package:proyectos_matchy/screens/reprogramar_cita_screen.dart'; // 🆕 NUEVO
 
 class NuevaCitaSolicitudScreen extends StatefulWidget {
@@ -265,11 +270,9 @@ class _NuevaCitaSolicitudScreenState extends State<NuevaCitaSolicitudScreen> {
       _mostrarBurbuja("¡Cita confirmada! Ya son Matchys.", const Color(0xFF00E676), Icons.check_circle_rounded);
       await Future.delayed(const Duration(seconds: 2));
       if (!mounted) return;
-      // 🆕 NUEVO 3: al terminar, navega a CitasScreen sin poder volver atrás.
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const CitasScreen()),
-            (route) => false,
-      );
+      // 🆕 NUEVO 3: al terminar, salta a la pestaña de Citas dentro de HomeShell (con su barra
+      // de navegación intacta), en vez de empujar CitasScreen sola sin el contenedor.
+      HomeShell.go(context, index: 1);
     } catch (e) {
       if (mounted) _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
     } finally {
