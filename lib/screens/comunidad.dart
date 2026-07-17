@@ -19,6 +19,15 @@
 //    pantalla al cerrarse — Navigator.push<bool>(...). Si vuelve `true` (invitación enviada), el
 //    mazo avanza normal. Si vuelve null/false (canceló), la tarjeta regresa suavemente a su lugar
 //    con _resetCard(), lista para reintentarlo.
+// 🆕 LOTES ALEATORIOS: antes, la consulta a Firestore siempre pedía los usuarios ordenados por
+//    documentId desde el principio de la lista, así que cada vez que se abría Comunidad aparecían
+//    siempre los mismos primeros perfiles, en el mismo orden. Ahora cada sesión arranca desde un
+//    punto aleatorio de la lista (con vuelta automática al principio si se llega al final antes de
+//    completar un lote), y además cada lote que llega se revuelve antes de mostrarse.
+// 🆕 SCROLL SIEMPRE ARRIBA: se agregó un ScrollController compartido para la tarjeta que está al
+//    frente, que se reinicia a la parte superior cada vez que se pasa a un perfil nuevo (like/nope/
+//    anuncio) y cada vez que una tarjeta regresa a su lugar después de cancelar en
+//    intereses_citas_screen.dart — sin importar cuánto se haya bajado leyendo el perfil.
 // ⚠️ IMPORTANTE: revisa tus reglas de seguridad de Firestore — esta pantalla necesita permiso de
 //    "list" sobre la colección 'users' (no solo "get" por UID), o la consulta fallará en tiempo real.
 
@@ -76,6 +85,11 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
   static const int kMaxRechazosPermanente = 3;
   static const int kDiasCooldownRechazo = 30;
 
+  // 🆕 Alfabeto usado para generar un ID "de mentiras" con el que saltar a un punto aleatorio
+  // dentro del orden por documentId — no corresponde a ningún usuario real, solo sirve como
+  // punto de comparación para la consulta.
+  static const String _kIdAlphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
   List<_ComunidadCardModel> _deck = [];
   int _topIndex = 0;
   double _dx = 0.0;
@@ -91,6 +105,13 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
   String _prefGlobal = '';
   String _generoUser = '';
   List<String> _misBloqueados = [];
+
+  // 🆕 Punto de partida aleatorio de esta sesión, y bandera de si ya dimos la vuelta completa.
+  String? _randomStartId;
+  bool _wrappedAround = false;
+
+  // 🆕 Control de scroll compartido de la tarjeta que está al frente.
+  final ScrollController _cardScrollController = ScrollController();
 
   // 📢 PUBLICIDAD (idéntico a cita_buscar.dart)
   String _userPais = 'Colombia';
@@ -113,13 +134,23 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
   @override
   void dispose() {
     _controller.dispose();
+    _cardScrollController.dispose(); // 🆕
     super.dispose();
+  }
+
+  // 🆕 Genera un ID al azar (mismo formato de caracteres que usa Firestore) para usarlo como
+  // punto de partida aleatorio de la consulta.
+  String _randomDocId({int length = 20}) {
+    final rnd = math.Random();
+    return List.generate(length, (_) => _kIdAlphabet[rnd.nextInt(_kIdAlphabet.length)]).join();
   }
 
   Future<void> _initComunidad() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     _uid = user.uid;
+
+    _randomStartId = _randomDocId(); // 🆕 punto de partida aleatorio para esta sesión
 
     try {
       final blockSnap = await FirebaseFirestore.instance
@@ -187,11 +218,25 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
 
       if (_lastDoc != null) {
         q = q.startAfterDocument(_lastDoc!);
+      } else if (_randomStartId != null && !_wrappedAround) {
+        // 🆕 Solo se usa en la PRIMERA página de esta sesión (sin _lastDoc todavía y sin haber
+        // dado la vuelta aún), para que cada vez que se abra Comunidad se empiece a mostrar
+        // perfiles desde un lugar distinto de la lista.
+        q = q.startAt([_randomStartId]);
       }
 
       final snap = await q.get();
 
       if (snap.docs.isEmpty) {
+        // 🆕 Si llegamos al final de la lista de usuarios sin completar un lote y todavía no
+        // habíamos dado la vuelta, reiniciamos desde el verdadero principio (documentId más
+        // chico) para no dejar perfiles sin mostrar — solo cambia por dónde se empieza.
+        if (!_wrappedAround) {
+          _wrappedAround = true;
+          _lastDoc = null;
+          await _fetchUsersBatch();
+          return;
+        }
         if (mounted) setState(() { _hasMore = false; _isLoading = false; });
         return;
       }
@@ -200,6 +245,7 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
 
       final rawCards = await _mapDocsToDeck(docs: snap.docs as List<QueryDocumentSnapshot<Map<String, dynamic>>>);
       final validCards = await _applyFilters(raw: rawCards);
+      validCards.shuffle(math.Random()); // 🆕 revuelve el orden del lote antes de mostrarlo
 
       if (!mounted) return;
 
@@ -430,9 +476,18 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
     await _controller.forward(from: 0.0);
   }
 
-  Future<void> _resetCard() async {
+  // 🆕 Reinicia el scroll de la tarjeta al tope, para que cada perfil nuevo (o el mismo que
+  // regresa después de cancelar en intereses_citas_screen.dart) siempre empiece arriba.
+  void _resetCardScroll() {
+    if (_cardScrollController.hasClients) {
+      _cardScrollController.jumpTo(0);
+    }
+  }
+
+  Future<void> _resetCard({bool alsoResetScroll = false}) async {
     _isAnimating = true;
     await _animateTo(0.0, const Duration(milliseconds: resetDurationMs));
+    if (alsoResetScroll) _resetCardScroll(); // 🆕
   }
 
   double _screenDiag(Size s) => math.sqrt(s.width * s.width + s.height * s.height);
@@ -448,6 +503,7 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
     // 📢 ANUNCIO: solo se marca como visto y se avanza el mazo (sin navegar, sin rechazo/interés)
     if (model.isAd) {
       setState(() { _topIndex++; _dx = 0.0; });
+      _resetCardScroll(); // 🆕
       final prefs = await SharedPreferences.getInstance();
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       await prefs.setString('seen_ad_${model.uid}_$_uid', today);
@@ -469,17 +525,20 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
 
       if (invitacionEnviada == true) {
         setState(() { _topIndex++; _dx = 0.0; });
+        _resetCardScroll(); // 🆕
         if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) _fetchUsersBatch();
       } else {
         // Canceló sin completar el formulario: la tarjeta regresa suavemente a su lugar,
-        // deslizándose desde donde voló hasta el centro (misma animación que ya existía).
-        await _resetCard();
+        // deslizándose desde donde voló hasta el centro (misma animación que ya existía), y el
+        // scroll también vuelve arriba. 🆕
+        await _resetCard(alsoResetScroll: true);
       }
       return;
     }
 
     // 🧨 SWIPE IZQUIERDA: registrar rechazo, avanzar mazo
     setState(() { _topIndex++; _dx = 0.0; });
+    _resetCardScroll(); // 🆕
 
     if (_deck.length - _topIndex <= 3 && !_isLoading && _hasMore) {
       _fetchUsersBatch();
@@ -631,6 +690,7 @@ class _ComunidadScreenState extends State<ComunidadScreen> with SingleTickerProv
       onLikeTap: isFrontCard ? () => _onLike(MediaQuery.sizeOf(context)) : () {},
       onNopeTap: isFrontCard ? () => _onNope(MediaQuery.sizeOf(context)) : () {},
       onReport: isFrontCard ? () => _mostrarDialogoReporte(model.nombre, model.uid) : () {},
+      scrollController: isFrontCard ? _cardScrollController : null, // 🆕
     );
   }
 
@@ -887,6 +947,7 @@ class _ComunidadPerfilCard extends StatelessWidget {
   final VoidCallback onLikeTap;
   final VoidCallback onNopeTap;
   final VoidCallback onReport;
+  final ScrollController? scrollController; // 🆕
 
   const _ComunidadPerfilCard({
     required this.model,
@@ -895,6 +956,7 @@ class _ComunidadPerfilCard extends StatelessWidget {
     required this.onLikeTap,
     required this.onNopeTap,
     required this.onReport,
+    this.scrollController, // 🆕
   });
 
   bool get _estaBloqueado {
@@ -1052,6 +1114,7 @@ class _ComunidadPerfilCard extends StatelessWidget {
         children: [
           Positioned.fill(child: Image.asset('assets/images/fondo.jpg', fit: BoxFit.cover)),
           SingleChildScrollView(
+            controller: scrollController, // 🆕
             physics: const BouncingScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 40),
             child: Column(
