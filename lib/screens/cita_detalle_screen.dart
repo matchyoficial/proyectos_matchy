@@ -23,10 +23,26 @@
 //    spinner "LEYENDO CÓDIGOS..." con mínimo de 1.5s visible, y un chequeo de seguridad interno
 //    (la cita debe seguir en 'matched') por si el Juez Supremo de citas_screen.dart ya la cerró
 //    por tiempo límite antes de terminar de confirmar.
+// 🆕 FIX NAVEGACIÓN AUTOMÁTICA (usuario que confirma primero): antes, quien ponía su código
+//    de primero solo escribía su lado en Firestore y se quedaba esperando sin ningún aviso —
+//    si el otro confirmaba minutos después, su pantalla nunca se enteraba y quedaba "colgada"
+//    sin ir a ConfirmarCitaScreen. Ahora esta pantalla escucha en tiempo real el documento de
+//    la cita (snapshots) mientras está abierta: en cuanto detecta que quedó status:'finished'
+//    + resultado:'completada_exitosa' (sin importar quién la cerró ni cuánto tiempo pasó),
+//    navega sola a ConfirmarCitaScreen, leyendo antes los puntos/racha actualizados del propio
+//    usuario.
+// 🆕 El código ya NO se borra después de mostrar "DILE A TU MATCHY..." — se deja escrito en el
+//    campo para que, si el usuario quiere, pueda darle "Confirmar Cita" otra vez como respaldo
+//    manual.
+// 🆕 Ese respaldo manual quedó blindado: si el usuario le da "Confirmar Cita" de nuevo después
+//    de que la cita YA se cerró con éxito (mientras él esperaba), ya no le sale el mensaje
+//    falso de "se cerró por tiempo límite" — ahora se distingue ese caso y lo manda igual a
+//    ConfirmarCitaScreen.
 //    Todo lo demás del archivo (lógica de código/GPS, _obtenerMejorUbicacion, _radioEfectivo,
 //    _fechaAmigable) queda exactamente igual a la versión anterior. No se tocó citas_screen.dart
 //    ni confirmar_cita.dart.
 
+import 'dart:async'; // 🆕 NUEVO — necesario para StreamSubscription
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -98,10 +114,93 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
   final TextEditingController _codigoCtrl = TextEditingController();
   bool _confirmando = false;
 
+  // 🆕 Oyente en tiempo real sobre el documento de la cita, y bandera para no navegar dos veces.
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _citaListener;
+  bool _yaNavegueAExito = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _iniciarEscuchaCita(); // 🆕 NUEVO
+  }
+
   @override
   void dispose() {
+    _citaListener?.cancel(); // 🆕 NUEVO
     _codigoCtrl.dispose();
     super.dispose();
+  }
+
+  // ===========================================================================
+  // 🆕 OYENTE EN TIEMPO REAL: detecta cuando el OTRO usuario cierra la cita con éxito
+  // mientras esta pantalla sigue abierta esperando, y navega solo a ConfirmarCitaScreen.
+  // ===========================================================================
+  void _iniciarEscuchaCita() {
+    _citaListener = FirebaseFirestore.instance
+        .collection('citas')
+        .doc(widget.citaId)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted || _yaNavegueAExito) return;
+      final data = snap.data();
+      if (data == null) return;
+      if (data['status'] == 'finished' && data['resultado'] == 'completada_exitosa') {
+        _navegarAExitoDesdeFirestore();
+      }
+    });
+  }
+
+  // 🆕 Lleva a ConfirmarCitaScreen leyendo los datos frescos del propio usuario (para saber si
+  // su racha llegó a 3 y ganó puntos) — usado tanto por el oyente automático de arriba como por
+  // el respaldo manual dentro de _confirmarCita() cuando la cita ya se cerró con éxito.
+  Future<void> _navegarAExitoDesdeFirestore() async {
+    if (_yaNavegueAExito) return;
+    _yaNavegueAExito = true;
+    await _citaListener?.cancel();
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final myUid = user.uid;
+    final otherUid = widget.matchyUid;
+
+    bool ganaronPuntos = false;
+    int citasFaltantes = 0;
+    String miNombreFresco = 'Tú';
+    String miFotoFresca = '';
+    String otroNombreFresco = widget.matchyNombre;
+    String otroFotoFresca = widget.matchyFoto;
+
+    try {
+      final miSnap = await FirebaseFirestore.instance.collection('users').doc(myUid).get();
+      final miData = miSnap.data() ?? {};
+      miNombreFresco = (miData['nombre'] ?? 'Tú').toString();
+      miFotoFresca = (miData['profilePhotoUrl'] ?? '').toString();
+      final miContadorFinal = (miData['citas_consecutivas_exitosas'] as num?)?.toInt() ?? 0;
+      ganaronPuntos = miContadorFinal == 3;
+      citasFaltantes = ganaronPuntos ? 0 : (3 - (miContadorFinal % 3));
+    } catch (_) {}
+
+    try {
+      final otroSnap = await FirebaseFirestore.instance.collection('users').doc(otherUid).get();
+      final otroData = otroSnap.data() ?? {};
+      otroNombreFresco = (otroData['nombre'] ?? widget.matchyNombre).toString();
+      otroFotoFresca = (otroData['profilePhotoUrl'] ?? '').toString();
+    } catch (_) {}
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => ConfirmarCitaScreen(
+          ownerNombre: miNombreFresco,
+          ownerFoto: miFotoFresca,
+          matchyNombre: otroNombreFresco,
+          matchyFoto: otroFotoFresca,
+          ganaronPuntos: ganaronPuntos,
+          citasFaltantes: citasFaltantes,
+        ),
+      ),
+          (route) => false,
+    );
   }
 
   // 🐛 FIX: mismo formateador exacto que usa _CitaCard en citas_screen.dart, para que la fecha
@@ -269,6 +368,7 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
 
       bool citaCompletada = false;
       bool citaYaCerrada = false;
+      String? resultadoAlCerrarse; // 🆕 distingue cierre exitoso de cierre por tiempo límite
       bool yoGanePuntos = false;
       int miContadorNuevo = 0;
 
@@ -280,9 +380,11 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         final cdata = citaSnap.data() ?? {};
 
         // 🛡️ Chequeo de seguridad: si la cita ya no está 'matched' (por ejemplo, el Juez
-        // Supremo de citas_screen.dart ya la cerró por tiempo límite), no la sobrescribimos.
+        // Supremo de citas_screen.dart ya la cerró por tiempo límite, o ya se cerró con éxito
+        // mientras yo esperaba), no la sobrescribimos.
         if ((cdata['status'] ?? 'matched') != 'matched') {
           citaYaCerrada = true;
+          resultadoAlCerrarse = (cdata['resultado'] ?? '').toString(); // 🆕
           return;
         }
 
@@ -323,6 +425,13 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         }
       });
 
+      // 🆕 Si mi propia transacción fue la que cerró la cita con éxito, bloqueo de una vez
+      // cualquier intento del oyente en tiempo real de navegar por su cuenta (evita duplicar).
+      if (citaCompletada) {
+        _yaNavegueAExito = true;
+        await _citaListener?.cancel();
+      }
+
       // ⏳ Mínimo de tiempo visible del spinner "LEYENDO CÓDIGOS..." para que no parpadee.
       final transcurrido = DateTime.now().difference(inicio);
       const minimoVisible = Duration(milliseconds: 1500);
@@ -333,7 +442,13 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
       if (!mounted) return;
 
       if (citaYaCerrada) {
-        _mostrarBurbuja("Esta cita ya se cerró por tiempo límite.", const Color(0xFFFF5252), Icons.event_busy_rounded);
+        // 🆕 Si la cita ya se cerró pero fue con ÉXITO (probablemente mientras yo esperaba a
+        // mi Matchy), no es un error — lo llevo igual a la pantalla de éxito.
+        if (resultadoAlCerrarse == 'completada_exitosa') {
+          await _navegarAExitoDesdeFirestore();
+        } else {
+          _mostrarBurbuja("Esta cita ya se cerró por tiempo límite.", const Color(0xFFFF5252), Icons.event_busy_rounded);
+        }
         return;
       }
 
@@ -372,7 +487,8 @@ class _CitaDetalleScreenState extends State<CitaDetalleScreen> {
         );
       } else {
         _mostrarBurbuja("DILE A TU MATCHY QUE PONGA TU CÓDIGO PARA CONFIRMAR LA CITA", const Color(0xFF00E676), Icons.hourglass_top_rounded);
-        _codigoCtrl.clear();
+        // 🆕 Ya no se borra el código: se deja escrito por si el usuario quiere darle
+        // "Confirmar Cita" otra vez más tarde como respaldo manual.
       }
     } catch (e) {
       _mostrarBurbuja("Error al confirmar: $e", const Color(0xFFFF5252), Icons.error_outline_rounded);
