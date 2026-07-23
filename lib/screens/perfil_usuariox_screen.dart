@@ -6,6 +6,11 @@
 // 🔥 FIX CRÍTICO CORREO: Estructura 'message' ajustada para Trigger Email Extension.
 // 🔥 LIE DETECTOR: Captura nombre y correo real vs. lo que escribe el usuario.
 // 💎 NUEVO: Inyección del Check Azul y Tarjeta de Biometría (Seguridad Anti-Fakes).
+// 🔧 FIX ZOOM: Se quitó el gesto "arrastrar hacia abajo para cerrar" del visor de fotos.
+//    Competía con el pellizco de InteractiveViewer y con el deslizamiento de PageView
+//    en la misma arena de gestos, causando que el zoom fallara al azar, se trabara y
+//    se viera recortado. Ahora se cierra solo con el botón X, igual que en
+//    lugar_plantilla_screen.dart (que ya funciona perfecto).
 // -----------------------------------------------------------
 
 import 'dart:io';
@@ -615,6 +620,10 @@ class _CardVerificacionBiometrica extends StatelessWidget {
 
 // ============================================================================
 // 🔍 NUEVO: visor de fotos a pantalla completa con zoom (pellizcar) y deslizamiento entre fotos
+// 🔧 FIX ZOOM: sin gesto de "arrastrar para cerrar" — cierra solo con el botón X.
+// Esto evita que un GestureDetector de arrastre vertical compita en la arena de gestos
+// con el PageView (deslizar entre fotos) y el InteractiveViewer (pellizcar/zoom), que era
+// la causa real de que el zoom fallara al azar, se trabara y se viera recortado.
 // ============================================================================
 class _GaleriaZoomFullScreen extends StatefulWidget {
   final List<String> fotos;
@@ -628,7 +637,6 @@ class _GaleriaZoomFullScreen extends StatefulWidget {
 class _GaleriaZoomFullScreenState extends State<_GaleriaZoomFullScreen> {
   late final PageController _pageController;
   late int _currentIndex;
-  double _dragOffset = 0;
 
   @override
   void initState() {
@@ -669,72 +677,57 @@ class _GaleriaZoomFullScreenState extends State<_GaleriaZoomFullScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final opacidadFondo = (1 - (_dragOffset.abs() / 400)).clamp(0.5, 1.0);
-
-    return GestureDetector(
-      onVerticalDragUpdate: (details) => setState(() => _dragOffset += details.delta.dy),
-      onVerticalDragEnd: (details) {
-        if (_dragOffset.abs() > 120) {
-          Navigator.of(context).pop();
-        } else {
-          setState(() => _dragOffset = 0);
-        }
-      },
-      child: Material(
-        color: Colors.black.withOpacity(opacidadFondo),
-        child: Transform.translate(
-          offset: Offset(0, _dragOffset),
-          child: SafeArea(
-            child: Stack(
-              children: [
-                PageView.builder(
-                  controller: _pageController,
-                  itemCount: widget.fotos.length,
-                  onPageChanged: (i) => setState(() => _currentIndex = i),
-                  itemBuilder: (context, i) {
-                    return InteractiveViewer(
-                      minScale: 1.0,
-                      maxScale: 4.0,
-                      child: Center(child: _buildFoto(widget.fotos[i])),
-                    );
-                  },
+    return Material(
+      color: Colors.black,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: widget.fotos.length,
+              onPageChanged: (i) => setState(() => _currentIndex = i),
+              itemBuilder: (context, i) {
+                return InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  child: Center(child: _buildFoto(widget.fotos[i])),
+                );
+              },
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                  child: const Icon(Icons.close, color: Colors.white, size: 26),
                 ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
-                      child: const Icon(Icons.close, color: Colors.white, size: 26),
-                    ),
-                  ),
-                ),
-                if (widget.fotos.length > 1)
-                  Positioned(
-                    top: 16,
-                    left: 0,
-                    right: 0,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        widget.fotos.length,
-                            (i) => Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: i == _currentIndex ? Colors.white : Colors.white30,
-                          ),
-                        ),
+              ),
+            ),
+            if (widget.fotos.length > 1)
+              Positioned(
+                top: 16,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    widget.fotos.length,
+                        (i) => Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == _currentIndex ? Colors.white : Colors.white30,
                       ),
                     ),
                   ),
-              ],
-            ),
-          ),
+                ),
+              ),
+          ],
         ),
       ),
     );
