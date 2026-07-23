@@ -4,6 +4,11 @@
 // 🛡️ RADAR ACTIVADO: Sincronización perfecta anti-retrasos.
 // 🚫 ESCUDO ANTI-X ROJA: Manejo nativo de errores 404 de Flutter.
 // ⚖️ LEGAL UX: Advertencia preventiva con estilo premium neón.
+// 🆕 FIX: no se puede borrar la última foto restante (evita perfiles sin foto).
+// 🆕 FIX: _updatePhotosInFirestore ahora usa set(merge:true) en vez de update(),
+//    para que nunca falle en silencio si el documento del usuario aún no existe.
+// 🆕 FIX: _mostrarBurbujaRechazo ahora acepta un título opcional, para poder
+//    reusar la misma burbuja visual en el aviso de "no se puede borrar".
 
 import 'dart:async';
 import 'dart:io';
@@ -126,7 +131,9 @@ class _GestorFotosWidgetState extends ConsumerState<GestorFotosWidget> {
   }
 
   // 🔥 SISTEMA DE BURBUJAS DE RECHAZO (NEÓN MAGENTA/ROJO)
-  void _mostrarBurbujaRechazo(String motivo) {
+  // 🆕 FIX: parámetro 'titulo' opcional (por defecto "FOTO RECHAZADA", igual que antes)
+  // para poder reusar esta misma burbuja en el aviso de "no se puede borrar".
+  void _mostrarBurbujaRechazo(String motivo, {String titulo = "FOTO RECHAZADA"}) {
     if (!mounted) return;
     final overlayState = Overlay.of(context);
     late OverlayEntry entry;
@@ -171,7 +178,7 @@ class _GestorFotosWidgetState extends ConsumerState<GestorFotosWidget> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("FOTO RECHAZADA", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins')),
+                            Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, fontFamily: 'Poppins')),
                             Text(motivo, style: const TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Poppins')),
                           ],
                         ),
@@ -223,15 +230,18 @@ class _GestorFotosWidgetState extends ConsumerState<GestorFotosWidget> {
   }
 
   // 🔥 ACTUALIZACIÓN ATÓMICA EN FIRESTORE
+  // 🆕 FIX: se cambió update() por set(merge:true) — update() lanzaba una excepción
+  // silenciosa (atrapada en el catch de abajo) cuando el documento del usuario todavía
+  // no existía, como pasa con la primera foto de un usuario recién registrado.
   Future<void> _updatePhotosInFirestore(List<String> urls) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     try {
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'photoUrls': urls,
         'profilePhotoUrl': urls.isNotEmpty ? urls.first : null,
         'updatedAt': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Error actualizando Firestore: $e");
     }
@@ -509,6 +519,15 @@ class _GestorFotosWidgetState extends ConsumerState<GestorFotosWidget> {
             isGhost: false,
             onRemove: () async {
               if (_isWaitingForAmazon) return;
+              // 🆕 FIX: no se permite borrar la última foto restante — antes esto dejaba
+              // el perfil sin ninguna foto sin ningún aviso ni candado.
+              if (displayFotos.length <= 1) {
+                _mostrarBurbujaRechazo(
+                  "Debes tener al menos 1 foto de perfil. Sube una nueva antes de borrar esta.",
+                  titulo: "NO SE PUEDE BORRAR",
+                );
+                return;
+              }
               final current = List<String>.from(displayFotos);
               final urlToDelete = current.removeAt(index);
 

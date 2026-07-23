@@ -21,6 +21,9 @@
 //    pero el invitador sigue viendo su cuenta regresiva normal de 30 días en intereses_screen.dart
 //    sin enterarse del rechazo — evita la frustración de una notificación negativa. SIN
 //    notificación al invitador (decisión explícita).
+// 🆕 NUEVO: subtítulo aclara explícitamente que elegir un sitio NO es una cita confirmada,
+//    solo un interés mutuo — la cita real se coordina después. Sin FittedBox en esa línea para
+//    que el texto haga wrap normal (varias líneas) y nunca se encoja ni se salga del recuadro.
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -292,7 +295,7 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                       // 🆕 Subtítulo condicional
                       final String subtitulo = rechazadoPorInvitado
                           ? "Rechazaste esta invitación."
-                          : "está interesado(a) en ir contigo\na alguno de estos 3 sitios";
+                          : "está interesado(a) en ir contigo\na alguno de estos 3 sitios.\nAl elegir un sitio solo confirmas tu interés, no una cita. Podrán coordinar la fecha más adelante.";
 
                       return Column(
                         children: [
@@ -310,7 +313,7 @@ class _InteresesInvitacionScreenState extends State<InteresesInvitacionScreen> {
                                 // 🔝 "ARRIBA EL NOMBRE DE QUIEN HACE LA INVITACIÓN"
                                 FittedBox(fit: BoxFit.scaleDown, child: Text(inviterNombre.toUpperCase(), style: kTituloStyle, textAlign: TextAlign.center)),
                                 const SizedBox(height: 6),
-                                FittedBox(fit: BoxFit.scaleDown, child: Text(subtitulo, style: kSubtituloStyle, textAlign: TextAlign.center)),
+                                Text(subtitulo, style: kSubtituloStyle, textAlign: TextAlign.center),
 
                                 // 🆕 CHIP DE INTENCIÓN
                                 if (intencion.isNotEmpty)

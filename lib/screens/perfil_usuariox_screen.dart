@@ -352,6 +352,23 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
     final intereses = (_data!['interesesSeleccion'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
     final galeriaRaw = (_data!['photoUrls'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
 
+    // 🔍 NUEVO: abre el visor de fotos a pantalla completa con zoom, deslizando desde el índice tocado
+    void abrirZoom(int index) {
+      if (galeriaRaw.isEmpty) return;
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          opaque: false,
+          barrierColor: Colors.black,
+          transitionDuration: const Duration(milliseconds: 220),
+          reverseTransitionDuration: const Duration(milliseconds: 180),
+          pageBuilder: (_, animation, __) => FadeTransition(
+            opacity: animation,
+            child: _GaleriaZoomFullScreen(fotos: galeriaRaw, initialIndex: index),
+          ),
+        ),
+      );
+    }
+
     final puntaje = (_data!['confiabilidad'] as num?)?.toInt() ?? 100;
     final userStatus = (_data!['userStatus'] ?? 'active').toString();
     final strikes = (_data!['strikes'] as num?)?.toInt() ?? 0;
@@ -389,85 +406,93 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
                           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 10, offset: const Offset(0, 6))],
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          children: [
-                            Positioned.fill(child: FotoPerfilUsuario(uid: widget.uid, fit: BoxFit.cover, alignment: Alignment.topCenter)),
-                            Positioned(
-                              left: 0, right: 0, bottom: 0,
-                              child: Container(
-                                height: 180,
-                                decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)])),
+                        // 🔍 NUEVO: se envuelve la tarjeta completa (imagen + overlay) en un GestureDetector
+                        // para abrir el zoom. Debe ser la tarjeta ENTERA y no solo la imagen, porque el
+                        // degradado (Container con decoración) que está encima en el Stack "atrapa" el toque
+                        // antes de que le llegue a un detector puesto solo en la imagen de más abajo.
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: galeriaRaw.isNotEmpty ? () => abrirZoom(0) : null,
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: FotoPerfilUsuario(uid: widget.uid, fit: BoxFit.cover, alignment: Alignment.topCenter)),
+                              Positioned(
+                                left: 0, right: 0, bottom: 0,
+                                child: Container(
+                                  height: 180,
+                                  decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withOpacity(0.95)])),
+                                ),
                               ),
-                            ),
-                            Positioned(
-                              left: 30, bottom: 30, right: 30,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // 🔥 INYECCIÓN: Etiqueta "PERFIL VERIFICADO" blindada con FittedBox
-                                  if (isVerified)
+                              Positioned(
+                                left: 30, bottom: 30, right: 30,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // 🔥 INYECCIÓN: Etiqueta "PERFIL VERIFICADO" blindada con FittedBox
+                                    if (isVerified)
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Container(
+                                          margin: const EdgeInsets.only(bottom: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF00B4DB).withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(20),
+                                            border: Border.all(color: const Color(0xFF00B4DB), width: 1),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: const [
+                                              Icon(Icons.verified, color: Color(0xFF00B4DB), size: 14),
+                                              SizedBox(width: 4),
+                                              Flexible(
+                                                child: Text(
+                                                  "PERFIL VERIFICADO",
+                                                  style: TextStyle(
+                                                      color: Color(0xFF00B4DB),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                      letterSpacing: 0.6,
+                                                      fontFamily: 'Poppins'
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+
                                     FittedBox(
                                       fit: BoxFit.scaleDown,
                                       alignment: Alignment.centerLeft,
-                                      child: Container(
-                                        margin: const EdgeInsets.only(bottom: 6),
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF00B4DB).withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(20),
-                                          border: Border.all(color: const Color(0xFF00B4DB), width: 1),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: const [
-                                            Icon(Icons.verified, color: Color(0xFF00B4DB), size: 14),
-                                            SizedBox(width: 4),
-                                            Flexible(
-                                              child: Text(
-                                                "PERFIL VERIFICADO",
-                                                style: TextStyle(
-                                                    color: Color(0xFF00B4DB),
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.bold,
-                                                    letterSpacing: 0.6,
-                                                    fontFamily: 'Poppins'
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                      child: Row(
+                                        children: [
+                                          Text(nombre, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow)),
+                                          if (edad.isNotEmpty) Text(', $edad', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow)),
+                                        ],
                                       ),
                                     ),
-
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Row(
-                                      children: [
-                                        Text(nombre, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow)),
-                                        if (edad.isNotEmpty) Text(', $edad', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, fontFamily: 'Poppins', shadows: kTextShadow)),
-                                      ],
+                                    const SizedBox(height: 4),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(profesion.isEmpty ? '—' : profesion, style: const TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Poppins', shadows: kTextShadow)),
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(profesion.isEmpty ? '—' : profesion, style: const TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Poppins', shadows: kTextShadow)),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      ciudad.isEmpty && pais.isEmpty ? 'Sin ubicación' : (ciudad.isNotEmpty && pais.isNotEmpty ? '$ciudad - $pais' : (ciudad.isNotEmpty ? ciudad : pais)),
-                                      style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'Poppins', shadows: kTextShadow),
+                                    const SizedBox(height: 2),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        ciudad.isEmpty && pais.isEmpty ? 'Sin ubicación' : (ciudad.isNotEmpty && pais.isNotEmpty ? '$ciudad - $pais' : (ciudad.isNotEmpty ? ciudad : pais)),
+                                        style: const TextStyle(color: Colors.white, fontSize: 14, fontFamily: 'Poppins', shadows: kTextShadow),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
 
@@ -481,13 +506,13 @@ class _PerfilUsuarioXScreenState extends State<PerfilUsuarioXScreen> {
 
                       _cardTexto('Biografía', bio.isEmpty ? '—' : bio),
                       if (sobreMi.isNotEmpty) _cardChips('Sobre mí', sobreMi),
-                      if (galeriaRaw.length >= 2) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[1])),
+                      if (galeriaRaw.length >= 2) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => abrirZoom(1), child: _buildImage(galeriaRaw[1]))),
                       if (busco.isNotEmpty) _cardChips('Busco...', busco),
-                      if (galeriaRaw.length >= 3) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[2])),
+                      if (galeriaRaw.length >= 3) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => abrirZoom(2), child: _buildImage(galeriaRaw[2]))),
                       if (intereses.isNotEmpty) _cardChips('Intereses y Hobbies', intereses),
-                      if (galeriaRaw.length >= 4) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[3])),
+                      if (galeriaRaw.length >= 4) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => abrirZoom(3), child: _buildImage(galeriaRaw[3]))),
                       _cardTexto('Un detalle que me enamora', detalle.isEmpty ? '—' : detalle),
-                      if (galeriaRaw.length >= 5) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: _buildImage(galeriaRaw[4])),
+                      if (galeriaRaw.length >= 5) Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: 400, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => abrirZoom(4), child: _buildImage(galeriaRaw[4]))),
 
                       const SizedBox(height: 30),
 
@@ -583,6 +608,134 @@ class _CardVerificacionBiometrica extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 🔍 NUEVO: visor de fotos a pantalla completa con zoom (pellizcar) y deslizamiento entre fotos
+// ============================================================================
+class _GaleriaZoomFullScreen extends StatefulWidget {
+  final List<String> fotos;
+  final int initialIndex;
+  const _GaleriaZoomFullScreen({required this.fotos, required this.initialIndex});
+
+  @override
+  State<_GaleriaZoomFullScreen> createState() => _GaleriaZoomFullScreenState();
+}
+
+class _GaleriaZoomFullScreenState extends State<_GaleriaZoomFullScreen> {
+  late final PageController _pageController;
+  late int _currentIndex;
+  double _dragOffset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.fotos.length - 1);
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Widget _fallback() {
+    return Container(
+      color: const Color(0x33FFFFFF),
+      child: const Center(child: Icon(Icons.person, color: Colors.white70, size: 70)),
+    );
+  }
+
+  Widget _buildFoto(String raw) {
+    final r = raw.trim();
+    if (r.isEmpty) return _fallback();
+    if (r.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: r,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))),
+        errorWidget: (_, __, ___) => _fallback(),
+      );
+    } else if (r.startsWith('assets/')) {
+      return Image.asset(r, fit: BoxFit.contain, errorBuilder: (_, __, ___) => _fallback());
+    } else {
+      return Image.file(File(r), fit: BoxFit.contain, errorBuilder: (_, __, ___) => _fallback());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final opacidadFondo = (1 - (_dragOffset.abs() / 400)).clamp(0.5, 1.0);
+
+    return GestureDetector(
+      onVerticalDragUpdate: (details) => setState(() => _dragOffset += details.delta.dy),
+      onVerticalDragEnd: (details) {
+        if (_dragOffset.abs() > 120) {
+          Navigator.of(context).pop();
+        } else {
+          setState(() => _dragOffset = 0);
+        }
+      },
+      child: Material(
+        color: Colors.black.withOpacity(opacidadFondo),
+        child: Transform.translate(
+          offset: Offset(0, _dragOffset),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: widget.fotos.length,
+                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  itemBuilder: (context, i) {
+                    return InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Center(child: _buildFoto(widget.fotos[i])),
+                    );
+                  },
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.close, color: Colors.white, size: 26),
+                    ),
+                  ),
+                ),
+                if (widget.fotos.length > 1)
+                  Positioned(
+                    top: 16,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        widget.fotos.length,
+                            (i) => Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == _currentIndex ? Colors.white : Colors.white30,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

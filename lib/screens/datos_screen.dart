@@ -256,36 +256,6 @@ class _DatosScreenState extends ConsumerState<DatosScreen> {
     return _nombreOk(s) && _edadOk(s) && _origenOk() && _residenciaOk(s) && _generoOk() && _preferenciaOk() && _fotosOk(s);
   }
 
-  Future<void> _syncProfileToFirestore(ProfileFormState s) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('No hay usuario autenticado.');
-    final uid = user.uid;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(uid);
-
-    final payload = <String, dynamic>{
-      'uid': uid,
-      'email': user.email,
-      'nombre': s.nombre.trim(),
-      'edad': int.tryParse(s.edad.trim()),
-      'profesion': s.profesion.trim(),
-      'biografia': s.biografia.trim(),
-      'detalle': s.detalle.trim(),
-      'estatura': s.estatura.trim(),
-      'paisOrigen': _paisOrigen,
-      'ciudadOrigen': _ciudadOrigen,
-      'pais': _vivoEnMiOrigen ? _paisOrigen : (s.paisSeleccionado ?? '').trim(),
-      'ciudad': _vivoEnMiOrigen ? _ciudadOrigen : (s.ciudadSeleccionada ?? '').trim(),
-      'genero': _genero,
-      'preferenciaCitas': _preferenciaCitas,
-      'sobreMiSeleccion': List<String>.from(s.sobreMiSeleccion),
-      'buscoSeleccion': List<String>.from(s.buscoSeleccion),
-      'interesesSeleccion': List<String>.from(s.interesesSeleccion),
-      'onboarding_completed': true,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    await docRef.set(payload, SetOptions(merge: true));
-  }
-
   Future<void> _seleccionarEstatura(BuildContext context) async {
     final selected = await showModalBottomSheet<String>(
         context: context, backgroundColor: Colors.black87,
@@ -418,31 +388,31 @@ Esta Política de Privacidad describe cómo recopilamos, utilizamos, procesamos 
 
 1. Información que Recopilamos
 Para proporcionar y optimizar nuestros servicios, recopilamos las siguientes categorías de datos:
-• Datos de Registro y Perfil: Nombre, fecha de nacimiento (para validar la mayoría de edad), género, orientación sexual, preferencias de citas, fotografías subidas voluntariamente, biografía e intereses.
-• Datos de Ubicación (GPS): Recopilamos datos de ubicación precisa del dispositivo.
+- Datos de Registro y Perfil: Nombre, fecha de nacimiento (para validar la mayoría de edad), género, orientación sexual, preferencias de citas, fotografías subidas voluntariamente, biografía e intereses.
+- Datos de Ubicación (GPS): Recopilamos datos de ubicación precisa del dispositivo.
 Justificación: Esta información es estrictamente necesaria para la funcionalidad principal de Matchy, la cual consiste en validar mediante geolocalización la asistencia en tiempo real del Usuario a los establecimientos aliados donde se han programado sus citas.
-• Datos de Dispositivo y Uso: Modelo del dispositivo, sistema operativo, dirección IP, interacciones dentro de la app (matches, mensajes, reportes) y registros de fallos (crash logs).
+- Datos de Dispositivo y Uso: Modelo del dispositivo, sistema operativo, dirección IP, interacciones dentro de la app (matches, mensajes, reportes) y registros de fallos (crash logs).
 
 2. Uso de la Información
 Los datos se utilizan exclusivamente para:
-• Operar y mejorar la Plataforma.
-• Facilitar el emparejamiento ("matching") basado en preferencias.
-• Verificar la asistencia a las citas mediante la validación del GPS.
-• Aplicar el sistema de penalizaciones ("strikes") y calcular el puntaje de confiabilidad.
-• Garantizar la seguridad de la comunidad y prevenir el fraude.
+- Operar y mejorar la Plataforma.
+- Facilitar el emparejamiento ("matching") basado en preferencias.
+- Verificar la asistencia a las citas mediante la validación del GPS.
+- Aplicar el sistema de penalizaciones ("strikes") y calcular el puntaje de confiabilidad.
+- Garantizar la seguridad de la comunidad y prevenir el fraude.
 
 3. Integración con Servicios de Terceros
 Matchy no vende ni comercializa los datos personales de los Usuarios. Compartimos información de forma segura únicamente con:
-• Google Play Services: Para métricas y funcionamiento del sistema.
-• Firebase (Google): Para autenticación segura, base de datos (Cloud Firestore) y almacenamiento de imágenes (Storage).
+- Google Play Services: Para métricas y funcionamiento del sistema.
+- Firebase (Google): Para autenticación segura, base de datos (Cloud Firestore) y almacenamiento de imágenes (Storage).
 
 4. Seguridad de los Datos
 Implementamos medidas de encriptado de datos en tránsito y en reposo mediante la infraestructura de Google Cloud/Firebase para proteger la información contra acceso no autorizado.
 
 5. Retención y Eliminación de Datos
 El Usuario tiene el derecho absoluto de solicitar la eliminación de su cuenta y todos los datos asociados:
-• Desde la App: Sección de Configuración de Perfil > "Eliminar Cuenta".
-• Por Correo: Enviando una solicitud a contacto@matchyapp.co.
+- Desde la App: Sección de Configuración de Perfil > "Eliminar Cuenta".
+- Por Correo: Enviando una solicitud a contacto@matchyapp.co.
 Una vez confirmada, los datos (incluyendo fotos y registros) serán borrados permanentemente de nuestros servidores, salvo registros mínimos obligatorios por ley o para mantener bloqueos por infracciones graves de seguridad.
 
 PARTE II: TÉRMINOS Y CONDICIONES DE USO
@@ -452,25 +422,25 @@ El uso de Matchy está restringido exclusivamente a personas mayores de 18 años
 
 2. Limitación de Responsabilidad (Interacciones Offline)
 Matchy actúa como una herramienta tecnológica para facilitar la conexión virtual y sugerir lugares de encuentro.
-• Exención de responsabilidad: Matchy NO realiza verificaciones de antecedentes penales ni evaluaciones psicológicas.
-• Asunción de Riesgo: Los encuentros presenciales se realizan bajo el propio y exclusivo riesgo del Usuario. Matchy no asume responsabilidad civil o penal por cualquier daño, lesión o altercado resultante de la conducta de los Usuarios fuera de la aplicación.
+- Exención de responsabilidad: Matchy NO realiza verificaciones de antecedentes penales ni evaluaciones psicológicas.
+- Asunción de Riesgo: Los encuentros presenciales se realizan bajo el propio y exclusivo riesgo del Usuario. Matchy no asume responsabilidad civil o penal por cualquier daño, lesión o altercado resultante de la conducta de los Usuarios fuera de la aplicación.
 
 3. Exención de Responsabilidad sobre Establecimientos Aliados
 Cualquier incidente ocurrido dentro de los establecimientos sugeridos (restaurantes, bares, sedes físicas) es responsabilidad exclusiva del local comercial. Matchy no tiene control sobre la calidad del servicio, seguridad o infraestructura de estos terceros.
 
 4. Sistema de Comportamiento y Strikes
 Matchy se reserva el derecho de suspender o bloquear permanentemente cualquier cuenta que:
-• Proporcione información falsa o suplante identidad.
-• Incurra en acoso, lenguaje de odio o spam.
-• Acumule penalizaciones por inasistencia reiterada a citas programadas ("Sistema de Strikes").
+- Proporcione información falsa o suplante identidad.
+- Incurra en acoso, lenguaje de odio o spam.
+- Acumule penalizaciones por inasistencia reiterada a citas programadas ("Sistema de Strikes").
 
 5. Legislación y Jurisdicción
 Estos términos se rigen por las leyes de la República de Colombia. Cualquier controversia será sometida a los tribunales competentes en territorio colombiano.
 
 6. Contacto Oficial
 Para asuntos legales, ejercicio de derechos de Habeas Data o soporte técnico:
-• Correo electrónico: contacto@matchyapp.co
-• Sitio Web: www.matchyapp.co
+- Correo electrónico: contacto@matchyapp.co
+- Sitio Web: www.matchyapp.co
 
 PARTE lll: ESTÁNDARES DE SEGURIDAD INFANTIL Y PROTECCIÓN AL MENOR.
 Fecha de entrada en vigor: 1 de marzo de 2026.
@@ -479,29 +449,29 @@ En Matchy, operada bajo la premisa de "El que invita paga", nuestra prioridad ab
 
 1. RESTRICCIÓN ESTRICTA DE EDAD (MAYORES DE 18 AÑOS)
 Matchy es una plataforma diseñada exclusivamente para adultos.
-• Autenticación Obligatoria: Para garantizar la integridad de nuestra comunidad, Matchy solo permite el acceso mediante Google Sign-In. Esto nos permite utilizar las capas de verificación de identidad de Google como un primer filtro de seguridad.
-• Prohibición de Menores: El registro o uso de la aplicación por parte de personas menores de 18 años está estrictamente prohibido. Cualquier cuenta que se sospeche pertenece a un menor será suspendida de forma inmediata y permanente.
+- Autenticación Obligatoria: Para garantizar la integridad de nuestra comunidad, Matchy solo permite el acceso mediante Google Sign-In. Esto nos permite utilizar las capas de verificación de identidad de Google como un primer filtro de seguridad.
+- Prohibición de Menores: El registro o uso de la aplicación por parte de personas menores de 18 años está estrictamente prohibido. Cualquier cuenta que se sospeche pertenece a un menor será suspendida de forma inmediata y permanente.
 
 2. POLÍTICA DE TOLERANCIA CERO (EASI y CSAM)
 De acuerdo con la Ley 679 de 2001 (Colombia) y los estándares internacionales de protección, Matchy mantiene una postura de tolerancia cero frente a:
-• Explotación y Abuso Sexual Infantil (EASI): Prohibimos cualquier contenido, mensaje o conducta que promueva, facilite o sugiera el abuso sexual de menores.
-• Material de Abuso Sexual Infantil (CSAM): El intercambio o posesión de imágenes o videos de abuso infantil resultará en la expulsión inmediata y la denuncia ante las autoridades pertinentes.
+- Explotación y Abuso Sexual Infantil (EASI): Prohibimos cualquier contenido, mensaje o conducta que promueva, facilite o sugiera el abuso sexual de menores.
+- Material de Abuso Sexual Infantil (CSAM): El intercambio o posesión de imágenes o videos de abuso infantil resultará en la expulsión inmediata y la denuncia ante las autoridades pertinentes.
 
 3. HERRAMIENTAS DE SEGURIDAD Y CONTROL DEL USUARIO
 Hemos diseñado herramientas específicas dentro de la interfaz de Matchy para que nuestros usuarios sean la primera línea de defensa:
-• Botón "Eliminar Matchy": Ubicado en el detalle de cada conexión, permite romper cualquier vínculo de forma instantánea, eliminando historiales y previniendo futuros contactos en caso de comportamiento inapropiado.
-• Botón de Soporte y Denuncia: En la sección de Perfil, los usuarios tienen acceso directo al botón de "Contáctanos", donde pueden reportar perfiles sospechosos o conductas violatorias de estos estándares.
-• Bloqueos Proactivos: Implementamos un sistema de "Strikes" y bloqueos temporales o permanentes basados en el puntaje de confiabilidad del usuario para sancionar conductas que pongan en riesgo la seguridad de la comunidad.
+- Botón "Eliminar Matchy": Ubicado en el detalle de cada conexión, permite romper cualquier vínculo de forma instantánea, eliminando historiales y previniendo futuros contactos en caso de comportamiento inapropiado.
+- Botón de Soporte y Denuncia: En la sección de Perfil, los usuarios tienen acceso directo al botón de "Contáctanos", donde pueden reportar perfiles sospechosos o conductas violatorias de estos estándares.
+- Bloqueos Proactivos: Implementamos un sistema de "Strikes" y bloqueos temporales o permanentes basados en el puntaje de confiabilidad del usuario para sancionar conductas que pongan en riesgo la seguridad de la comunidad.
 
 4. COOPERACIÓN CON LAS AUTORIDADES
 Matchy cumple rigurosamente con el Artículo 4 de la Ley 679 de 2001:
-• Reporte Obligatorio: Informaremos de manera proactiva a la Policía Nacional de Colombia, al ICBF y a organismos internacionales sobre cualquier actividad detectada que involucre la explotación sexual de menores.
-• Preservación de Datos: Cooperaremos con las autoridades judiciales proporcionando la información necesaria para la investigación de delitos contra la infancia.
+- Reporte Obligatorio: Informaremos de manera proactiva a la Policía Nacional de Colombia, al ICBF y a organismos internacionales sobre cualquier actividad detectada que involucre la explotación sexual de menores.
+- Preservación de Datos: Cooperaremos con las autoridades judiciales proporcionando la información necesaria para la investigación de delitos contra la infancia.
 
 5. CONTACTO OFICIAL DE SEGURIDAD
 Si tienes conocimiento de alguna violación a estos estándares o necesitas reportar una situación de riesgo, comunícate inmediatamente con nuestro equipo de seguridad:
-• Correo Electrónico: contacto@matchyapp.co.
-• Canal Interno: Sección "Contáctanos" dentro de tu Perfil en la aplicación.""",
+- Correo Electrónico: contacto@matchyapp.co.
+- Canal Interno: Sección "Contáctanos" dentro de tu Perfil en la aplicación.""",
                   style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5, fontFamily: 'Poppins'),
                   textAlign: TextAlign.justify,
                 ),
@@ -833,7 +803,11 @@ Si tienes conocimiento de alguna violación a estos estándares o necesitas repo
                           if (_formularioValido(ref.read(profileFormProvider))) {
                             setState(() => _saving = true);
                             try {
-                              await _syncProfileToFirestore(ref.read(profileFormProvider));
+                              await ctrl.syncProfileToFirestore(markOnboardingCompleted: true);
+                              final syncError = ref.read(profileFormProvider).error;
+                              if (syncError != null) {
+                                throw Exception(syncError);
+                              }
                               await ctrl.saveDraft(); await ctrl.publishProfile(); await ctrl.setOnboardingCompleted(true);
                               PaintingBinding.instance.imageCache.clear(); PaintingBinding.instance.imageCache.clearLiveImages();
                               if (!mounted) return;

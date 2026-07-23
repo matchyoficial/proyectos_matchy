@@ -608,6 +608,7 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
     // Solo el motor de biometría en el backend puede alterarlo.
     return <String, dynamic>{
       'uid': uid,
+      'email': _user?.email,
       'nombre': state.nombre.trim(),
       'edad': edadInt,
       'profesion': state.profesion.trim(),
@@ -665,6 +666,9 @@ class ProfileFormController extends StateNotifier<ProfileFormState> {
 
       // Merge: true asegura que no sobreescribamos 'isVerified'
       await ref.set(payload, SetOptions(merge: true));
+
+      // ✅ Limpiamos cualquier error previo: este guardado sí fue exitoso
+      state = state.copyWith(error: null);
     } catch (e) {
       state = state.copyWith(error: 'No se pudo guardar en Firestore: $e');
     }

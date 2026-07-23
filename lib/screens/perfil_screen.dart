@@ -396,6 +396,9 @@ class _PerfilContent extends StatelessWidget {
     final intereses = List<String>.from(state.interesesSeleccion);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
+    // 🔍 NUEVO: lista única de fotos (para el visor con zoom), mismo criterio que ya usa cada tarjeta
+    final List<String> galeriaFotos = state.photoUrls.isNotEmpty ? state.photoUrls : state.fotosCargadas;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -404,6 +407,8 @@ class _PerfilContent extends StatelessWidget {
           smartUid: myUid,
           height: 450,
           overlay: (context) => _ProfileOverlay(state: state, textTheme: textTheme),
+          galeria: galeriaFotos,
+          index: 0,
         ),
 
         const SizedBox(height: 16),
@@ -419,22 +424,22 @@ class _PerfilContent extends StatelessWidget {
         if (sobreMi.isNotEmpty) _CardChips(titulo: 'Sobre mí', items: sobreMi, textTheme: textTheme),
 
         if (state.photoUrls.length >= 2 || state.fotosCargadas.length >= 2)
-          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 2) ? state.photoUrls[1] : state.fotosCargadas[1], height: 400),
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 2) ? state.photoUrls[1] : state.fotosCargadas[1], height: 400, galeria: galeriaFotos, index: 1),
 
         if (busco.isNotEmpty) _CardChips(titulo: 'Busco...', items: busco, textTheme: textTheme),
 
         if (state.photoUrls.length >= 3 || state.fotosCargadas.length >= 3)
-          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 3) ? state.photoUrls[2] : state.fotosCargadas[2], height: 400),
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 3) ? state.photoUrls[2] : state.fotosCargadas[2], height: 400, galeria: galeriaFotos, index: 2),
 
         if (intereses.isNotEmpty) _CardChips(titulo: 'Intereses y Hobbies', items: intereses, textTheme: textTheme),
 
         _CardTexto(titulo: 'Un detalle que me enamora', texto: state.detalle.isEmpty ? 'Aún no has agregado este detalle.' : state.detalle, textTheme: textTheme),
 
         if (state.photoUrls.length >= 4 || state.fotosCargadas.length >= 4)
-          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 4) ? state.photoUrls[3] : state.fotosCargadas[3], height: 400),
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 4) ? state.photoUrls[3] : state.fotosCargadas[3], height: 400, galeria: galeriaFotos, index: 3),
 
         if (state.photoUrls.length >= 5 || state.fotosCargadas.length >= 5)
-          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 5) ? state.photoUrls[4] : state.fotosCargadas[4], height: 400),
+          _FotoTarjeta(imagePathOrAssetOrUrl: (state.photoUrls.length >= 5) ? state.photoUrls[4] : state.fotosCargadas[4], height: 400, galeria: galeriaFotos, index: 4),
 
         const SizedBox(height: 25),
 
@@ -750,7 +755,9 @@ class _CardChips extends StatelessWidget {
 
 class _FotoTarjeta extends StatelessWidget {
   final String? imagePathOrAssetOrUrl; final double height; final Widget Function(BuildContext context)? overlay; final String? smartUid;
-  const _FotoTarjeta({required this.imagePathOrAssetOrUrl, required this.height, this.overlay, this.smartUid});
+  // 🔍 NUEVO: galería completa + índice de esta foto, para abrir el visor con zoom
+  final List<String>? galeria; final int index;
+  const _FotoTarjeta({required this.imagePathOrAssetOrUrl, required this.height, this.overlay, this.smartUid, this.galeria, this.index = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -782,7 +789,153 @@ class _FotoTarjeta extends StatelessWidget {
       }
     }
 
-    return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: height, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 10, offset: const Offset(0, 6))]), clipBehavior: Clip.antiAlias, child: Stack(fit: StackFit.expand, children: [background, if (overlay != null) overlay!(context)]));
+    final Widget contenidoTarjeta = Stack(fit: StackFit.expand, children: [background, if (overlay != null) overlay!(context)]);
+
+    // 🔍 NUEVO: si hay galería disponible, tocar la tarjeta (imagen + overlay) abre el visor con zoom.
+    // OJO: se envuelve la tarjeta completa (no solo la imagen) porque el overlay de la foto de perfil
+    // (degradado + nombre/edad/ubicación) es un Container con decoración que, al estar encima en el
+    // Stack, "atrapa" el toque antes de que le llegue a un GestureDetector puesto solo en la imagen.
+    final tieneGaleria = galeria != null && galeria!.isNotEmpty;
+    final Widget tarjetaConTap = tieneGaleria
+        ? GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            opaque: false,
+            barrierColor: Colors.black,
+            transitionDuration: const Duration(milliseconds: 220),
+            reverseTransitionDuration: const Duration(milliseconds: 180),
+            pageBuilder: (_, animation, __) => FadeTransition(
+              opacity: animation,
+              child: _GaleriaZoomFullScreen(fotos: galeria!, initialIndex: index),
+            ),
+          ),
+        );
+      },
+      child: contenidoTarjeta,
+    )
+        : contenidoTarjeta;
+
+    return Container(margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), height: height, decoration: BoxDecoration(borderRadius: BorderRadius.circular(25), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 10, offset: const Offset(0, 6))]), clipBehavior: Clip.antiAlias, child: tarjetaConTap);
+  }
+}
+
+// 🔍 NUEVO: visor de fotos a pantalla completa con zoom (pellizcar) y deslizamiento entre fotos del perfil
+class _GaleriaZoomFullScreen extends StatefulWidget {
+  final List<String> fotos;
+  final int initialIndex;
+  const _GaleriaZoomFullScreen({required this.fotos, required this.initialIndex});
+
+  @override
+  State<_GaleriaZoomFullScreen> createState() => _GaleriaZoomFullScreenState();
+}
+
+class _GaleriaZoomFullScreenState extends State<_GaleriaZoomFullScreen> {
+  late final PageController _pageController;
+  late int _currentIndex;
+  double _dragOffset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.fotos.length - 1);
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildFoto(String raw) {
+    final r = raw.trim();
+    if (r.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: r,
+        fit: BoxFit.contain,
+        placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Color(0xFFBEB3FF))),
+        errorWidget: (context, url, error) => const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 80)),
+      );
+    } else if (r.startsWith('assets/')) {
+      return Image.asset(r, fit: BoxFit.contain);
+    } else {
+      return Image.file(File(r), fit: BoxFit.contain);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final opacidadFondo = (1 - (_dragOffset.abs() / 400)).clamp(0.5, 1.0);
+
+    return GestureDetector(
+      onVerticalDragUpdate: (details) => setState(() => _dragOffset += details.delta.dy),
+      onVerticalDragEnd: (details) {
+        if (_dragOffset.abs() > 120) {
+          Navigator.of(context).pop();
+        } else {
+          setState(() => _dragOffset = 0);
+        }
+      },
+      child: Material(
+        color: Colors.black.withOpacity(opacidadFondo),
+        child: Transform.translate(
+          offset: Offset(0, _dragOffset),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: widget.fotos.length,
+                  onPageChanged: (i) => setState(() => _currentIndex = i),
+                  itemBuilder: (context, i) {
+                    return InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Center(child: _buildFoto(widget.fotos[i])),
+                    );
+                  },
+                ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      child: const Icon(Icons.close, color: Colors.white, size: 26),
+                    ),
+                  ),
+                ),
+                if (widget.fotos.length > 1)
+                  Positioned(
+                    top: 16,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        widget.fotos.length,
+                            (i) => Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: i == _currentIndex ? Colors.white : Colors.white30,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -4,16 +4,17 @@
 //    banner, zona de descuentos y lugares populares — todo intacto en su diseño.
 // 🆕 AGREGADO: texto "Escoge tres posibles sitios...", 3 casillas horizontales con ❌ para
 //    deseleccionar, botón "ENVIAR INVITACIÓN" (desactivado hasta llenar las 3 casillas).
-// 🔥 MODO SELECCIÓN: tanto el grid de categorías como "Lugares Populares" navegan con
-//    modoSeleccionCita:true, esperan (await) el resultado y llenan la primera casilla vacía.
+// 🔥 MODO SELECCIÓN: tanto el grid de categorías (dentro de la ventana emergente) como
+//    "Lugares Populares" navegan con modoSeleccionCita:true, esperan (await) el resultado
+//    y llenan la primera casilla vacía.
 // 📝 SIN CAMPO "nombre de la cita" — confirmado que no existe en el original.
 // 🗄️ Al enviar, escribe en Firestore la colección 'invitaciones_citas' (ver esquema abajo).
 // 🆕 FIX: se agrega edadInteres (requerido) y se guarda como 'invitadoEdad' en el documento,
 //    para que intereses_screen.dart pueda mostrar la edad sin fetches adicionales.
 // 🔔 NUEVO: al enviar la invitación, se notifica al invitado en users/{uid}/notifications.
 // 🆕 NUEVO: sección "INTENCIÓN" con las 6 opciones (mismo patrón visual que creacita_screen.dart),
-//    ubicada después de las 3 casillas y antes del grid de categorías. Valor por defecto
-//    'Conocernos' — no bloquea el envío. Se guarda como 'intencion' en el documento.
+//    ubicada después de las 3 casillas. Valor por defecto 'Conocernos' — no bloquea el envío.
+//    Se guarda como 'intencion' en el documento.
 // 🐛 FIX CRÍTICO: el registro de "perfil_intereses" (que oculta un perfil para siempre en
 //    Comunidad) se movió AQUÍ, al momento real de enviar la invitación con éxito — antes vivía
 //    en comunidad.dart y se disparaba con el simple swipe derecha, escondiendo perfiles para
@@ -21,18 +22,38 @@
 //    camino). Además, al terminar con éxito se hace pop(true) en vez de pop() — así
 //    comunidad.dart sabe distinguir "se completó" de "se canceló" y decide si avanza el mazo
 //    o le devuelve la tarjeta al usuario.
+// 🆕 AJUSTE 1: el texto de instrucción ahora aclara explícitamente que esto es solo una
+//    invitación y que la cita real se confirma únicamente si el invitado acepta.
+// 🆕 AJUSTE 2: al tocar una casilla vacía, se abre una ventana emergente con las 4
+//    categorías (foto + texto), reutilizando el mismo widget _GridCategoriasSeleccion.
+// 🆕 AJUSTE 2-B (FIX POSICIÓN v2): la ventana emergente ya no se calcula con RenderBox/top
+//    manual — ahora usa CompositedTransformTarget (en la fila de casillas) +
+//    CompositedTransformFollower (en la ventana), ancladas de forma que la ventana aparece
+//    SIEMPRE exactamente ENCIMA de las 3 casillas, sin importar el alto real de su contenido.
+// 🆕 AJUSTE 4: se quitó la tira fija de 4 categorías que estaba repetida debajo de
+//    "INTENCIÓN" (se veía como una doble fila fea junto con la ventana emergente). La clase
+//    _GridCategoriasSeleccion se conserva porque la sigue usando la ventana emergente.
+// 🆕 AJUSTE 4-B: cada casilla vacía ahora muestra "ELIGE SITIO 1/2/3" según su posición,
+//    en vez del genérico "VACÍO", para guiar mejor al usuario.
+// 🆕 AJUSTE 3: se replica el mismo criterio de bloqueo usado en panel_screen.dart
+//    (userStatus + bloqueadoHasta). Si el dueño de la sesión está bloqueado, se deshabilitan
+//    las 3 casillas, "Lugares Populares" y el botón "ENVIAR INVITACIÓN", mostrando una
+//    burbuja con los strikes acumulados y la fecha/hora exacta hasta la que está bloqueado
+//    (o aviso de bloqueo permanente si no hay fecha).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 import 'package:proyectos_matchy/state/profile_form_provider.dart';
 import 'package:proyectos_matchy/models/lugar_data.dart';
 import 'package:proyectos_matchy/widgets/lugar_card.dart';
 import 'package:proyectos_matchy/widgets/foto_perfil_usuario.dart';
 import 'package:proyectos_matchy/widgets/banner_publicidad.dart';
+import 'package:proyectos_matchy/screens/panel_screen.dart'; // 🆕 para reutilizar userDocProvider
 
 import 'package:proyectos_matchy/screens/restaurantes_screen.dart';
 import 'package:proyectos_matchy/screens/bares_screen.dart';
@@ -67,6 +88,10 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
   // Intención de la cita, con default 'Conocernos' (mismo patrón que creacita_screen.dart)
   String _intencion = 'Conocernos';
 
+  // 🆕 AJUSTE 2-B: link para anclar la ventana emergente exactamente encima de las 3 casillas
+  final LayerLink _slotsLayerLink = LayerLink();
+  OverlayEntry? _categoriaOverlay;
+
   bool get _completoLas3 => _slot1 != null && _slot2 != null && _slot3 != null;
 
   String _nombreSeguro(String raw) {
@@ -74,6 +99,47 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
     if (clean.isEmpty) return 'TU';
     final parts = clean.split(RegExp(r'\s+'));
     return parts.isNotEmpty ? parts.first.toUpperCase() : 'TU';
+  }
+
+  @override
+  void dispose() {
+    // 🆕 AJUSTE 2-B: evitamos dejar un OverlayEntry huérfano si la pantalla se cierra
+    // mientras la ventana de categorías sigue abierta.
+    _categoriaOverlay?.remove();
+    super.dispose();
+  }
+
+  // ===========================================================================
+  // 🔒 BLOQUEO DEL USUARIO (mismo criterio usado en panel_screen.dart)
+  // ===========================================================================
+  bool _calcularBloqueado(Map<String, dynamic>? data) {
+    final userStatus = (data?['userStatus'] ?? 'active').toString();
+    final bloqueadoHasta = (data?['bloqueadoHasta'] as Timestamp?)?.toDate();
+    if (userStatus == 'blocked' || userStatus == 'blocked_permanent') {
+      if (bloqueadoHasta != null) return bloqueadoHasta.isAfter(DateTime.now());
+      return true;
+    }
+    return false;
+  }
+
+  String _mensajeBloqueo(Map<String, dynamic>? data) {
+    final strikes = (data?['strikes'] as num?)?.toInt() ?? 0;
+    final bloqueadoHasta = (data?['bloqueadoHasta'] as Timestamp?)?.toDate();
+    final strikesTexto = "Tienes $strikes strike(s).";
+    if (bloqueadoHasta != null) {
+      final fechaTexto = DateFormat('dd/MM/yyyy HH:mm').format(bloqueadoHasta);
+      return "ACCESO RESTRINGIDO.\n$strikesTexto\nEstás bloqueado hasta el $fechaTexto.";
+    }
+    return "ACCESO RESTRINGIDO.\n$strikesTexto\nTu cuenta está bloqueada de forma permanente.";
+  }
+
+  void _intentarAccionBloqueable(VoidCallback accion) {
+    final data = ref.read(userDocProvider).value?.data();
+    if (_calcularBloqueado(data)) {
+      _mostrarBurbuja(_mensajeBloqueo(data), const Color(0xFFC62828), Icons.lock_outline);
+      return;
+    }
+    accion();
   }
 
   // ===========================================================================
@@ -167,10 +233,113 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
   }
 
   // ===========================================================================
+  // 🆕 AJUSTE 2-B: VENTANA EMERGENTE ANCLADA EXACTAMENTE ENCIMA DE LAS 3 CASILLAS
+  // ===========================================================================
+  void _cerrarSelectorCategorias() {
+    _categoriaOverlay?.remove();
+    _categoriaOverlay = null;
+  }
+
+  void _mostrarSelectorCategorias() {
+    if (_categoriaOverlay != null) return; // ya está abierta
+
+    final overlayState = Overlay.of(context);
+    final double popupWidth = MediaQuery.of(context).size.width - 40;
+
+    _categoriaOverlay = OverlayEntry(
+      builder: (overlayContext) {
+        return Stack(
+          children: [
+            // Capa invisible: tocar fuera de la ventana la cierra
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _cerrarSelectorCategorias,
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+            // La ventana en sí, anclada EXACTAMENTE ENCIMA de la fila de casillas
+            CompositedTransformFollower(
+              link: _slotsLayerLink,
+              showWhenUnlinked: false,
+              targetAnchor: Alignment.topCenter,
+              followerAnchor: Alignment.bottomCenter,
+              offset: const Offset(0, -8),
+              child: SizedBox(
+                width: popupWidth,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xFF2E1A47), Colors.black],
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white24),
+                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 15, offset: Offset(0, 8))],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text("ELIGE UNA CATEGORÍA", style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, fontFamily: 'Poppins', letterSpacing: 0.5)),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _GridCategoriasSeleccion(
+                          bloqueado: false, // el bloqueo ya se filtró antes de abrir esta ventana
+                          onRestaurantes: () {
+                            _cerrarSelectorCategorias();
+                            _abrirCategoria(const RestaurantesScreen(modoSeleccionCita: true));
+                          },
+                          onBares: () {
+                            _cerrarSelectorCategorias();
+                            _abrirCategoria(const BaresScreen(modoSeleccionCita: true));
+                          },
+                          onCafes: () {
+                            _cerrarSelectorCategorias();
+                            _abrirCategoria(const CafesScreen(modoSeleccionCita: true));
+                          },
+                          onActividades: () {
+                            _cerrarSelectorCategorias();
+                            _abrirCategoria(const ActividadesScreen(modoSeleccionCita: true));
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    overlayState.insert(_categoriaOverlay!);
+  }
+
+  // ===========================================================================
   // ✍️ ENVÍO DE LA INVITACIÓN (real, no placeholder) + NOTIFICACIÓN AL INVITADO
   // ===========================================================================
   Future<void> _enviarInvitacion() async {
-    if (!_completoLas3 || _enviando) return;
+    if (_enviando) return;
+
+    // 🆕 AJUSTE 3: revisamos bloqueo ANTES de revisar si las 3 casillas están llenas
+    final userData = ref.read(userDocProvider).value?.data();
+    if (_calcularBloqueado(userData)) {
+      _mostrarBurbuja(_mensajeBloqueo(userData), const Color(0xFFC62828), Icons.lock_outline);
+      return;
+    }
+
+    if (!_completoLas3) return;
+
     setState(() => _enviando = true);
 
     try {
@@ -247,6 +416,10 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
     final profile = ref.watch(profileFormProvider);
     final myUid = FirebaseAuth.instance.currentUser?.uid;
 
+    // 🆕 AJUSTE 3: escuchamos en tiempo real el mismo documento de usuario que usa panel_screen.dart
+    final userData = ref.watch(userDocProvider).value?.data();
+    final bool bloqueado = _calcularBloqueado(userData);
+
     final String? fotoProvider = profile.fotosCargadas.isNotEmpty ? profile.fotosCargadas.first : null;
     final String fotoUserFinal = fotoProvider ?? 'assets/images/perfil1.jpg';
     final String nombreUserFinal = _nombreSeguro(profile.nombre);
@@ -292,7 +465,7 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
                             text: TextSpan(
                               children: [
                                 const TextSpan(
-                                  text: "¿A DÓNDE QUIERES TU CITA CON\n",
+                                  text: "¿A DÓNDE TE GUSTARÍA TU CITA CON\n",
                                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600, fontFamily: 'Poppins', height: 1.2),
                                 ),
                                 TextSpan(
@@ -308,32 +481,55 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
 
                       const SizedBox(height: 16),
 
-                      // 🆕 TEXTO NUEVO
+                      // 🆕 AJUSTE 1: TEXTO ACLARATORIO — deja explícito que esto es solo una
+                      // invitación y que la cita real se confirma solo si el invitado acepta.
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 30),
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            "ESCOGE TRES POSIBLES SITIOS A DONDE\nTE GUSTARÍA IR CON TU CITA",
+                            "ESCOGE TRES POSIBLES SITIOS PARA TU INVITACIÓN.\nESTO AÚN NO ES UNA CITA: SE CONFIRMA SOLO SI $nombreMatchFinal ACEPTA.",
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Poppins', height: 1.3),
+                            style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600, fontFamily: 'Poppins', height: 1.3),
                           ),
                         ),
                       ),
 
                       const SizedBox(height: 16),
 
-                      // 🆕 LAS 3 CASILLAS
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Row(
-                          children: [
-                            _SlotSitio(lugar: _slot1, onClear: () => setState(() => _slot1 = null)),
-                            const SizedBox(width: 10),
-                            _SlotSitio(lugar: _slot2, onClear: () => setState(() => _slot2 = null)),
-                            const SizedBox(width: 10),
-                            _SlotSitio(lugar: _slot3, onClear: () => setState(() => _slot3 = null)),
-                          ],
+                      // 🆕 LAS 3 CASILLAS (envueltas en CompositedTransformTarget para anclar
+                      // la ventana emergente justo encima de ellas)
+                      CompositedTransformTarget(
+                        link: _slotsLayerLink,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              _SlotSitio(
+                                lugar: _slot1,
+                                numeroSitio: 1,
+                                onClear: () => setState(() => _slot1 = null),
+                                onTapVacio: () => _intentarAccionBloqueable(_mostrarSelectorCategorias),
+                                bloqueado: bloqueado,
+                              ),
+                              const SizedBox(width: 10),
+                              _SlotSitio(
+                                lugar: _slot2,
+                                numeroSitio: 2,
+                                onClear: () => setState(() => _slot2 = null),
+                                onTapVacio: () => _intentarAccionBloqueable(_mostrarSelectorCategorias),
+                                bloqueado: bloqueado,
+                              ),
+                              const SizedBox(width: 10),
+                              _SlotSitio(
+                                lugar: _slot3,
+                                numeroSitio: 3,
+                                onClear: () => setState(() => _slot3 = null),
+                                onTapVacio: () => _intentarAccionBloqueable(_mostrarSelectorCategorias),
+                                bloqueado: bloqueado,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
 
@@ -367,23 +563,15 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
                         ),
                       ),
 
-                      const SizedBox(height: 25),
-
-                      // Grid Categorías (idéntico visualmente, modo selección activado)
-                      _GridCategoriasSeleccion(
-                        onRestaurantes: () => _abrirCategoria(const RestaurantesScreen(modoSeleccionCita: true)),
-                        onBares: () => _abrirCategoria(const BaresScreen(modoSeleccionCita: true)),
-                        onCafes: () => _abrirCategoria(const CafesScreen(modoSeleccionCita: true)),
-                        onActividades: () => _abrirCategoria(const ActividadesScreen(modoSeleccionCita: true)),
-                      ),
-
-                      const SizedBox(height: 14),
+                      // 🆕 AJUSTE 4: se quitó la tira fija de 4 categorías que estaba aquí
+                      // (se veía como doble fila fea junto con la ventana emergente).
+                      const SizedBox(height: 30),
 
                       // 🆕 BOTÓN ENVIAR INVITACIÓN
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: _BotonEnviarInvitacion(
-                          activo: _completoLas3,
+                          activo: _completoLas3 && !bloqueado,
                           enviando: _enviando,
                           onTap: _enviarInvitacion,
                         ),
@@ -405,7 +593,11 @@ class _InteresesCitasScreenState extends ConsumerState<InteresesCitasScreen> {
                       const SizedBox(height: 30),
 
                       // Lugares Populares — AHORA TAMBIÉN SELECCIONABLE
-                      _LugaresPopularesSeleccion(onLugarElegido: _fillFirstEmptySlot),
+                      _LugaresPopularesSeleccion(
+                        onLugarElegido: _fillFirstEmptySlot,
+                        bloqueado: bloqueado,
+                        onBloqueado: () => _mostrarBurbuja(_mensajeBloqueo(userData), const Color(0xFFC62828), Icons.lock_outline),
+                      ),
                     ],
                   ),
                 ),
@@ -507,8 +699,17 @@ class _HeaderFotosInteres extends StatelessWidget {
 // ===============================================================
 class _SlotSitio extends StatelessWidget {
   final LugarData? lugar;
+  final int numeroSitio;
   final VoidCallback onClear;
-  const _SlotSitio({required this.lugar, required this.onClear});
+  final VoidCallback? onTapVacio;
+  final bool bloqueado;
+  const _SlotSitio({
+    required this.lugar,
+    required this.numeroSitio,
+    required this.onClear,
+    this.onTapVacio,
+    this.bloqueado = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -523,10 +724,30 @@ class _SlotSitio extends StatelessWidget {
           ),
           clipBehavior: Clip.antiAlias,
           child: lugar == null
-              ? const Center(
-            child: Text(
-              'VACÍO',
-              style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w800, fontFamily: 'Poppins', letterSpacing: 0.5),
+              ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTapVacio,
+            child: Center(
+              child: bloqueado
+                  ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.lock_outline, color: Colors.white38, size: 18),
+                  SizedBox(height: 4),
+                  Text(
+                    'BLOQUEADO',
+                    style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.w800, fontFamily: 'Poppins', letterSpacing: 0.5),
+                  ),
+                ],
+              )
+                  : Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  'ELIGE SITIO $numeroSitio',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.w800, fontFamily: 'Poppins', letterSpacing: 0.5),
+                ),
+              ),
             ),
           )
               : Stack(
@@ -636,19 +857,21 @@ class _RadioOpcionInteres extends StatelessWidget {
 }
 
 // ===============================================================
-// 🛡️ GRID CATEGORÍAS (visual idéntico a cita_nueva_screen.dart, wiring de selección nuevo)
+// 🛡️ GRID CATEGORÍAS (usado ahora solo dentro de la ventana emergente)
 // ===============================================================
 class _GridCategoriasSeleccion extends StatelessWidget {
   final VoidCallback onRestaurantes;
   final VoidCallback onBares;
   final VoidCallback onCafes;
   final VoidCallback onActividades;
+  final bool bloqueado;
 
   const _GridCategoriasSeleccion({
     required this.onRestaurantes,
     required this.onBares,
     required this.onCafes,
     required this.onActividades,
+    this.bloqueado = false,
   });
 
   @override
@@ -658,19 +881,19 @@ class _GridCategoriasSeleccion extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
-          Expanded(child: _CatCard("RESTAURANTES", "assets/images/restaurantes_ico.jpg", radioCategoria, onRestaurantes)),
+          Expanded(child: _CatCard("RESTAURANTES", "assets/images/restaurantes_ico.jpg", radioCategoria, onRestaurantes, bloqueado)),
           const SizedBox(width: 8),
-          Expanded(child: _CatCard("BARES", "assets/images/bares_ico.jpg", radioCategoria, onBares)),
+          Expanded(child: _CatCard("BARES", "assets/images/bares_ico.jpg", radioCategoria, onBares, bloqueado)),
           const SizedBox(width: 8),
-          Expanded(child: _CatCard("CAFÉS", "assets/images/cafes_ico.jpg", radioCategoria, onCafes)),
+          Expanded(child: _CatCard("CAFÉS", "assets/images/cafes_ico.jpg", radioCategoria, onCafes, bloqueado)),
           const SizedBox(width: 8),
-          Expanded(child: _CatCard("ACTIVIDADES", "assets/images/actividades_ico.jpg", radioCategoria, onActividades)),
+          Expanded(child: _CatCard("ACTIVIDADES", "assets/images/actividades_ico.jpg", radioCategoria, onActividades, bloqueado)),
         ],
       ),
     );
   }
 
-  Widget _CatCard(String title, String asset, double radio, VoidCallback onTap) {
+  Widget _CatCard(String title, String asset, double radio, VoidCallback onTap, bool bloqueado) {
     return GestureDetector(
       onTap: onTap,
       child: AspectRatio(
@@ -700,6 +923,9 @@ class _GridCategoriasSeleccion extends StatelessWidget {
                   ),
                 ),
               ),
+              if (bloqueado) Container(color: Colors.black.withOpacity(0.45)),
+              if (bloqueado)
+                const Center(child: Icon(Icons.lock_outline, color: Colors.white70, size: 26)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(7.5, 0, 7, 8),
                 child: FittedBox(
@@ -738,9 +964,10 @@ class _BotonEnviarInvitacion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final puedeTocar = activo && !enviando;
     return GestureDetector(
-      onTap: puedeTocar ? onTap : null,
+      // El toque siempre se registra (salvo mientras se está enviando), para que
+      // _enviarInvitacion() pueda mostrar la burbuja de bloqueo aunque el botón se vea "inactivo".
+      onTap: enviando ? null : onTap,
       child: Container(
         width: double.infinity,
         height: 55,
@@ -833,7 +1060,13 @@ class _BotonDescuentosAnimadoInteresState extends State<_BotonDescuentosAnimadoI
 // ===============================================================
 class _LugaresPopularesSeleccion extends StatefulWidget {
   final void Function(LugarData) onLugarElegido;
-  const _LugaresPopularesSeleccion({required this.onLugarElegido});
+  final bool bloqueado;
+  final VoidCallback onBloqueado;
+  const _LugaresPopularesSeleccion({
+    required this.onLugarElegido,
+    this.bloqueado = false,
+    required this.onBloqueado,
+  });
 
   @override
   State<_LugaresPopularesSeleccion> createState() => _LugaresPopularesSeleccionState();
@@ -873,6 +1106,11 @@ class _LugaresPopularesSeleccionState extends State<_LugaresPopularesSeleccion> 
   }
 
   Future<void> _onLugarTap(LugarData lugar) async {
+    // 🆕 AJUSTE 3: si el usuario está bloqueado, avisamos y no navegamos.
+    if (widget.bloqueado) {
+      widget.onBloqueado();
+      return;
+    }
     final resultado = await Navigator.of(context).push<LugarData>(
       MaterialPageRoute(
         builder: (_) => LugarPlantillaScreen(lugar: lugar, modoSeleccionCita: true),
@@ -923,10 +1161,25 @@ class _LugaresPopularesSeleccionState extends State<_LugaresPopularesSeleccion> 
                   final lugar = LugarData.fromMap(id: docs[index].id, data: docs[index].data());
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: LugarCard(
-                      lugar: lugar,
-                      altoTarjeta: alturaLugarPopular,
-                      onTap: () => _onLugarTap(lugar),
+                    child: Stack(
+                      children: [
+                        Opacity(
+                          opacity: widget.bloqueado ? 0.4 : 1.0,
+                          child: LugarCard(
+                            lugar: lugar,
+                            altoTarjeta: alturaLugarPopular,
+                            onTap: () => _onLugarTap(lugar),
+                          ),
+                        ),
+                        if (widget.bloqueado)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: Center(
+                                child: Icon(Icons.lock_outline, color: Colors.white70, size: 32),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   );
                 }),
